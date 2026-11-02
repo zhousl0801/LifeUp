@@ -546,50 +546,6 @@ test('opening a duplicate holding asks before updating or adding', async () => {
   view.unmount()
 })
 
-test('pending buy can be confirmed manually with shares, net value and fee', async () => {
-  mocks.confirmBuy.mockResolvedValue({
-    position: positionB,
-    cashBalance: 4700,
-    activity: { id: 'bc1', type: 'buyConfirmed', shares: 10, amount: 300, cashEffect: 0, fee: 2 }
-  })
-
-  const view = mount(FundsView, { attachTo: document.body })
-  await flushPromises()
-  await view.findAll('.view-tabs button').find((button) => button.text() === '交易')!.trigger('click')
-  await flushPromises()
-
-  const pendingRow = view.findAll('.activity-row')
-    .find((row) => row.text().includes('债券基金') && row.text().includes('待确认'))!
-  await pendingRow.trigger('click')
-  await flushPromises()
-
-  expect(document.querySelector('.sheet')?.textContent).toContain('10月23日 按 T 日净值自动折算份额')
-
-  const field = (label: string) => [...document.querySelectorAll('.sheet label')]
-    .find((item) => item.querySelector('span')?.textContent === label)!
-    .querySelector('input')!
-  const setValue = (label: string, value: string) => {
-    const input = field(label)
-    input.value = value
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-  }
-
-  setValue('确认份额', '10')
-  setValue('成交净值', '30')
-  setValue('申购费（元）', '2')
-  await flushPromises()
-
-  document.querySelector('.sheet form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
-  await flushPromises()
-
-  expect(mocks.confirmBuy).toHaveBeenCalledWith('pb1', expect.objectContaining({
-    shares: 10,
-    netValue: 30,
-    fee: 2
-  }))
-  view.unmount()
-})
-
 test('fund recurring view reads plans and filters them to the active group', async () => {
   const view = mount(FundsView, { attachTo: document.body })
   await flushPromises()

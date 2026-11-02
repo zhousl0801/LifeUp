@@ -1278,7 +1278,7 @@ function goBack(): void {
         <label v-if="form.type === 'fundSip'" class="form-field">
           <span>每期申购费（元）</span>
           <input v-model="form.fee" type="text" inputmode="decimal" placeholder="0.00" />
-          <small>按平台实际扣费填写，份额按（扣款金额 − 申购费）÷ 确认净值折算；不确定可先留 0，之后在交易页登记确认份额时补录。</small>
+          <small>按平台实际扣费填写，份额按（扣款金额 − 申购费）÷ 确认净值自动折算。</small>
         </label>
 
         <p v-if="form.type === 'fundSip' && positionsError" class="form-error" role="alert">

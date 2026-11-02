@@ -7,7 +7,6 @@ import {
   assignFundGroup,
   buyFund,
   cancelFundPending,
-  confirmFundBuy,
   confirmFundSell,
   correctFundShares,
   createFundGroup,
@@ -607,7 +606,7 @@ const sheetTitle = computed(() => {
     case 'buy':
       return '记录基金买入'
     case 'buyConfirm':
-      return '确认买入份额'
+      return '待确认交易'
     case 'shares':
       return '调整基金份额'
     case 'priorProfit':
@@ -629,7 +628,7 @@ const sheetSubtitle = computed(() => {
     case 'buy':
       return '现金减少，T+2 自动确认份额'
     case 'buyConfirm':
-      return '到期自动确认，这里用于提前或更正'
+      return '买入后按 T 日净值自动确认'
     case 'shares':
       return '生成份额核对记录，保留原有流水'
     case 'priorProfit':
@@ -650,8 +649,6 @@ const sheetNote = computed(() => {
       return '录入已有持仓不会从现金扣除购买成本，也不产生生活收支。'
     case 'buy':
       return '15:00 前可撤销；截止后按基金 T 日净值和实际申购费自动计算份额。'
-    case 'buyConfirm':
-      return '按平台确认的实际份额和净值登记；成本仍为原扣款金额，申购费只影响份额折算。'
     case 'shares':
       return '只修改持仓份额，净值必须由行情数据源获取。'
     case 'sell':
@@ -680,14 +677,6 @@ const canSubmit = computed(() => {
       return form.positionId !== '' && !!selectedPosition.value?.code && (parseAmount(form.amount) ?? 0) > 0
         && (parseAmount(form.fee) ?? -1) >= 0
         && (parseAmount(form.fee) ?? Number.POSITIVE_INFINITY) < (parseAmount(form.amount) ?? 0)
-        && form.businessDate !== ''
-    case 'buyConfirm':
-      return confirmingBuyId.value !== null
-        && parseQuantity(form.shares) !== null
-        && parsePrice(form.netValue) !== null
-        && (parseAmount(form.fee) ?? -1) >= 0
-        && (parseAmount(form.fee) ?? Number.POSITIVE_INFINITY) < (selectedPendingBuy.value?.amount ?? 0)
-        && form.netValueDate !== ''
         && form.businessDate !== ''
     case 'shares':
       return form.positionId !== '' && parseNonNegativeQuantity(form.shares) !== null
@@ -1283,26 +1272,6 @@ function openSellConfirmSheet(application: PendingFundSell): void {
 function openBuyConfirmSheet(pending: PendingFundBuy): void {
   openSheet('buyConfirm', pending.positionId)
   confirmingBuyId.value = pending.transactionId
-  form.shares = ''
-  form.netValue = ''
-  form.netValueDate = pending.tradeDate
-  form.businessDate = today
-  form.fee = String(pending.fee)
-  form.note = pending.note ?? ''
-}
-
-function estimateBuyShares(): void {
-  const pending = selectedPendingBuy.value
-  const netValue = parsePrice(form.netValue)
-  const fee = parseAmount(form.fee)
-
-  if (!pending || netValue === null || netValue <= 0 || fee === null || fee < 0) {
-    formError.value = '请先填写有效的成交净值和申购费。'
-    return
-  }
-
-  formError.value = ''
-  form.shares = new Decimal(pending.amount).minus(fee).div(netValue).toFixed(4, Decimal.ROUND_DOWN)
 }
 
 function estimateSellNetAmount(): void {
@@ -1352,8 +1321,6 @@ async function submit(): Promise<void> {
       await submitOpening()
     } else if (sheet.value === 'buy') {
       await submitBuy()
-    } else if (sheet.value === 'buyConfirm') {
-      await submitBuyConfirm()
     } else if (sheet.value === 'shares') {
       await submitShareCorrection()
     } else if (sheet.value === 'priorProfit') {
@@ -1547,59 +1514,6 @@ async function submitBuy(): Promise<void> {
     requestId: requestId.value
   })
   notice.value = `已记录买入待确认 ¥${formatMoney(result.activity.amount)}，当前现金 ¥${formatMoney(result.cashBalance)}。`
-  sheet.value = null
-  await loadOverview()
-}
-
-async function submitBuyConfirm(): Promise<void> {
-  const pending = selectedPendingBuy.value
-  const shares = parseQuantity(form.shares)
-  const netValue = parsePrice(form.netValue)
-  const fee = parseAmount(form.fee)
-
-  if (!pending) {
-    formError.value = '买入待确认记录不存在，请刷新后重试。'
-    return
-  }
-
-  if (shares === null || netValue === null || fee === null || fee < 0) {
-    formError.value = '请填写有效的确认份额、净值和申购费。'
-    return
-  }
-
-  if (fee >= pending.amount) {
-    formError.value = '申购费必须小于扣款金额。'
-    return
-  }
-
-  if (form.businessDate < pending.businessDate) {
-    formError.value = '确认日期不能早于下单日期。'
-    return
-  }
-
-  const valueDateError = validateValueDate(form.netValueDate, '净值日期')
-
-  if (valueDateError) {
-    formError.value = valueDateError
-    return
-  }
-
-  if (form.netValueDate > form.businessDate) {
-    formError.value = '净值日期不能晚于确认日期。'
-    return
-  }
-
-  isSaving.value = true
-  const result = await confirmFundBuy(pending.transactionId, {
-    shares,
-    netValue,
-    netValueDate: form.netValueDate,
-    fee,
-    businessDate: form.businessDate,
-    note: form.note.trim(),
-    requestId: requestId.value
-  })
-  notice.value = `已确认买入 ${formatQuantity(result.activity.shares)} 份，成本 ¥${formatMoney(result.activity.amount)}。`
   sheet.value = null
   await loadOverview()
 }
@@ -2350,13 +2264,21 @@ function goBack(): void {
       @close="closeSheet"
     >
       <div class="sheet-summary">
-        <div class="summary-line">
+        <div v-if="sheet !== 'buyConfirm'" class="summary-line">
           <span>可用现金</span>
           <b>¥{{ formatMoney(overview?.cashBalance) }}</b>
         </div>
-        <div v-if="selectedPosition" class="summary-line">
+        <div v-if="selectedPosition && sheet !== 'buyConfirm'" class="summary-line">
           <span>当前持仓</span>
           <b>{{ formatQuantity(selectedPosition.shares) }} 份</b>
+        </div>
+        <div v-if="selectedPendingBuy" class="summary-line">
+          <span>基金</span>
+          <b>{{ selectedPendingBuy.positionName }}</b>
+        </div>
+        <div v-if="selectedPendingBuy" class="summary-line">
+          <span>下单日期</span>
+          <b>{{ formatBusinessDate(selectedPendingBuy.businessDate) }}</b>
         </div>
         <div v-if="selectedPendingBuy" class="summary-line">
           <span>待确认扣款</span>
@@ -2376,7 +2298,13 @@ function goBack(): void {
         </div>
       </div>
 
-      <form class="form-stack" @submit.prevent="submit">
+      <div v-if="sheet === 'buyConfirm' && selectedPendingBuy" class="form-stack">
+        <p v-if="selectedPendingBuy.note" class="form-note">备注：{{ selectedPendingBuy.note }}</p>
+        <p class="form-note">{{ selectedPendingBuy.canCancel ? '可在撤销截止时间前撤销这笔交易。' : '已超过撤销时间，等待自动确认。' }}</p>
+        <button v-if="selectedPendingBuy.canCancel" type="button" class="secondary-button danger-text" @click="cancelPending(selectedPendingBuy.transactionId)">撤销这笔待确认</button>
+      </div>
+
+      <form v-else class="form-stack" @submit.prevent="submit">
         <template v-if="sheet === 'opening'">
           <label class="form-field">
             <span>基金名称 / 代码</span>
@@ -2473,46 +2401,6 @@ function goBack(): void {
             <small>按哪一天净值确认份额，默认与下单日期相同；15:00 后下单的按平台规则改为下一个交易日。</small>
           </label>
           <small v-if="!selectedPosition?.code" class="form-note">请先为该持仓设置基金代码，才能从数据源自动确认份额。</small>
-        </template>
-
-        <template v-else-if="sheet === 'buyConfirm'">
-          <div class="form-row">
-            <label class="form-field">
-              <span>确认份额</span>
-              <input v-model="form.shares" type="text" inputmode="decimal" placeholder="0.0000" />
-            </label>
-            <label class="form-field">
-              <span>成交净值</span>
-              <input v-model="form.netValue" type="text" inputmode="decimal" placeholder="0.0000" />
-            </label>
-          </div>
-          <button type="button" class="text-button estimate-button" @click="estimateBuyShares">
-            按（扣款金额 − 申购费）÷ 净值 试算份额
-          </button>
-          <div class="form-row">
-            <label class="form-field">
-              <span>净值日期</span>
-              <input v-model="form.netValueDate" type="date" :max="today" />
-            </label>
-            <label class="form-field">
-              <span>申购费（元）</span>
-              <input v-model="form.fee" type="text" inputmode="decimal" placeholder="0.00" />
-            </label>
-          </div>
-          <label class="form-field">
-            <span>确认日期</span>
-            <input v-model="form.businessDate" type="date" :min="selectedPendingBuy?.businessDate" :max="today" />
-          </label>
-          <p class="form-note">
-            这笔会在 {{ monthDayText(selectedPendingBuy?.confirmationDate ?? '') }} 按 T 日净值自动折算份额并结转，不需要你填。
-            只有想提前登记、或平台实际份额与自动计算不一致时才在这里更正；确认后待确认金额转为持仓成本，不再次扣现金。
-          </p>
-          <button
-            v-if="selectedPendingBuy?.canCancel"
-            type="button"
-            class="text-button danger-text"
-            @click="cancelPending(selectedPendingBuy.transactionId)"
-          >撤销这笔待确认</button>
         </template>
 
         <template v-else-if="sheet === 'priorProfit'">

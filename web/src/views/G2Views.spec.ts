@@ -85,7 +85,7 @@ async function showActivities(view: ReturnType<typeof mount>): Promise<void> {
   await flushPromises()
 }
 
-test('pending buy shows trade and automatic confirmation dates and allows manual confirmation', async () => {
+test('pending buy displays transaction details without editable fields or save action', async () => {
   const view = mount(FundsView, { attachTo: document.body })
   await flushPromises()
   await showActivities(view)
@@ -100,8 +100,13 @@ test('pending buy shows trade and automatic confirmation dates and allows manual
   const sheetText = document.querySelector('.sheet')!.textContent ?? ''
   expect(sheetText).toContain('T 日 2026年10月21日')
   expect(sheetText).toContain('10月23日自动确认份额')
-  expect(sheetText).toContain('10月23日 按 T 日净值自动折算份额')
   expect(sheetText).toContain('待确认扣款')
+  expect(sheetText).toContain('300.00')
+  expect(sheetText).toContain('2026年10月21日')
+  expect(document.querySelector('.sheet input')).toBeNull()
+  expect(sheetText).not.toContain('保存')
+  expect(sheetText).not.toContain('成交净值')
+  expect(sheetText).toContain('已超过撤销时间')
   view.unmount()
 })
 
