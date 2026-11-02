@@ -1,0 +1,77 @@
+name: 每日定投触发
+
+# Render 免费实例空闲 15 分钟就会休眠，休眠期间进程停止、计划不会执行。
+# 这里每天在北京时间 12:30 唤醒服务并触发一次到期计划执行；
+# 触发接口是幂等的，重复调用不会重复扣款，晚跑也会把当天该跑的补齐。
+on:
+  schedule:
+    # GitHub 的 cron 用 UTC：04:30 UTC = 12:30 北京时间
+    - cron: '30 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-plan-run
+  cancel-in-progress: false
+
+jobs:
+  run-plans:
+    name: 唤醒服务并执行到期计划
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: 检查密钥是否配置
+        env:
+          BASE_URL: ${{ secrets.APP_BASE_URL }}
+          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BASE_URL}" ]; then
+            echo "::error::缺少仓库密钥 APP_BASE_URL（例如 https://your-service.onrender.com）"
+            exit 1
+          fi
+          if [ -z "${CRON_TOKEN}" ]; then
+            echo "::error::缺少仓库密钥 CRON_TOKEN（需与服务端 Cron__Token 一致）"
+            exit 1
+          fi
+
+      - name: 等待服务就绪（免费实例冷启动约 1 分钟）
+        env:
+          BASE_URL: ${{ secrets.APP_BASE_URL }}
+        run: |
+          set -uo pipefail
+          for attempt in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "${BASE_URL%/}/api/health" || true)
+            echo "第 ${attempt} 次探活：HTTP ${code:-无响应}"
+            if [ "${code}" = "200" ]; then
+              echo "服务已就绪"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::服务在 5 分钟内仍未就绪"
+          exit 1
+
+      - name: 触发到期计划执行
+        env:
+          BASE_URL: ${{ secrets.APP_BASE_URL }}
+          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
+        run: |
+          set -uo pipefail
+          for attempt in 1 2 3; do
+            body=$(mktemp)
+            code=$(curl -s -o "$body" -w '%{http_code}' --max-time 120 \
+              -X POST -H "X-Cron-Token: ${CRON_TOKEN}" \
+              "${BASE_URL%/}/api/cron/plans/run" || true)
+            echo "第 ${attempt} 次触发：HTTP ${code:-无响应}"
+            cat "$body"; echo
+            rm -f "$body"
+            if [ "${code}" = "200" ]; then
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::触发到期计划失败"
+          exit 1

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using AssetKeeper.Application.Ledgers;
+using AssetKeeper.Tests.Ledgers;
 
 namespace AssetKeeper.Tests.Api;
 
@@ -69,7 +70,12 @@ public sealed class LedgerEndpointsTests
     [Fact]
     public async Task GetMonthChange_WithoutCompleteAssets_ReturnsEmptyChangeAndNotes()
     {
-        using var factory = new AssetKeeperApiFactory();
+        // 固定时钟：这个用例断言的是「账本起始日就是本月」的情况，
+        // 不锁死时间的话，跨月之后起始日会早于月初，断言就不成立了。
+        using var factory = new AssetKeeperApiFactory
+        {
+            Clock = new FixedTimeProvider(new DateTimeOffset(2026, 10, 20, 2, 0, 0, TimeSpan.Zero))
+        };
         using var client = factory.CreateClient();
 
         await client.PostAsJsonAsync("/api/ledger/initialize", new

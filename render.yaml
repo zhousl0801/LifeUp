@@ -16,6 +16,10 @@ services:
         sync: false
       - key: ASSET_KEEPER_ACCESS_PASSWORD
         sync: false
+      # 外部定时任务（GitHub Actions）调用 /api/cron/plans/run 的共享令牌。
+      # 留空则该入口关闭；生成方式：openssl rand -hex 32。
+      - key: Cron__Token
+        sync: false
       # Passkey 默认使用 Render 注入的 RENDER_EXTERNAL_URL 推断依赖方地址；
       # 绑定自定义域名后再设置下面两项（值为实际域名与完整 https 地址）。
       # - key: Passkey__RpId
