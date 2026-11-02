@@ -64,6 +64,7 @@ export interface PendingMutation {
 }
 
 export const pendingMutationCount = ref(0)
+const inFlightMutations = new Map<string, number>()
 
 export function readPendingMutations(): PendingMutation[] {
   const result: PendingMutation[] = []
@@ -76,7 +77,7 @@ export function readPendingMutations(): PendingMutation[] {
     }
   }
 
-  pendingMutationCount.value = result.length
+  pendingMutationCount.value = result.filter((request) => !inFlightMutations.has(request.requestId)).length
   return result
 }
 
@@ -131,25 +132,32 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
     throw new ApiError(0, '上次保存结果待核实，请先在顶部查询结果或重试原请求。')
   }
 
-  remember({ requestId, path, method, body: body! })
-
+  inFlightMutations.set(requestId, (inFlightMutations.get(requestId) ?? 0) + 1)
   try {
-    const result = await readOnlyRequest<T>(path, init)
-    forget(requestId)
-    return result
-  } catch (error) {
-    if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
-      forget(requestId)
-      throw error
-    }
-
+    remember({ requestId, path, method, body: body! })
     try {
-      const result = await lookupMutation<T>(requestId)
+      const result = await readOnlyRequest<T>(path, init)
       forget(requestId)
       return result
-    } catch {
-      throw new ApiError(0, '保存结果待核实，原内容已保留；请查询结果或重试原请求，勿重新记账。')
+    } catch (error) {
+      if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+        forget(requestId)
+        throw error
+      }
+
+      try {
+        const result = await lookupMutation<T>(requestId)
+        forget(requestId)
+        return result
+      } catch {
+        throw new ApiError(0, '保存结果待核实，原内容已保留；请查询结果或重试原请求，勿重新记账。')
+      }
     }
+  } finally {
+    const remaining = (inFlightMutations.get(requestId) ?? 1) - 1
+    if (remaining) inFlightMutations.set(requestId, remaining)
+    else inFlightMutations.delete(requestId)
+    readPendingMutations()
   }
 }
 

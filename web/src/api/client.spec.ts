@@ -1,9 +1,24 @@
 import { beforeEach, expect, test, vi } from 'vitest'
-import { apiRequest, readPendingMutations } from './client'
+import { apiRequest, pendingMutationCount, readPendingMutations } from './client'
 
 beforeEach(() => {
   localStorage.clear()
   vi.restoreAllMocks()
+})
+
+test('only shows a pending notice after an in-flight save cannot be confirmed', async () => {
+  let rejectSave!: (error: Error) => void
+  vi.spyOn(globalThis, 'fetch')
+    .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectSave = reject }))
+    .mockRejectedValueOnce(new TypeError('offline'))
+  const save = apiRequest('/api/ledger/entries', {
+    method: 'POST', body: JSON.stringify({ amount: 100, requestId: 'in-flight' })
+  })
+  expect(readPendingMutations()).toHaveLength(1)
+  expect(pendingMutationCount.value).toBe(0)
+  rejectSave(new TypeError('offline'))
+  await expect(save).rejects.toThrow('待核实')
+  expect(pendingMutationCount.value).toBe(1)
 })
 
 test('lost save response is recovered by request ID instead of showing an unconfirmed amount', async () => {

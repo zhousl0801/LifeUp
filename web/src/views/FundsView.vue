@@ -2202,12 +2202,6 @@ function goBack(): void {
         <EmptyState v-else compact icon="clock" title="还没有定投计划" description="为固定投入设置计划，到期后按计划记账。" action-label="设置定投计划" @action="router.push('/plans')" />
       </template>
 
-      <details class="fund-help ui-disclosure">
-        <summary>投资统计</summary>
-      <p class="summary-note">
-        基金买卖属于资产流转，不计入生活收支；净值更新只影响估值。分组只改变查看范围，不改持仓、成本和收益。
-      </p>
-      </details>
     </template>
 
     <BottomSheet
@@ -2897,11 +2891,6 @@ function goBack(): void {
   font-size: var(--text-footnote);
   font-weight: 500;
 }
-.fund-help {
-  margin-top: 24px;
-  border-top: 1px solid var(--color-border-subtle);
-}
-
 .action-primary {
   border: 1px solid var(--color-brand);
   background: var(--color-brand);
