@@ -589,8 +589,8 @@ public sealed class FundReturnService
             return null;
         }
 
-        var currentValue = current.Value.Value + current.PendingAmount + current.PendingArrivalAmount;
-        var previousValue = previous.Value.Value + previous.PendingAmount + previous.PendingArrivalAmount;
+        var currentValue = current.Value.Value + current.PendingValue + current.PendingArrivalAmount;
+        var previousValue = previous.Value.Value + previous.PendingValue + previous.PendingArrivalAmount;
         var transfer = active
             .Where(fact => fact.AssetType == AssetType.Fund
                 && fact.PositionId == positionId
@@ -741,7 +741,7 @@ public sealed class FundReturnService
     {
         return fund?.Value is null
             ? null
-            : Round(fund.Value.Value + fund.PendingAmount + fund.PendingArrivalAmount);
+            : Round(fund.Value.Value + fund.PendingValue + fund.PendingArrivalAmount);
     }
 
     private static FundReturnDto EmptyResult(

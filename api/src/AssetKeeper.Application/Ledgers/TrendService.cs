@@ -73,7 +73,7 @@ public sealed class TrendService
                 result.CashBalance,
                 result.ProvidentBalance,
                 fundValue,
-                recordedFunds.Sum(item => item.PendingAmount),
+                recordedFunds.Sum(item => item.PendingValue),
                 recordedFunds.Sum(item => item.PendingArrivalAmount),
                 goldValue,
                 hasGold ? result.Gold!.PendingArrivalAmount : 0m,

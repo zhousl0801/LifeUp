@@ -168,7 +168,7 @@ public sealed class MonthChangeService
         }
 
         return new AssetValue(true, recorded.Sum(position =>
-            (position.Value ?? 0m) + position.PendingAmount + position.PendingArrivalAmount));
+            (position.Value ?? 0m) + position.PendingValue + position.PendingArrivalAmount));
     }
 
     private static AssetValue ReadGold(ReplayResult result, AssetKeeper.Domain.Ledgers.Ledger ledger)

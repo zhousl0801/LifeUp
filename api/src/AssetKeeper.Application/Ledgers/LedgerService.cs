@@ -54,6 +54,7 @@ public sealed class LedgerService
         var data = await _ledgerRepository.GetReplayDataAsync(ledger.Id, cancellationToken);
         var snapshot = new LedgerReplayCalculator().Calculate(data, BusinessFact.From(data), _businessDateProvider.Today, currentDate: _businessDateProvider.Today);
         var pendingFund = snapshot.Funds.Sum(item => item.PendingAmount);
+        var pendingFundValue = snapshot.Funds.Sum(item => item.PendingValue);
         var pendingArrival = snapshot.Funds.Sum(item => item.PendingArrivalAmount);
         var pendingGoldArrival = snapshot.Gold?.PendingArrivalAmount ?? 0m;
         var fundNote = $"持有 {fundPositions.Count} 只基金";
@@ -80,7 +81,7 @@ public sealed class LedgerService
                 ? notConfigured
                 : new AssetOverviewDto(
                     true,
-                    fundPositions.Sum(position => position.Value) + pendingFund + pendingArrival,
+                    fundPositions.Sum(position => position.Value) + pendingFundValue + pendingArrival,
                     fundNote);
         var provident = providentIsNotHeld
             ? notHeld

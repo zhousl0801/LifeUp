@@ -148,7 +148,7 @@ public sealed class FundService
         var groupSummaries = BuildGroupSummaries(groups, positions, funds);
 
         return new FundOverviewDto(
-            positions.Sum(position => position.Value) + pendingAmount + pendingArrivalAmount,
+            positions.Sum(position => position.Value) + replay.Funds.Sum(item => item.PendingValue) + pendingArrivalAmount,
             positions.Sum(position => position.Cost),
             positions.Sum(position => position.HoldingProfit),
             positions.Sum(position => position.TotalRealizedProfit),
@@ -306,6 +306,8 @@ public sealed class FundService
                     .ToList();
                 var pendingBuyAmount = members.Sum(position => pendingBuyAmounts.GetValueOrDefault(position.Id));
                 var pendingArrivalAmount = members.Sum(position => pendingArrivalAmounts.GetValueOrDefault(position.Id));
+                // 待确认的份额在 T 日就定了，估值要按 T 日净值折算，不能拿承诺金额顶替。
+                var pendingBuyValue = decimal.Round(members.Sum(position => replayStates[position.Id].PendingValue), 2);
                 var value = decimal.Round(members.Sum(position => position.Value), 2);
                 var dailyProfit = decimal.Round(members.Sum(position => dailyProfits.GetValueOrDefault(position.Id).Profit), 2);
                 var groupId = effectiveGroupIds[members[0].Id];
@@ -326,7 +328,7 @@ public sealed class FundService
                     decimal.Round(members.Sum(position => position.TotalRealizedProfit), 2),
                     decimal.Round(pendingBuyAmount, 2),
                     decimal.Round(pendingArrivalAmount, 2),
-                    decimal.Round(value + pendingBuyAmount + pendingArrivalAmount, 2),
+                    decimal.Round(value + pendingBuyValue + pendingArrivalAmount, 2),
                     platformCount,
                     members.Max(position => position.NetValueDate),
                     members.All(position => replayStates[position.Id].CanRebuild),

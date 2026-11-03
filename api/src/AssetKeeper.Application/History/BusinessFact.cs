@@ -33,6 +33,9 @@ public sealed record BusinessFact
 
     public DateOnly? PriceDate { get; init; }
 
+    /// <summary>基金买入的 T 日（净值日）；买入待确认价按它折算份额。</summary>
+    public DateOnly? FundTradeDate { get; init; }
+
     public decimal Fee { get; init; }
 
     public Guid? LinkedTransactionId { get; init; }
@@ -96,6 +99,7 @@ public sealed record BusinessFact
             Subject = transaction.Subject,
             Price = transaction.Price,
             PriceDate = transaction.PriceDate,
+            FundTradeDate = transaction.FundTradeDate,
             Fee = transaction.Fee,
             LinkedTransactionId = transaction.LinkedTransactionId,
             Note = transaction.Note,

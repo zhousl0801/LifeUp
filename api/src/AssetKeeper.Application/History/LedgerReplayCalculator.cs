@@ -112,7 +112,8 @@ public sealed class LedgerReplayCalculator
             return new HoldingReplay(position.Id, known ? state.Quantity : position.Shares, known ? state.Cost : position.Cost,
                 known ? state.Realized : position.RealizedProfit, known ? state.CoverageFrom : null, known,
                 (known ? state.CoverageFrom is null : asOfDate != currentDate) ? null : quote?.Price, quote?.EffectiveDate, quote?.Source,
-                known ? state.PendingAmount : 0m, known ? state.AppliedShares : 0m, known ? state.PendingArrivalAmount : 0m);
+                known ? state.PendingAmount : 0m, known ? state.AppliedShares : 0m, known ? state.PendingArrivalAmount : 0m,
+                known ? MarkPendingBuys(state.PendingBuys.Values, quote?.Price, observations, position.Id) : null);
         }).ToList();
         var stocks = data.Stocks.Select(position =>
         {
@@ -180,6 +181,7 @@ public sealed class LedgerReplayCalculator
         {
             state.PendingAmount += fact.Amount;
             Ensure(state.PendingAmount >= 0m && state.PendingAmount <= AssetTransaction.MaximumAmount, fact, "待确认买入金额无效");
+            state.PendingBuys[fact.Id] = new PendingBuy(fact.Amount, fact.FundTradeDate ?? fact.Date);
             return;
         }
 
@@ -188,6 +190,7 @@ public sealed class LedgerReplayCalculator
             var pending = pendingBuys[fact.LinkedTransactionId!.Value];
             Ensure(state.PendingAmount >= pending.Amount, fact, "待确认买入已被确认，不能重复结转");
             state.PendingAmount -= pending.Amount;
+            state.PendingBuys.Remove(pending.Id);
         }
 
         if (fact.Kind == AssetTransactionKind.FundSellApply)
@@ -496,6 +499,33 @@ public sealed class LedgerReplayCalculator
             .OrderByDescending(price => price.EffectiveDate).ThenByDescending(price => price.RevisionOrder).FirstOrDefault();
     }
 
+    private static PriceObservation? At(IEnumerable<PriceObservation> prices, AssetType assetType, Guid? positionId, DateOnly date)
+    {
+        return prices.Where(price => price.AssetType == assetType && price.PositionId == positionId && price.EffectiveDate == date)
+            .OrderByDescending(price => price.RevisionOrder).FirstOrDefault();
+    }
+
+    /// <summary>
+    /// 待确认买入在确认前也按「T 日净值」折算成份额计值：金额 ÷ T 日净值 × 当日净值。
+    /// 这样净值波动落在它真正发生的日期，确认当天不会凭空多出一笔差价。
+    /// T 日净值尚未披露时退回承诺金额，相当于这段时间不参与盈亏计算。
+    /// </summary>
+    private static decimal MarkPendingBuys(IEnumerable<PendingBuy> pendings, decimal? navAsOf,
+        IEnumerable<PriceObservation> prices, Guid positionId)
+    {
+        var total = 0m;
+
+        foreach (var pending in pendings)
+        {
+            var navTradeDate = At(prices, AssetType.Fund, positionId, pending.TradeDate)?.Price;
+            total += navTradeDate is null or <= 0m || navAsOf is null
+                ? pending.Amount
+                : pending.Amount * navAsOf.Value / navTradeDate.Value;
+        }
+
+        return total;
+    }
+
     private static void RequireCashCoverage(bool known, DateOnly? openingDate, BusinessFact fact)
     {
         Ensure(known && openingDate <= fact.Date, fact, "现金起始日期或金额待核对，无法验证该时点现金");
@@ -519,10 +549,15 @@ public sealed class LedgerReplayCalculator
 
         public decimal PendingAmount { get; set; }
 
+        /// <summary>尚未确认的买入，键为待确认记录 Id；用于按 T 日净值折算市值。</summary>
+        public Dictionary<Guid, PendingBuy> PendingBuys { get; } = new();
+
         public decimal AppliedShares { get; set; }
 
         public decimal PendingArrivalAmount { get; set; }
 
         public DateOnly? CoverageFrom { get; set; }
     }
+
+    private readonly record struct PendingBuy(decimal Amount, DateOnly TradeDate);
 }
