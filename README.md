@@ -300,6 +300,10 @@ dotnet ef database update --project src/AssetKeeper.Infrastructure --startup-pro
 
 ## 本地开发
 
+本机默认连接 Supabase 真实数据库：从仓库根目录运行 `./.local/start-supabase-api.sh`，脚本从 macOS 钥匙串读取密码，并使用 `.local/certificates/supabase-ca.crt` 校验证书。本机的自动记账与行情定时刷新均关闭，避免与云端重复执行；`.local/` 不纳入 Git。前端仍按下方方式启动。本地连接真实数据，页面上的修改会影响云端数据。
+
+以下后端命令适用于自行配置数据库的其他开发环境：
+
 后端（默认 <http://localhost:5069>）：
 
 ```sh

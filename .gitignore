@@ -21,6 +21,7 @@ TestResults/
 !.env.example
 !.env.*.example
 **/appsettings.Local.json
+.local/
 *.pfx
 *.p12
 *.pem
