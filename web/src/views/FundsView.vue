@@ -425,10 +425,31 @@ const activityRows = computed<ActivityRow[]>(() => {
   const sellApplyById = new Map(scopedSellApplications.value.map((item) => [item.transactionId, item]))
   const arrivalByConfirmId = new Map(scopedPendingArrivals.value.map((item) => [item.transactionId, item]))
   const noteById = new Map(scopedActivities.value.map((item) => [item.id, item.note]))
+  // 已走完后续环节的下单/申请记录不再重复列出：买入看确认，赎回申请看确认，确认看待到账。
+  const settledIds = new Set<string>()
+
+  for (const activity of scopedActivities.value) {
+    if (activity.type === 'buyConfirmed' && activity.linkedTransactionId) {
+      settledIds.add(activity.linkedTransactionId)
+    }
+
+    if (activity.type === 'sellConfirm' && activity.linkedTransactionId) {
+      settledIds.add(activity.linkedTransactionId)
+    }
+
+    if (activity.type === 'sellArrival' && activity.linkedTransactionId) {
+      settledIds.add(activity.linkedTransactionId)
+    }
+  }
+
   const rows: ActivityRow[] = []
   const seen = new Set<string>()
 
   for (const activity of scopedActivities.value) {
+    if (settledIds.has(activity.id)) {
+      continue
+    }
+
     seen.add(activity.id)
     const pendingBuy = pendingBuyById.get(activity.id)
     const sellApply = sellApplyById.get(activity.id)

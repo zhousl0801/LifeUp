@@ -253,6 +253,38 @@ beforeEach(() => {
   document.body.innerHTML = ''
 })
 
+test('confirmed buy no longer keeps showing as 交易进行中', async () => {
+  const data = structuredClone(overview)
+  data.activities = [
+    {
+      id: 'pb9', positionId: 'a', positionName: '纳指基金', type: 'buyPending', shares: null,
+      amount: 640, cashEffect: -640, netValue: null, businessDate: '2026-11-03',
+      note: '大成纳斯达克100 每交易日定投', createdAt: '2026-11-03T05:00:28Z', fee: 0,
+      linkedTransactionId: null
+    },
+    {
+      id: 'cf9', positionId: 'a', positionName: '纳指基金', type: 'buyConfirmed', shares: 108.6679,
+      amount: 640, cashEffect: 0, netValue: 5.8895, businessDate: '2026-11-04',
+      note: '行情自动确认', createdAt: '2026-11-03T19:51:42Z', fee: 0,
+      linkedTransactionId: 'pb9'
+    }
+  ] as unknown as typeof data.activities
+  data.pendingBuys = []
+  data.pendingAmount = 0
+  mocks.overview.mockResolvedValue(data)
+
+  const view = mount(FundsView, { attachTo: document.body })
+  await flushPromises()
+  await view.findAll('.view-tabs button').find((button) => button.text() === '交易')!.trigger('click')
+  await flushPromises()
+
+  expect(view.findAll('.activity-row')).toHaveLength(1)
+  expect(view.find('.activity-row').text()).toContain('已确认')
+  expect(view.findAll('.activity-row.is-pending')).toHaveLength(0)
+  expect(view.text()).not.toContain('交易进行中')
+  view.unmount()
+})
+
 test('pending shortcut opens the transaction tab and expands pending items', async () => {
   const view = mount(FundsView, { attachTo: document.body })
   await flushPromises()
