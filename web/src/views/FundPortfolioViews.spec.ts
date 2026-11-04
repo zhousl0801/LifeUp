@@ -12,8 +12,7 @@ const mocks = vi.hoisted(() => ({
   search: vi.fn(),
   createPosition: vi.fn(),
   confirmBuy: vi.fn(),
-  correctShares: vi.fn(),
-  priorProfit: vi.fn()
+  correctShares: vi.fn()
 }))
 
 vi.mock('vue-router', () => ({ useRoute: () => ({ params: {}, path: '/funds' }), useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }))
@@ -23,7 +22,6 @@ vi.mock('../api/funds', () => ({
   confirmFundBuy: mocks.confirmBuy,
   createFundPosition: mocks.createPosition,
   correctFundShares: mocks.correctShares,
-  setFundPriorRealizedProfit: mocks.priorProfit,
   sellFund: vi.fn(),
   confirmFundSell: vi.fn(),
   arriveFundSell: vi.fn(),
@@ -298,30 +296,78 @@ test('pending shortcut opens the transaction tab and expands pending items', asy
   view.unmount()
 })
 
-test('prior realized profit is shown per holding and can be edited', async () => {
-  mocks.priorProfit.mockResolvedValue({ ...positionA, priorRealizedProfit: -63.13, realizedProfit: -63.13 })
-
+test('opening a position carries the prior realized profit typed in the form', async () => {
   const view = mount(FundsView, { attachTo: document.body })
   await flushPromises()
-  await view.get('.fund-card > header').trigger('click')
+
+  await view.findAll('button').find((button) => button.text() === '录入持仓')!.trigger('click')
   await flushPromises()
 
-  expect(view.find('.prior-profit-line').text()).toContain('建账前已实现 +2,762.09')
-
-  await view.get('.prior-profit-line button').trigger('click')
+  const search = document.querySelector<HTMLInputElement>('.sheet input[type="search"]')!
+  search.value = '000834'
+  search.dispatchEvent(new Event('input', { bubbles: true }))
+  await new Promise(resolve => setTimeout(resolve, 350))
   await flushPromises()
 
-  const field = [...document.querySelectorAll('.sheet label')]
-    .find((item) => item.querySelector('span')?.textContent === '建账前已实现收益（元）')!
-    .querySelector('input')!
-  field.value = '-63.13'
-  field.dispatchEvent(new Event('input', { bubbles: true }))
+  document.querySelector<HTMLButtonElement>('.sheet .fund-search-result')!.click()
+  await flushPromises()
+
+  const shares = document.querySelector<HTMLInputElement>('.sheet input[placeholder="0.0000"]')!
+  shares.value = '10'
+  shares.dispatchEvent(new Event('input', { bubbles: true }))
+  const cost = document.querySelector<HTMLInputElement>('.sheet input[placeholder="0.00"]')!
+  cost.value = '100'
+  cost.dispatchEvent(new Event('input', { bubbles: true }))
+  const prior = document.querySelector<HTMLInputElement>('.sheet input[placeholder="选填，可为负数"]')!
+  prior.value = '-63.13'
+  prior.dispatchEvent(new Event('input', { bubbles: true }))
   await flushPromises()
 
   document.querySelector('.sheet form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
   await flushPromises()
 
-  expect(mocks.priorProfit).toHaveBeenCalledWith('a', expect.objectContaining({ amount: -63.13 }))
+  expect(mocks.createPosition).toHaveBeenCalledWith(expect.objectContaining({ priorRealizedProfit: -63.13 }))
+  view.unmount()
+})
+
+test('holding detail no longer offers a separate prior profit editor', async () => {
+  const view = mount(FundsView, { attachTo: document.body })
+  await flushPromises()
+  await view.get('.fund-card > header').trigger('click')
+  await flushPromises()
+
+  expect(view.find('.prior-profit-line').exists()).toBe(false)
+  expect(view.text()).not.toContain('建账前已实现')
+  view.unmount()
+})
+
+test('fund card asset counts pending purchases so cards add up to the total', async () => {
+  const view = mount(FundsView, { attachTo: document.body })
+  await flushPromises()
+
+  expect(view.get('.hero-balance').text()).toBe('¥2,400.00')
+
+  const card = view.findAll('.fund-card').find((item) => item.text().includes('债券基金'))!
+  expect(card.find('.fund-asset b').text()).toBe('¥600.00')
+  expect(card.find('.fund-asset small').text()).toContain('含待确认 ¥300.00')
+  view.unmount()
+})
+
+test('pending activities sort above settled ones', async () => {
+  const data = structuredClone(overview)
+  data.pendingBuys[0]!.businessDate = '2026-10-19'
+  data.pendingBuys[0]!.confirmationDate = '2026-10-21'
+  mocks.overview.mockResolvedValue(data)
+
+  const view = mount(FundsView, { attachTo: document.body })
+  await flushPromises()
+  await view.findAll('.view-tabs button').find((button) => button.text() === '交易')!.trigger('click')
+  await flushPromises()
+
+  const rows = view.findAll('.activity-row')
+  expect(rows).toHaveLength(2)
+  expect(rows[0]!.classes()).toContain('is-pending')
+  expect(rows[1]!.classes()).not.toContain('is-pending')
   view.unmount()
 })
 

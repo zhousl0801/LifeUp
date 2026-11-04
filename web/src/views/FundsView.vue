@@ -15,8 +15,7 @@ import {
   fetchFundOverview,
   renameFundGroup,
   searchFunds,
-  sellFund,
-  setFundPriorRealizedProfit
+  sellFund
 } from '../api/funds'
 import { fetchPlanOverview } from '../api/plans'
 import { ApiError, getApiErrorMessage } from '../api/client'
@@ -57,7 +56,7 @@ import type {
 } from '../types/fund'
 import type { AutoPlan } from '../types/plan'
 
-type SheetKind = 'opening' | 'buy' | 'buyConfirm' | 'shares' | 'priorProfit' | 'sell' | 'sellConfirm' | 'sellArrival'
+type SheetKind = 'opening' | 'buy' | 'buyConfirm' | 'shares' | 'sell' | 'sellConfirm' | 'sellArrival'
 type PortfolioView = 'positions' | 'returns' | 'activities' | 'plans'
 type GroupScope = 'all' | 'ungrouped' | string
 type FundMetricKey = 'daily' | 'value' | 'profit' | 'cumulative' | 'rate' | 'cost' | 'weight' | 'pending'
@@ -97,7 +96,6 @@ const formError = ref('')
 const confirmingSellId = ref<string | null>(null)
 const arrivingConfirmId = ref<string | null>(null)
 const confirmingBuyId = ref<string | null>(null)
-const priorProfitPositionId = ref<string | null>(null)
 const duplicatePrompt = ref<{ position: FundPosition; shares: number; cost: number } | null>(null)
 const activeGroup = ref<GroupScope>('all')
 const activeView = ref<PortfolioView>(normalizeView(route.params.view))
@@ -550,7 +548,14 @@ const activityRows = computed<ActivityRow[]>(() => {
     })
   }
 
-  return rows.sort((left, right) => right.timestamp.localeCompare(left.timestamp))
+  // 未确认的交易置顶（还要盯），其余按时间倒序。
+  return rows.sort((left, right) => {
+    if (left.isPending !== right.isPending) {
+      return left.isPending ? -1 : 1
+    }
+
+    return right.timestamp.localeCompare(left.timestamp)
+  })
 })
 
 const filteredActivityRows = computed(() => activityRows.value.filter((row) => {
@@ -630,8 +635,6 @@ const sheetTitle = computed(() => {
       return '待确认交易'
     case 'shares':
       return '调整基金份额'
-    case 'priorProfit':
-      return '建账前已实现收益'
     case 'sell':
       return '申请赎回基金'
     case 'sellConfirm':
@@ -652,8 +655,6 @@ const sheetSubtitle = computed(() => {
       return '买入后按 T 日净值自动确认'
     case 'shares':
       return '生成份额核对记录，保留原有流水'
-    case 'priorProfit':
-      return '按平台数字补录，只影响累计收益'
     case 'sell':
       return '份额冻结，仍在持仓中估值'
     case 'sellConfirm':
@@ -912,6 +913,12 @@ function metricDisplay(fund: FundSummary): { key: FundMetricKey; label: string; 
 function weightOf(fund: FundSummary): string {
   const total = scope.value.assetValue
   return total > 0 ? `${formatMoney(fund.assetValue / total * 100)}%` : '—'
+}
+
+// 待确认买入在 T 日就定了份额，只是还没确认，所以卡片资产要把它算进去，
+// 否则各只基金加起来和顶部总额对不上。
+function pendingOf(fund: FundSummary): number {
+  return addAmounts(fund.pendingBuyAmount, fund.pendingArrivalAmount)
 }
 
 function buildFallbackFunds(
@@ -1267,13 +1274,6 @@ function openSheet(kind: SheetKind, positionId?: string): void {
   form.positionId = positionId ?? overview.value?.positions[0]?.id ?? ''
   form.platform = ''
 
-  if (kind === 'priorProfit') {
-    priorProfitPositionId.value = form.positionId
-    const position = overview.value?.positions.find((item) => item.id === form.positionId)
-    form.priorProfit = String(position?.priorRealizedProfit ?? 0)
-    return
-  }
-
   const position = selectedPosition.value
   if (kind === 'shares' && position) {
     form.shares = String(position.shares)
@@ -1344,8 +1344,6 @@ async function submit(): Promise<void> {
       await submitBuy()
     } else if (sheet.value === 'shares') {
       await submitShareCorrection()
-    } else if (sheet.value === 'priorProfit') {
-      await submitPriorProfit()
     } else if (sheet.value === 'sell') {
       await submitSell()
     } else if (sheet.value === 'sellConfirm') {
@@ -1363,6 +1361,7 @@ async function submit(): Promise<void> {
 async function submitOpening(forceAdd = false): Promise<void> {
   const shares = parseNonNegativeQuantity(form.shares)
   const cost = parseAmount(form.cost)
+  const priorRealizedProfit = form.priorProfit.trim() ? parseSignedAmount(form.priorProfit) : 0
 
   if (!form.name.trim()) {
     formError.value = '请输入基金名称。'
@@ -1371,6 +1370,11 @@ async function submitOpening(forceAdd = false): Promise<void> {
 
   if (shares === null || cost === null) {
     formError.value = '请填写有效的份额和成本。'
+    return
+  }
+
+  if (priorRealizedProfit === null) {
+    formError.value = '建账前已实现收益请填写有效金额，可为负数，最多两位小数；不填按 0 处理。'
     return
   }
 
@@ -1404,6 +1408,7 @@ async function submitOpening(forceAdd = false): Promise<void> {
     confirmationDelayDays: Number(form.confirmationDelayDays),
     note: form.note.trim(),
     holdingDate: form.businessDate,
+    priorRealizedProfit,
     requestId: requestId.value
   })
   notice.value = `已录入基金「${form.name.trim()}」。`
@@ -1473,35 +1478,6 @@ async function updateDuplicatePosition(): Promise<void> {
 async function addDuplicatePosition(): Promise<void> {
   duplicatePrompt.value = null
   await submitOpening(true)
-}
-
-function openPriorProfitSheet(positionId: string): void {
-  openSheet('priorProfit', positionId)
-}
-
-async function submitPriorProfit(): Promise<void> {
-  const positionId = priorProfitPositionId.value
-  const amount = parseSignedAmount(form.priorProfit)
-
-  if (!positionId) {
-    formError.value = '请选择要补录的基金持仓。'
-    return
-  }
-
-  if (amount === null) {
-    formError.value = '请填写有效金额，可为负数，最多两位小数。'
-    return
-  }
-
-  isSaving.value = true
-  await setFundPriorRealizedProfit(positionId, {
-    amount,
-    note: form.note.trim(),
-    requestId: requestId.value
-  })
-  notice.value = `已记录建账前已实现收益 ${formatSignedMoney(amount)}。`
-  sheet.value = null
-  await loadOverview()
 }
 
 async function submitBuy(): Promise<void> {
@@ -1977,8 +1953,11 @@ function goBack(): void {
               </div>
               <div class="fund-values">
                 <div class="fund-asset">
-                  <b>¥{{ formatMoney(fund.value) }}</b>
-                  <small>占比 {{ weightOf(fund) }}</small>
+                  <b>¥{{ formatMoney(fund.assetValue) }}</b>
+                  <small>
+                    占比 {{ weightOf(fund) }}
+                    <template v-if="pendingOf(fund) > 0"> · 含待确认 ¥{{ formatMoney(pendingOf(fund)) }}</template>
+                  </small>
                 </div>
                 <div v-for="metric in metricDisplay(fund)" :key="metric.key" class="fund-metric">
                   <b :class="metric.tone">{{ metric.value }}</b>
@@ -2022,11 +2001,7 @@ function goBack(): void {
                   <div v-for="holding in fundClass.platforms" :key="holding.positionId" class="holding-action-row">
                     <div class="holding-copy">
                       <strong>{{ holding.platform || '未标平台' }}</strong>
-                      <small>{{ formatQuantity(holding.shares) }} 份</small>
-                      <small class="prior-profit-line">
-                        建账前已实现 {{ formatSignedMoney(holding.priorRealizedProfit ?? 0) }}
-                        <button type="button" class="link-button" @click="openPriorProfitSheet(holding.positionId)">修改</button>
-                      </small>
+                      <small v-if="fundClass.platforms.length > 1">{{ formatQuantity(holding.shares) }} 份</small>
                     </div>
                     <div class="holding-buttons">
                       <button type="button" @click="openSheet('buy', holding.positionId)">买入</button>
@@ -2041,10 +2016,11 @@ function goBack(): void {
                 </p>
               </section>
 
-              <p class="summary-note">
+              <p v-if="fund.classes.length > 1" class="summary-note">
                 同一基金的 A/C 类分别列示份额和净值，不合并份额，也不平均净值。
                 <template v-if="!fund.hasEffectiveQuotes"> 部分持仓行情依据不足，估值仅供参考。</template>
               </p>
+              <p v-else-if="!fund.hasEffectiveQuotes" class="summary-note">部分持仓行情依据不足，估值仅供参考。</p>
             </div>
           </article>
         </section>
@@ -2392,6 +2368,14 @@ function goBack(): void {
             <input v-model="form.businessDate" type="date" :max="today" />
             <small>这笔持仓在这一天成立；补录历史持仓时请选择实际日期。</small>
           </label>
+
+          <label class="form-field">
+            <span>建账前已实现收益（元）</span>
+            <input v-model="form.priorProfit" type="text" inputmode="decimal" placeholder="选填，可为负数" />
+            <small>
+              按平台上「累计收益 − 持有收益」填写，不填按 0 处理。只影响累计收益，不改持仓成本、份额和现金。
+            </small>
+          </label>
         </template>
 
         <template v-else-if="sheet === 'buy'">
@@ -2422,21 +2406,6 @@ function goBack(): void {
             <small>按哪一天净值确认份额，默认与下单日期相同；15:00 后下单的按平台规则改为下一个交易日。</small>
           </label>
           <small v-if="!selectedPosition?.code" class="form-note">请先为该持仓设置基金代码，才能从数据源自动确认份额。</small>
-        </template>
-
-        <template v-else-if="sheet === 'priorProfit'">
-          <label class="form-field">
-            <span>建账前已实现收益（元）</span>
-            <input v-model="form.priorProfit" type="text" inputmode="decimal" placeholder="0.00" />
-            <small>
-              按平台上的「累计收益 − 持有收益」填写，可为负数。只影响累计收益，
-              不改持仓成本、份额和现金。
-            </small>
-          </label>
-          <label class="form-field">
-            <span>备注</span>
-            <input v-model="form.note" type="text" placeholder="例如：按支付宝 2026-10-30 的数据补录" />
-          </label>
         </template>
 
         <template v-else-if="sheet === 'shares'">
@@ -3166,22 +3135,6 @@ function goBack(): void {
   margin-top: 2px;
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
-}
-
-.prior-profit-line {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-variant-numeric: tabular-nums;
-}
-
-.link-button {
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--color-brand);
-  font-size: inherit;
-  line-height: inherit;
 }
 
 .holding-buttons {

@@ -209,6 +209,7 @@ export interface CreateFundPositionInput {
   note: string
   requestId: string
   confirmationDelayDays: number
+  priorRealizedProfit?: number
 }
 
 export interface BuyFundInput {
