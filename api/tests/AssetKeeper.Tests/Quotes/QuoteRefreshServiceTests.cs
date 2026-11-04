@@ -14,6 +14,65 @@ public sealed class QuoteRefreshServiceTests
     private static readonly DateTimeOffset Now = new(2026, 10, 21, 2, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public async Task FundRefresh_SameNetValue_DoesNotAdvanceLedgerVersion()
+    {
+        var quote = new ExternalFundQuote("000001", 1.5m, Today, "eastmoney", Now);
+        var context = await CreateAsync(new StubFundProvider(quote));
+        var position = await TestFundQuotes.CreatePositionAsync(
+            context.Repository,
+            new BusinessDateProvider(new FixedTimeProvider(Now)),
+            PositionRequest(),
+            CancellationToken.None);
+
+        var first = await context.Funds.RefreshQuoteAsync(position.Result!.Position.Id, CancellationToken.None);
+        var versionAfterFirst = context.Repository.Ledger!.Version;
+        var second = await context.Funds.RefreshQuoteAsync(position.Result.Position.Id, CancellationToken.None);
+
+        Assert.Equal(AssetOperationStatus.Success, first.Status);
+        Assert.True(first.Result!.Updated);
+        Assert.False(second.Result!.Updated);
+
+        // 净值没变就不要推进账本版本：否则定时刷新会把正在执行的定投挤成版本冲突。
+        Assert.Equal(versionAfterFirst, context.Repository.Ledger.Version);
+    }
+
+    [Fact]
+    public async Task FundRefresh_FailureDoesNotAdvanceLedgerVersion()
+    {
+        var context = await CreateAsync(new StubFundProvider(null, new QuoteUnavailableException("净值服务不可用")));
+        var position = await TestFundQuotes.CreatePositionAsync(
+            context.Repository,
+            new BusinessDateProvider(new FixedTimeProvider(Now)),
+            PositionRequest(),
+            CancellationToken.None);
+        var versionBefore = context.Repository.Ledger!.Version;
+
+        var result = await context.Funds.RefreshQuoteAsync(position.Result!.Position.Id, CancellationToken.None);
+
+        Assert.Equal(AssetOperationStatus.Unavailable, result.Status);
+        Assert.Equal("净值服务不可用", context.Repository.FundPositions[0].LastQuoteError);
+        Assert.Equal(versionBefore, context.Repository.Ledger.Version);
+    }
+
+    [Fact]
+    public async Task GoldRefresh_SameQuote_DoesNotAdvanceLedgerVersion()
+    {
+        var quote = new ExternalGoldQuote(910m, Today, "icbc", Now);
+        var context = await CreateAsync(null, new StubGoldProvider(quote));
+        await context.Gold.SaveHoldingAsync(
+            new SaveGoldHoldingRequest(30m, 25600m, 900m, Today, null, Guid.NewGuid(), HoldingDate: Today),
+            CancellationToken.None);
+
+        var first = await context.Gold.RefreshQuoteAsync(CancellationToken.None);
+        var versionAfterFirst = context.Repository.Ledger!.Version;
+        var second = await context.Gold.RefreshQuoteAsync(CancellationToken.None);
+
+        Assert.True(first.Result!.Updated);
+        Assert.False(second.Result!.Updated);
+        Assert.Equal(versionAfterFirst, context.Repository.Ledger.Version);
+    }
+
+    [Fact]
     public async Task FundRefresh_StoresProviderSourceAndSkipsDuplicateQuote()
     {
         var quote = new ExternalFundQuote("000001", 1.5m, Today, "eastmoney", Now);

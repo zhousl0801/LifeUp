@@ -1176,7 +1176,13 @@ public sealed class FundService
             }
 
             position.RecordQuoteSyncAttempt(now, quote.Source, null);
-            ledger.Touch(now);
+
+            if (updated)
+            {
+                // 净值没有变化时不推进账本版本：定时刷新与计划执行并发时，多余的版本变化会让交易保存失败。
+                ledger.Touch(now);
+            }
+
             await _ledgerRepository.SaveChangesAsync(cancellationToken);
 
             if (confirmDueBuys)
@@ -1197,7 +1203,6 @@ public sealed class FundService
             or ArgumentException or InvalidOperationException or HistoryValidationException)
         {
             position.RecordQuoteSyncAttempt(now, null, Shorten(exception.Message));
-            ledger.Touch(now);
 
             try
             {

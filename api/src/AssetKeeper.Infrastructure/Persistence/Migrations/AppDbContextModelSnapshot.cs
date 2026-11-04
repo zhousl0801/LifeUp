@@ -1089,6 +1089,12 @@ namespace AssetKeeper.Infrastructure.Persistence.Migrations
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("amount");
 
+                    b.Property<int>("AttemptCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("attempt_count");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("created_at");

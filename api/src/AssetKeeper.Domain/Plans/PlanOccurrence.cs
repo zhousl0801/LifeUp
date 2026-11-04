@@ -5,6 +5,9 @@ public sealed class PlanOccurrence
     public const int MaximumPeriodKeyLength = 32;
     public const int MaximumErrorLength = 300;
 
+    /// <summary>同一期次在当天最多自动尝试的次数，超过后不再自动重试，避免反复失败。</summary>
+    public const int MaximumAutoAttempts = 3;
+
     private PlanOccurrence()
     {
     }
@@ -40,6 +43,9 @@ public sealed class PlanOccurrence
     public string? ErrorMessage { get; private set; }
 
     public DateTimeOffset? ExecutedAt { get; private set; }
+
+    /// <summary>已执行过的次数（含手动重试与失败重试）。</summary>
+    public int AttemptCount { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
 
@@ -86,6 +92,21 @@ public sealed class PlanOccurrence
             CreatedAt = now,
             UpdatedAt = now
         };
+    }
+
+    /// <summary>记录一次执行尝试；次数用于封顶当天的自动重试。</summary>
+    public void BeginAttempt(DateTimeOffset now)
+    {
+        AttemptCount++;
+        UpdatedAt = now;
+    }
+
+    /// <summary>失败的期次只在到期当天自动重试，且受次数上限约束；隔天的失败期次留给人工决定。</summary>
+    public bool CanAutoRetry(DateOnly businessDate)
+    {
+        return Status == PlanOccurrenceStatus.Failed
+            && DueDate == businessDate
+            && AttemptCount < MaximumAutoAttempts;
     }
 
     public void Complete(Guid relatedRecordId, DateTimeOffset now)

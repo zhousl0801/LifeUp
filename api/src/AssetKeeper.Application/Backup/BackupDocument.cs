@@ -292,6 +292,7 @@ public sealed class BackupPlanOccurrence
     public Guid? RelatedRecordId { get; set; }
     public string? ErrorMessage { get; set; }
     public DateTimeOffset? ExecutedAt { get; set; }
+    public int AttemptCount { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public int Version { get; set; }

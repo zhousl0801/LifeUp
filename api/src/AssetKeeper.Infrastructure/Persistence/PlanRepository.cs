@@ -86,8 +86,11 @@ public sealed class PlanRepository : IPlanRepository
 
     public async Task<IReadOnlyList<PlanOccurrence>> GetPendingOccurrencesAsync(Guid ledgerId, CancellationToken cancellationToken)
     {
+        // 同时取回失败的期次：当天内的失败可以在后续运行里自动重试，是否重试由服务层判定。
         return await _dbContext.PlanOccurrences
-            .Where(occurrence => occurrence.LedgerId == ledgerId && occurrence.Status == PlanOccurrenceStatus.Pending)
+            .Where(occurrence => occurrence.LedgerId == ledgerId
+                && (occurrence.Status == PlanOccurrenceStatus.Pending
+                    || occurrence.Status == PlanOccurrenceStatus.Failed))
             .OrderBy(occurrence => occurrence.DueDate)
             .ThenBy(occurrence => occurrence.DueTime)
             .ThenBy(occurrence => occurrence.Type)

@@ -85,6 +85,11 @@ internal sealed class PlanOccurrenceConfiguration : IEntityTypeConfiguration<Pla
             .HasColumnName("executed_at")
             .HasColumnType("timestamptz");
 
+        builder.Property(occurrence => occurrence.AttemptCount)
+            .HasColumnName("attempt_count")
+            .HasDefaultValue(0)
+            .IsRequired();
+
         builder.Property(occurrence => occurrence.CreatedAt)
             .HasColumnName("created_at")
             .HasColumnType("timestamptz")

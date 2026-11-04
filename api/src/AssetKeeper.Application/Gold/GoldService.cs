@@ -480,7 +480,13 @@ public sealed class GoldService
             }
 
             holding.RecordQuoteSyncAttempt(now, quote.Source, null);
-            ledger.Touch(now);
+
+            if (updated)
+            {
+                // 报价没有变化时不推进账本版本，避免与计划执行抢版本号。
+                ledger.Touch(now);
+            }
+
             await _ledgerRepository.SaveChangesAsync(cancellationToken);
 
             return AssetOperationResult<GoldQuoteRefreshDto>.Success(new GoldQuoteRefreshDto(
@@ -499,7 +505,6 @@ public sealed class GoldService
             if (holding is not null)
             {
                 holding.RecordQuoteSyncAttempt(now, null, Shorten(exception.Message));
-                ledger.Touch(now);
 
                 try
                 {

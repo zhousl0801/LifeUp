@@ -604,7 +604,13 @@ public sealed class StockService
                 previousCloseDate,
                 now);
             position.RecordQuoteSyncAttempt(now, quote.Source, null);
-            ledger.Touch(now);
+
+            if (updated)
+            {
+                // 行情没有变化时不推进账本版本，避免与计划执行抢版本号。
+                ledger.Touch(now);
+            }
+
             await _ledgerRepository.SaveChangesAsync(cancellationToken);
 
             return AssetOperationResult<StockQuoteRefreshDto>.Success(new StockQuoteRefreshDto(
@@ -627,7 +633,6 @@ public sealed class StockService
             or ArgumentException or InvalidOperationException or HistoryValidationException)
         {
             position.RecordQuoteSyncAttempt(now, null, Shorten(exception.Message));
-            ledger.Touch(now);
 
             try
             {

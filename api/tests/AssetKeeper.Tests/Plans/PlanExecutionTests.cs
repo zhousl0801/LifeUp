@@ -384,6 +384,110 @@ public sealed class PlanExecutionTests
         Assert.Contains(Today, changed.Result.UpcomingDates!);
     }
 
+    [Fact]
+    public async Task RunDue_RetriesFailedOccurrenceOnSameDay()
+    {
+        await using var context = await CreateAsync(1000m);
+        var plan = await SaveMonthlyPlanAsync(context, AutoPlanType.SalaryIncome, 100m, Today);
+        var occurrence = await SeedFailedOccurrenceAsync(context, plan, Today, attempts: 1);
+
+        var result = await context.Execution.RunDueAsync(CancellationToken.None);
+
+        Assert.Equal(1, result.Completed);
+        Assert.Equal(0, result.Failed);
+        var stored = await context.PlanRepo.GetOccurrenceForUpdateAsync(context.LedgerId, occurrence.Id, CancellationToken.None);
+        Assert.NotNull(stored);
+        Assert.Equal(PlanOccurrenceStatus.Completed, stored.Status);
+        Assert.Equal(2, stored.AttemptCount);
+        Assert.Equal(1100m, (await context.Ledger.GetOverviewAsync(CancellationToken.None))!.Cash.Amount);
+    }
+
+    [Fact]
+    public async Task RunDue_DoesNotRetryFailedOccurrenceFromPreviousDay()
+    {
+        await using var context = await CreateAsync(1000m);
+        var yesterday = Today.AddDays(-1);
+        var plan = await SaveMonthlyPlanAsync(context, AutoPlanType.SalaryIncome, 100m, yesterday);
+        var occurrence = await SeedFailedOccurrenceAsync(context, plan, yesterday, attempts: 1);
+
+        var result = await context.Execution.RunDueAsync(CancellationToken.None);
+
+        Assert.Equal(0, result.Completed);
+        var stored = await context.PlanRepo.GetOccurrenceForUpdateAsync(context.LedgerId, occurrence.Id, CancellationToken.None);
+        Assert.NotNull(stored);
+        Assert.Equal(PlanOccurrenceStatus.Failed, stored.Status);
+        Assert.Equal(1000m, (await context.Ledger.GetOverviewAsync(CancellationToken.None))!.Cash.Amount);
+    }
+
+    [Fact]
+    public async Task RunDue_StopsAutoRetryingAfterMaximumAttempts()
+    {
+        await using var context = await CreateAsync(1000m);
+        var plan = await SaveMonthlyPlanAsync(context, AutoPlanType.SalaryIncome, 100m, Today);
+        var occurrence = await SeedFailedOccurrenceAsync(
+            context,
+            plan,
+            Today,
+            attempts: PlanOccurrence.MaximumAutoAttempts);
+
+        var result = await context.Execution.RunDueAsync(CancellationToken.None);
+
+        Assert.Equal(0, result.Completed);
+        var stored = await context.PlanRepo.GetOccurrenceForUpdateAsync(context.LedgerId, occurrence.Id, CancellationToken.None);
+        Assert.NotNull(stored);
+        Assert.Equal(PlanOccurrenceStatus.Failed, stored.Status);
+        Assert.Equal(PlanOccurrence.MaximumAutoAttempts, stored.AttemptCount);
+        Assert.Equal(1000m, (await context.Ledger.GetOverviewAsync(CancellationToken.None))!.Cash.Amount);
+    }
+
+    private static async Task<AutoPlan> SaveMonthlyPlanAsync(
+        TestContext context,
+        AutoPlanType type,
+        decimal amount,
+        DateOnly startDate)
+    {
+        var plan = AutoPlan.Create(
+            context.LedgerId,
+            type,
+            "工资到账",
+            amount,
+            AutoPlanCycle.Monthly,
+            startDate.Day,
+            null,
+            new TimeOnly(9, 0),
+            startDate,
+            null,
+            Now);
+        await context.PlanRepo.AddPlanAsync(plan, CancellationToken.None);
+
+        return plan;
+    }
+
+    private static async Task<PlanOccurrence> SeedFailedOccurrenceAsync(
+        TestContext context,
+        AutoPlan plan,
+        DateOnly dueDate,
+        int attempts)
+    {
+        var occurrence = PlanOccurrence.Create(
+            plan,
+            PlanSchedule.PeriodKeyFor(plan, dueDate),
+            dueDate,
+            new TimeOnly(9, 0),
+            Now);
+
+        for (var attempt = 0; attempt < attempts; attempt++)
+        {
+            occurrence.BeginAttempt(Now);
+        }
+
+        occurrence.Fail("数据已被其他操作修改，请核实保存结果或刷新后重试。", Now);
+        await context.PlanRepo.AddOccurrenceAsync(occurrence, CancellationToken.None);
+        await context.PlanRepo.SaveChangesAsync(CancellationToken.None);
+
+        return occurrence;
+    }
+
     private static SavePlanRequest Request(
         AutoPlanType type,
         decimal amount,
