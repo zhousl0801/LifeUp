@@ -4,6 +4,9 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { fetchAssetTrend, fetchMonthChange } from '../api/ledger'
 import { fetchPlanOverview } from '../api/plans'
+import { refreshQuotes } from '../api/quotes'
+import { getApiErrorMessage } from '../api/client'
+import AppIcon from '../components/AppIcon.vue'
 import AppNav from '../components/AppNav.vue'
 import AssetDistribution from '../components/AssetDistribution.vue'
 import AssetTrendChart from '../components/AssetTrendChart.vue'
@@ -52,6 +55,9 @@ const monthChangeError = ref('')
 const planOverview = ref<PlanOverview | null>(null)
 const planError = ref('')
 const changeSheetOpen = ref(false)
+const quoteRefreshing = ref(false)
+const quoteNotice = ref('')
+const quoteError = ref('')
 
 const recordedCount = computed(() => {
   const ledger = overview.value
@@ -249,6 +255,32 @@ async function loadPlans(): Promise<void> {
   }
 }
 
+async function syncQuotes(): Promise<void> {
+  if (quoteRefreshing.value) {
+    return
+  }
+
+  quoteRefreshing.value = true
+  quoteNotice.value = ''
+  quoteError.value = ''
+
+  try {
+    const run = await refreshQuotes('all')
+    const failed = run.fundFailed + run.goldFailed + run.stockFailed
+    const succeeded = run.fundSucceeded + run.goldSucceeded + run.stockSucceeded
+
+    quoteNotice.value = failed > 0
+      ? `行情同步完成：成功 ${succeeded} 项，失败 ${failed} 项。`
+      : `行情已同步：更新 ${run.updated} 项。`
+
+    await Promise.all([ledgerStore.load(), loadTrend(trendRange.value), loadMonthChange()])
+  } catch (error) {
+    quoteError.value = getApiErrorMessage(error, '行情同步失败，请稍后重试。')
+  } finally {
+    quoteRefreshing.value = false
+  }
+}
+
 onMounted(loadLedger)
 </script>
 
@@ -259,8 +291,23 @@ onMounted(loadLedger)
         <p class="brand">资产管家</p>
         <h1>总览</h1>
       </div>
-      <span class="header-date">{{ formatBusinessDate(updateDate) }}</span>
+      <div class="header-actions">
+        <span class="header-date">{{ formatBusinessDate(updateDate) }}</span>
+        <button
+          type="button"
+          class="sync-button"
+          :disabled="quoteRefreshing"
+          :aria-label="quoteRefreshing ? '正在同步行情' : '同步行情'"
+          :title="quoteRefreshing ? '正在同步行情' : '同步行情'"
+          @click="syncQuotes"
+        >
+          <AppIcon name="refresh" :class="{ spinning: quoteRefreshing }" />
+        </button>
+      </div>
     </header>
+
+    <p v-if="quoteNotice" class="sync-note" role="status">{{ quoteNotice }}</p>
+    <p v-else-if="quoteError" class="sync-note error" role="alert">{{ quoteError }}</p>
 
     <div v-if="isLoading" class="skeleton-stack" role="status" aria-label="正在读取账本">
       <div class="skeleton skeleton-hero" />
@@ -478,9 +525,72 @@ onMounted(loadLedger)
 }
 
 .header-date {
-  padding-bottom: 4px;
+  padding-bottom: 0;
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 2px;
+}
+
+.sync-button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  padding: 0;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 50%;
+  background: var(--color-bg-surface);
+  color: var(--color-brand);
+  transition: background var(--motion-fast) ease, transform var(--motion-fast) ease;
+}
+
+.sync-button:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+
+.sync-button:active:not(:disabled) {
+  transform: scale(.94);
+}
+
+.sync-button:disabled {
+  color: var(--color-text-disabled);
+}
+
+.sync-button :deep(.app-icon) {
+  width: 20px;
+  height: 20px;
+}
+
+.spinning {
+  animation: spin .9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.sync-note {
+  margin: -8px 0 14px;
+  padding: 9px 12px;
+  border-radius: var(--radius-tag);
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  font-size: var(--text-caption);
+  line-height: 1.6;
+}
+
+.sync-note.error {
+  background: var(--color-error-bg);
+  color: var(--color-error);
 }
 
 .hero {

@@ -44,14 +44,6 @@ onMounted(async () => {
         <span>自动记账计划</span>
         <b>{{ planCount === null ? '查看 ›' : `${planCount} 项 ›` }}</b>
       </RouterLink>
-      <RouterLink class="list-row" to="/categories">
-        <span>收支分类</span>
-        <b>管理 ›</b>
-      </RouterLink>
-      <RouterLink class="list-row" to="/quotes">
-        <span>行情更新状态</span>
-        <b>查看 ›</b>
-      </RouterLink>
       <button type="button" class="list-row" @click="themeSheetOpen = true">
         <span>主题</span>
         <b>{{ themeLabel }} ›</b>

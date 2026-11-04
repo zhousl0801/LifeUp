@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { createEntry, fetchEntry, reverseEntry, updateEntry } from '../api/entries'
-import { createCategory, deleteCategory, fetchCategories } from '../api/categories'
+import { createCategory, deleteCategory, fetchCategories, reorderCategories } from '../api/categories'
 import { ApiError, getApiErrorMessage } from '../api/client'
 import AmountKeypad from '../components/AmountKeypad.vue'
 import AppIcon from '../components/AppIcon.vue'
@@ -53,6 +53,8 @@ const newCategoryName = ref('')
 const categorySheetError = ref('')
 const isCategorySaving = ref(false)
 const categoriesLoaded = ref(false)
+const categoryError = ref('')
+const draggingCategoryId = ref('')
 
 const categoryItems = ref<EntryCategory[]>([])
 const categoryOptions = computed<CategoryOption[]>(() => {
@@ -96,9 +98,16 @@ const dateLabel = computed(() => {
 })
 
 let longPressTimer: ReturnType<typeof setTimeout> | undefined
+let dragArmTimer: ReturnType<typeof setTimeout> | undefined
 let suppressClickTimer: ReturnType<typeof setTimeout> | undefined
 let longPressTriggered = false
 let suppressNextCategoryClick = false
+let dragActive = false
+let dragArmed = false
+let dragMoved = false
+let dragStartX = 0
+let dragStartY = 0
+let dragCategoryId = ''
 
 onMounted(async () => {
   document.addEventListener('keydown', handleKeydown)
@@ -139,6 +148,7 @@ function categoryExists(kind: EntryKind, name: string): boolean {
 
 onBeforeUnmount(() => {
   clearLongPressTimer()
+  clearDragArmTimer()
 
   if (suppressClickTimer !== undefined) {
     clearTimeout(suppressClickTimer)
@@ -197,6 +207,12 @@ function setKind(kind: EntryKind): void {
   categoryEditMode.value = false
   categorySheet.value = null
   pendingDeleteCategory.value = null
+  categoryError.value = ''
+  draggingCategoryId.value = ''
+  dragActive = false
+  dragArmed = false
+  dragMoved = false
+  clearDragArmTimer()
 
   if (!categoryExists(kind, form.category)) {
     form.category = defaultCategory(kind)
@@ -218,18 +234,50 @@ function clearLongPressTimer(): void {
   }
 }
 
-function startCategoryPress(option: CategoryOption): void {
+function clearDragArmTimer(): void {
+  if (dragArmTimer !== undefined) {
+    clearTimeout(dragArmTimer)
+    dragArmTimer = undefined
+  }
+}
+
+function startCategoryPress(event: PointerEvent, option: CategoryOption): void {
   clearLongPressTimer()
+  clearDragArmTimer()
+  dragActive = false
+  dragArmed = false
+  dragMoved = false
+  dragCategoryId = ''
+  draggingCategoryId.value = ''
+  longPressTriggered = false
 
   if (!canManageCategories.value || option.id.startsWith('fallback:') || option.id.startsWith('missing:')) {
     return
   }
 
-  longPressTriggered = false
+  dragActive = true
+  dragCategoryId = option.id
+  dragStartX = event.clientX
+  dragStartY = event.clientY
+  ;(event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId)
+
+  if (categoryEditMode.value) {
+    dragArmTimer = setTimeout(() => {
+      dragArmTimer = undefined
+      dragArmed = true
+
+      if (typeof navigator.vibrate === 'function') {
+        navigator.vibrate(10)
+      }
+    }, 220)
+    return
+  }
+
   longPressTimer = setTimeout(() => {
     longPressTimer = undefined
     longPressTriggered = true
     categoryEditMode.value = true
+    dragArmed = true
 
     if (typeof navigator.vibrate === 'function') {
       navigator.vibrate(10)
@@ -237,14 +285,66 @@ function startCategoryPress(option: CategoryOption): void {
   }, 450)
 }
 
-function cancelCategoryPress(): void {
-  clearLongPressTimer()
-
-  if (!longPressTriggered) {
+function moveCategoryPress(event: PointerEvent): void {
+  if (!dragActive) {
     return
   }
 
+  if (!dragArmed) {
+    if (Math.hypot(event.clientX - dragStartX, event.clientY - dragStartY) > 8) {
+      clearLongPressTimer()
+      clearDragArmTimer()
+      dragActive = false
+    }
+
+    return
+  }
+
+  if (!dragMoved) {
+    dragMoved = true
+    draggingCategoryId.value = dragCategoryId
+  }
+
+  const targetId = categoryTileAt(event.clientX, event.clientY)
+
+  if (targetId && targetId !== dragCategoryId) {
+    reorderCategoryPreview(dragCategoryId, targetId)
+  }
+}
+
+function handleCategoryTouchMove(event: TouchEvent): void {
+  if (dragArmed) {
+    event.preventDefault()
+  }
+}
+
+function endCategoryPress(event: PointerEvent): void {
+  const moved = dragMoved
+  const armed = dragArmed
+  const longPressed = longPressTriggered
+
+  clearLongPressTimer()
+  clearDragArmTimer()
+  dragActive = false
+  dragArmed = false
+  dragMoved = false
   longPressTriggered = false
+  draggingCategoryId.value = ''
+  dragCategoryId = ''
+  ;(event.currentTarget as HTMLElement | null)?.releasePointerCapture?.(event.pointerId)
+
+  if (moved) {
+    suppressCategoryClick()
+    void persistCategoryOrder()
+    return
+  }
+
+  if (longPressed || armed) {
+    suppressCategoryClick()
+  }
+}
+
+function suppressCategoryClick(): void {
   suppressNextCategoryClick = true
 
   if (suppressClickTimer !== undefined) {
@@ -255,6 +355,67 @@ function cancelCategoryPress(): void {
     suppressClickTimer = undefined
     suppressNextCategoryClick = false
   }, 600)
+}
+
+function categoryTileAt(x: number, y: number): string | null {
+  const element = document.elementFromPoint?.(x, y) as HTMLElement | null
+  return element?.closest<HTMLElement>('[data-category-id]')?.dataset.categoryId ?? null
+}
+
+function isRealCategory(option: CategoryOption): boolean {
+  return !option.id.startsWith('fallback:') && !option.id.startsWith('missing:')
+}
+
+function reorderCategoryPreview(sourceId: string, targetId: string): void {
+  const order = categoryOptions.value
+    .filter(isRealCategory)
+    .map((option) => option.id)
+  const from = order.indexOf(sourceId)
+  const to = order.indexOf(targetId)
+
+  if (from < 0 || to < 0 || from === to) {
+    return
+  }
+
+  const [moved] = order.splice(from, 1)
+  order.splice(to, 0, moved!)
+  applyCategoryOrder(order)
+}
+
+function applyCategoryOrder(ids: string[]): void {
+  const positions = new Map(ids.map((id, index) => [id, index]))
+  categoryItems.value = categoryItems.value.map((category) => {
+    const position = positions.get(category.id)
+
+    return position === undefined ? category : { ...category, sortOrder: position }
+  })
+}
+
+function categoryOrderIds(): string[] {
+  const activeIds = categoryOptions.value.filter(isRealCategory).map((option) => option.id)
+  const inactiveIds = categoryItems.value
+    .filter((category) => category.kind === form.kind && !category.isActive)
+    .sort((first, second) => first.sortOrder - second.sortOrder || first.name.localeCompare(second.name))
+    .map((category) => category.id)
+
+  return [...activeIds, ...inactiveIds]
+}
+
+async function persistCategoryOrder(): Promise<void> {
+  const ids = categoryOrderIds()
+
+  if (ids.length < 2) {
+    return
+  }
+
+  categoryError.value = ''
+
+  try {
+    await reorderCategories(form.kind, ids)
+  } catch (error) {
+    categoryError.value = getApiErrorMessage(error, '调整分类顺序失败，请重试。')
+    await loadCategories()
+  }
 }
 
 function handleCategoryClick(option: CategoryOption): void {
@@ -304,7 +465,14 @@ function closeCategorySheet(): void {
 }
 
 function exitCategoryEdit(): void {
+  clearLongPressTimer()
+  clearDragArmTimer()
   categoryEditMode.value = false
+  draggingCategoryId.value = ''
+  categoryError.value = ''
+  dragActive = false
+  dragArmed = false
+  dragMoved = false
 }
 
 async function saveCategory(): Promise<void> {
@@ -574,7 +742,7 @@ function handleKeydown(event: KeyboardEvent): void {
             该记录已撤销，不能修改。
           </div>
 
-          <div class="category-grid" role="group" aria-label="选择分类">
+          <div class="category-grid" role="group" aria-label="选择分类" @touchmove="handleCategoryTouchMove">
             <button
               v-for="option in categoryOptions"
               :key="option.id"
@@ -582,14 +750,16 @@ function handleKeydown(event: KeyboardEvent): void {
               class="category-tile"
               :class="{
                 active: !categoryEditMode && form.category === option.name,
-                editing: categoryEditMode
+                editing: categoryEditMode,
+                dragging: draggingCategoryId === option.id
               }"
+              :data-category-id="option.id"
               :disabled="!canEdit"
               :aria-pressed="form.category === option.name"
-              @pointerdown="startCategoryPress(option)"
-              @pointerup="cancelCategoryPress"
-              @pointerleave="cancelCategoryPress"
-              @pointercancel="cancelCategoryPress"
+              @pointerdown="startCategoryPress($event, option)"
+              @pointermove="moveCategoryPress"
+              @pointerup="endCategoryPress"
+              @pointercancel="endCategoryPress"
               @click="handleCategoryClick(option)"
               @contextmenu.prevent
             >
@@ -616,8 +786,9 @@ function handleKeydown(event: KeyboardEvent): void {
             </button>
           </div>
           <p v-if="categoryEditMode && canManageCategories" class="category-hint">
-            点分类可删除
+            长按拖动分类可调整顺序，点分类可删除
           </p>
+          <p v-if="categoryError" class="form-error category-error" role="alert">{{ categoryError }}</p>
 
           <div v-if="hasEntryExtras" class="category-extras">
             <button
@@ -870,6 +1041,15 @@ function handleKeydown(event: KeyboardEvent): void {
   touch-action: manipulation;
 }
 
+.category-grid.editing .category-tile {
+  touch-action: pan-y;
+}
+
+.category-tile.dragging {
+  opacity: 0.55;
+  transform: scale(.96);
+}
+
 .category-mark-wrap {
   position: relative;
   display: inline-flex;
@@ -957,6 +1137,10 @@ function handleKeydown(event: KeyboardEvent): void {
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
   text-align: center;
+}
+
+.category-error {
+  margin: 12px 0 0;
 }
 
 .category-extras {

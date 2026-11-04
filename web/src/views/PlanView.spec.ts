@@ -86,6 +86,10 @@ test('plan list shows the active salary plan and can save a new salary plan', as
   const view = mount(PlanView, { attachTo: document.body })
   await flushPromises()
 
+  expect(view.find('.group-income .plan-card').exists()).toBe(false)
+  await view.find('.group-income .group-toggle').trigger('click')
+  await flushPromises()
+
   expect(view.text()).toContain('工资到账')
   expect(view.text()).toContain('每月 15 日 09:00')
 
@@ -122,7 +126,7 @@ test('run-now reports results and the preview section is gone', async () => {
   expect(view.text()).not.toContain('执行预览')
   expect(view.text()).not.toContain('试算本期')
 
-  const runButton = view.findAll('button').find((button) => button.text() === '立即执行')!
+  const runButton = view.findAll('button').find((button) => button.attributes('aria-label') === '立即执行')!
   await runButton.trigger('click')
   await flushPromises()
 
@@ -171,6 +175,11 @@ test('plans are grouped by type and share classes of the same fund merge into on
   const view = mount(PlanView, { attachTo: document.body })
   await flushPromises()
 
+  await view.find('.group-fund .group-toggle').trigger('click')
+  await view.find('.group-provident .group-toggle').trigger('click')
+  await view.find('.group-income .group-toggle').trigger('click')
+  await flushPromises()
+
   expect(view.text()).toContain('基金定投')
   expect(view.text()).toContain('公积金')
   expect(view.text()).toContain('定期收入')
@@ -212,6 +221,10 @@ test('execution records paginate ten per page', async () => {
   await flushPromises()
 
   expect(view.text()).toContain('共 23 条')
+  expect(view.find('.occurrence-card').exists()).toBe(false)
+  await view.find('.occurrence-head').trigger('click')
+  await flushPromises()
+
   expect(view.text()).toContain('第 1 / 3 页')
   expect(view.findAll('.occurrence-card')).toHaveLength(10)
 
@@ -356,6 +369,8 @@ test('editing a SIP with unavailable fund choices shows retry instead of submitt
   mocks.overview.mockResolvedValue({ ...structuredClone(overview), plans: [{ ...overview.plans[0], type: 'fundSip', fundPositionId: 'source-1' }] })
   mocks.funds.mockRejectedValue(new Error('offline'))
   const view = mount(PlanView, { attachTo: document.body })
+  await flushPromises()
+  await view.find('.group-fund .group-toggle').trigger('click')
   await flushPromises()
   await view.findAll('button').find(button => button.text() === '编辑')!.trigger('click')
   await flushPromises()

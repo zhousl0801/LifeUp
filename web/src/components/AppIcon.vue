@@ -20,6 +20,7 @@ const paths: Record<string, string[]> = {
   calendar: ['M4 5h16v15H4zM8 3v4M16 3v4M4 10h16'],
   filter: ['M4 6h16M7 12h10M10 18h4'],
   tag: ['M3 3h8l10 10-8 8L3 11zM7 7h.01'],
+  refresh: ['M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16', 'M8 16H3v5', 'M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8', 'M16 8h5V3'],
   餐饮: ['M5 3v7M8 3v7M3 7h7M6.5 10v11M17 3c-4 3-4 8 0 8V3v18'],
   购物: ['M4 8h16l1 13H3zM8 9V6a4 4 0 0 1 8 0v3'],
   日用: ['M5 5h14v16H5zM8 3h8M8 9h8M8 13h8'],

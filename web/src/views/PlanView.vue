@@ -71,6 +71,12 @@ const occurrenceLoading = ref(false)
 const occurrenceError = ref('')
 const occurrenceSection = ref<HTMLElement | null>(null)
 let occurrenceSequence = 0
+const expandedGroups = reactive<Record<PlanGroup['key'], boolean>>({
+  fund: false,
+  provident: false,
+  income: false
+})
+const occurrencesExpanded = ref(false)
 
 const form = reactive({
   type: 'salaryIncome' as PlanType,
@@ -262,6 +268,14 @@ function groupKeyForType(type: PlanType): PlanGroup['key'] {
   }
 
   return 'income'
+}
+
+function isGroupExpanded(key: PlanGroup['key']): boolean {
+  return expandedGroups[key]
+}
+
+function toggleGroup(key: PlanGroup['key']): void {
+  expandedGroups[key] = !expandedGroups[key]
 }
 const actionable = computed(() => overview.value?.pendingOccurrences ?? [])
 const occurrenceTotalPages = computed(() =>
@@ -555,6 +569,11 @@ async function submit(): Promise<void> {
 
     await savePlan(input)
     notice.value = editingPlan.value ? '计划已更新，后续期次按新配置生成。' : '计划已保存。'
+
+    if (entryGroup.value) {
+      expandedGroups[entryGroup.value] = true
+    }
+
     sheetOpen.value = false
     await load()
   } catch (error) {
@@ -915,7 +934,16 @@ function goBack(): void {
     <header class="plan-header">
       <BackButton @back="goBack" />
       <h1>自动记账</h1>
-      <span class="header-spacer" />
+      <button
+        type="button"
+        class="header-action"
+        :disabled="busyAction === 'run'"
+        :aria-label="busyAction === 'run' ? '正在执行' : '立即执行'"
+        :title="busyAction === 'run' ? '正在执行' : '立即执行'"
+        @click="runNow"
+      >
+        <AppIcon name="refresh" :class="{ spinning: busyAction === 'run' }" />
+      </button>
     </header>
 
     <p v-if="isLoading && !overview" class="state">正在读取自动计划…</p>
@@ -926,21 +954,6 @@ function goBack(): void {
     </section>
 
     <template v-else-if="overview">
-      <section class="plan-hero">
-        <p class="hero-label">自动记账计划</p>
-        <h2>{{ overview.activeCount }} 个启用中</h2>
-        <p class="hero-meta">
-          下一期 {{ overview.nextDueDate ? formatBusinessDate(overview.nextDueDate) : '暂无' }} ·
-          可用现金 ¥{{ formatMoney(overview.cashBalance) }} · 公积金 ¥{{ formatMoney(overview.providentBalance) }}
-        </p>
-      </section>
-
-      <div class="plan-actions">
-        <button type="button" class="action-primary" :disabled="busyAction === 'run'" @click="runNow">
-          {{ busyAction === 'run' ? '执行中…' : '立即执行' }}
-        </button>
-      </div>
-
       <p v-if="notice" class="notice" role="status">{{ notice }}</p>
 
       <div class="section-head">
@@ -955,11 +968,19 @@ function goBack(): void {
         :class="`group-${group.key}`"
       >
         <header class="plan-group-head">
-          <span class="group-icon"><AppIcon :name="group.icon" /></span>
-          <div class="group-heading">
-            <h3>{{ group.title }}</h3>
-            <p>{{ group.summary }}</p>
-          </div>
+          <button
+            type="button"
+            class="group-toggle"
+            :aria-expanded="isGroupExpanded(group.key)"
+            @click="toggleGroup(group.key)"
+          >
+            <span class="group-icon"><AppIcon :name="group.icon" /></span>
+            <span class="group-heading">
+              <span class="group-title">{{ group.title }}</span>
+              <span class="group-summary">{{ group.summary }}</span>
+            </span>
+            <span class="group-chevron" :class="{ open: isGroupExpanded(group.key) }" aria-hidden="true">⌄</span>
+          </button>
           <button
             type="button"
             class="group-add"
@@ -968,121 +989,123 @@ function goBack(): void {
           >＋ 新增</button>
         </header>
 
-        <template v-if="group.key === 'fund'">
-          <div v-if="fundPlanGroups.length" class="fund-plan-list">
-            <article
-              v-for="fund in fundPlanGroups"
-              :key="fund.key"
-              class="plan-card fund-plan-card"
-              :class="{ 'is-paused': fund.activeCount === 0 }"
-            >
-              <details v-if="fund.plans.length > 1" class="fund-details">
-                <summary>
-                  <span class="fund-summary-copy">
-                    <strong>{{ fund.name }}</strong>
-                    <small>
-                      {{ fundGroupMetaLine(fund) }}
-                      <template v-if="fund.plans.length - fund.activeCount"> · {{ fund.plans.length - fund.activeCount }} 个暂停</template>
-                    </small>
-                  </span>
-                  <span class="fund-summary-amount">
-                    <template v-if="fund.activeCount">
-                      <b>¥{{ formatMoney(fund.activeAmount) }}</b>
-                      <small>每期</small>
-                    </template>
-                    <small v-else class="paused-label">已暂停</small>
-                  </span>
-                </summary>
-                <div class="fund-plan-rows">
-                  <div
-                    v-for="plan in fund.plans"
-                    :key="plan.id"
-                    class="fund-plan-row"
-                    :class="{ paused: !plan.isActive }"
-                  >
-                    <span class="share-badge">{{ shareClassLabel(plan) }}</span>
-                    <div class="fund-row-main">
-                      <div class="fund-row-head">
-                        <b>¥{{ formatMoney(plan.amount) }}</b>
-                        <span class="fund-row-actions">
-                          <button type="button" class="link-button" @click="openEdit(plan)">编辑</button>
-                          <span class="action-sep" aria-hidden="true" />
-                          <button
-                            type="button"
-                            class="link-button"
-                            :disabled="busyAction === plan.id"
-                            @click="togglePlan(plan)"
-                          >{{ plan.isActive ? '暂停' : '恢复' }}</button>
-                        </span>
-                      </div>
+        <div v-if="isGroupExpanded(group.key)" class="plan-group-body">
+          <template v-if="group.key === 'fund'">
+            <div v-if="fundPlanGroups.length" class="fund-plan-list">
+              <article
+                v-for="fund in fundPlanGroups"
+                :key="fund.key"
+                class="plan-card fund-plan-card"
+                :class="{ 'is-paused': fund.activeCount === 0 }"
+              >
+                <details v-if="fund.plans.length > 1" class="fund-details">
+                  <summary>
+                    <span class="fund-summary-copy">
+                      <strong>{{ fund.name }}</strong>
                       <small>
-                        <template v-if="fundCode(plan)">{{ fundCode(plan) }} · </template>
-                        {{ scheduleText(plan) }} · {{ nextDueText(plan) }}
-                        <template v-if="(plan.fee ?? 0) > 0"> · 含申购费 ¥{{ formatMoney(plan.fee ?? 0) }}</template>
+                        {{ fundGroupMetaLine(fund) }}
+                        <template v-if="fund.plans.length - fund.activeCount"> · {{ fund.plans.length - fund.activeCount }} 个暂停</template>
                       </small>
+                    </span>
+                    <span class="fund-summary-amount">
+                      <template v-if="fund.activeCount">
+                        <b>¥{{ formatMoney(fund.activeAmount) }}</b>
+                        <small>每期</small>
+                      </template>
+                      <small v-else class="paused-label">已暂停</small>
+                    </span>
+                  </summary>
+                  <div class="fund-plan-rows">
+                    <div
+                      v-for="plan in fund.plans"
+                      :key="plan.id"
+                      class="fund-plan-row"
+                      :class="{ paused: !plan.isActive }"
+                    >
+                      <span class="share-badge">{{ shareClassLabel(plan) }}</span>
+                      <div class="fund-row-main">
+                        <div class="fund-row-head">
+                          <b>¥{{ formatMoney(plan.amount) }}</b>
+                          <span class="fund-row-actions">
+                            <button type="button" class="link-button" @click="openEdit(plan)">编辑</button>
+                            <span class="action-sep" aria-hidden="true" />
+                            <button
+                              type="button"
+                              class="link-button"
+                              :disabled="busyAction === plan.id"
+                              @click="togglePlan(plan)"
+                            >{{ plan.isActive ? '暂停' : '恢复' }}</button>
+                          </span>
+                        </div>
+                        <small>
+                          <template v-if="fundCode(plan)">{{ fundCode(plan) }} · </template>
+                          {{ scheduleText(plan) }} · {{ nextDueText(plan) }}
+                          <template v-if="(plan.fee ?? 0) > 0"> · 含申购费 ¥{{ formatMoney(plan.fee ?? 0) }}</template>
+                        </small>
+                      </div>
                     </div>
                   </div>
+                </details>
+
+                <template v-else-if="fund.single">
+                  <header>
+                    <div>
+                      <strong>{{ fund.name }}</strong>
+                      <small>{{ fundMetaLine(fund.single) }}</small>
+                    </div>
+                    <span class="plan-amount">¥{{ formatMoney(fund.single.amount) }}</span>
+                  </header>
+                  <p class="plan-meta">
+                    开始 {{ formatBusinessDate(fund.single.startDate) }}
+                    <template v-if="(fund.single.fee ?? 0) > 0"> · 含申购费 ¥{{ formatMoney(fund.single.fee ?? 0) }}</template>
+                  </p>
+                  <footer class="plan-card-foot">
+                    <span class="plan-foot-note">{{ nextDueText(fund.single) }}</span>
+                    <span class="plan-foot-actions">
+                      <button type="button" class="link-button" @click="openEdit(fund.single)">编辑</button>
+                      <span class="action-sep" aria-hidden="true" />
+                      <button
+                        type="button"
+                        class="link-button"
+                        :disabled="busyAction === fund.single.id"
+                        @click="togglePlan(fund.single)"
+                      >{{ fund.single.isActive ? '暂停' : '恢复' }}</button>
+                    </span>
+                  </footer>
+                </template>
+              </article>
+            </div>
+          </template>
+
+          <template v-else>
+            <article v-for="plan in group.plans" :key="plan.id" class="plan-card">
+              <header>
+                <div>
+                  <strong>{{ plan.name }}</strong>
+                  <small>{{ typeLabel(plan.type) }} · {{ scheduleText(plan) }}</small>
                 </div>
-              </details>
-
-              <template v-else-if="fund.single">
-                <header>
-                  <div>
-                    <strong>{{ fund.name }}</strong>
-                    <small>{{ fundMetaLine(fund.single) }}</small>
-                  </div>
-                  <span class="plan-amount">¥{{ formatMoney(fund.single.amount) }}</span>
-                </header>
-                <p class="plan-meta">
-                  开始 {{ formatBusinessDate(fund.single.startDate) }}
-                  <template v-if="(fund.single.fee ?? 0) > 0"> · 含申购费 ¥{{ formatMoney(fund.single.fee ?? 0) }}</template>
-                </p>
-                <footer class="plan-card-foot">
-                  <span class="plan-foot-note">{{ nextDueText(fund.single) }}</span>
-                  <span class="plan-foot-actions">
-                    <button type="button" class="link-button" @click="openEdit(fund.single)">编辑</button>
-                    <span class="action-sep" aria-hidden="true" />
-                    <button
-                      type="button"
-                      class="link-button"
-                      :disabled="busyAction === fund.single.id"
-                      @click="togglePlan(fund.single)"
-                    >{{ fund.single.isActive ? '暂停' : '恢复' }}</button>
-                  </span>
-                </footer>
-              </template>
+                <span class="plan-amount">¥{{ formatMoney(plan.amount) }}</span>
+              </header>
+              <p class="plan-meta">
+                开始 {{ formatBusinessDate(plan.startDate) }}
+              </p>
+              <p v-if="plan.type === 'providentWithdrawal'" class="plan-meta">提取后等额转入现金，不计入生活收入。</p>
+              <footer class="plan-card-foot">
+                <span class="plan-foot-note">{{ nextDueText(plan) }}</span>
+                <span class="plan-foot-actions">
+                  <button type="button" class="link-button" @click="openEdit(plan)">编辑</button>
+                  <span class="action-sep" aria-hidden="true" />
+                  <button
+                    type="button"
+                    class="link-button"
+                    :disabled="busyAction === plan.id"
+                    @click="togglePlan(plan)"
+                  >{{ plan.isActive ? '暂停' : '恢复' }}</button>
+                </span>
+              </footer>
             </article>
-          </div>
-        </template>
-
-        <template v-else>
-          <article v-for="plan in group.plans" :key="plan.id" class="plan-card">
-            <header>
-              <div>
-                <strong>{{ plan.name }}</strong>
-                <small>{{ typeLabel(plan.type) }} · {{ scheduleText(plan) }}</small>
-              </div>
-              <span class="plan-amount">¥{{ formatMoney(plan.amount) }}</span>
-            </header>
-            <p class="plan-meta">
-              开始 {{ formatBusinessDate(plan.startDate) }}
-            </p>
-            <p v-if="plan.type === 'providentWithdrawal'" class="plan-meta">提取后等额转入现金，不计入生活收入。</p>
-            <footer class="plan-card-foot">
-              <span class="plan-foot-note">{{ nextDueText(plan) }}</span>
-              <span class="plan-foot-actions">
-                <button type="button" class="link-button" @click="openEdit(plan)">编辑</button>
-                <span class="action-sep" aria-hidden="true" />
-                <button
-                  type="button"
-                  class="link-button"
-                  :disabled="busyAction === plan.id"
-                  @click="togglePlan(plan)"
-                >{{ plan.isActive ? '暂停' : '恢复' }}</button>
-              </span>
-            </footer>
-          </article>
-        </template>
+          </template>
+        </div>
       </section>
 
       <template v-if="actionable.length">
@@ -1141,48 +1164,59 @@ function goBack(): void {
         @retry="loadCalendar()"
       />
 
-      <div ref="occurrenceSection" class="section-head occurrence-head">
-        <h2>执行记录</h2>
-        <span class="meta">共 {{ occurrenceTotal }} 条</span>
-      </div>
-      <div v-if="occurrenceError" class="occurrence-state">
-        <span>{{ occurrenceError }}</span>
-        <button type="button" class="text-button" @click="loadOccurrences()">重试</button>
-      </div>
-      <template v-else>
-        <section
-          v-if="occurrenceItems.length"
-          class="occurrence-list"
-          :class="{ 'is-loading': occurrenceLoading }"
-        >
-          <article v-for="occurrence in occurrenceItems" :key="occurrence.id" class="occurrence-card">
-            <div>
-              <strong>{{ occurrence.planName }}</strong>
-              <small>
-                {{ occurrence.dueDate }} {{ occurrence.dueTime.slice(0, 5) }} · ¥{{ formatMoney(occurrence.amount) }} ·
-                <span :class="statusClass(occurrence.status)">{{ statusLabel(occurrence.status) }}</span>
-              </small>
-              <small v-if="occurrence.errorMessage" class="occurrence-error">{{ occurrence.errorMessage }}</small>
-            </div>
-          </article>
-        </section>
-        <p v-else-if="occurrenceLoading" class="occurrence-state">正在读取执行记录…</p>
-        <p v-else class="summary-note">还没有执行记录。</p>
-        <nav v-if="occurrenceTotal > occurrencePageSize" class="occurrence-pagination" aria-label="执行记录分页">
-          <button
-            type="button"
-            class="pagination-button"
-            :disabled="occurrencePage <= 1 || occurrenceLoading"
-            @click="goOccurrencePage(occurrencePage - 1)"
-          >上一页</button>
-          <span class="pagination-status">第 {{ occurrencePage }} / {{ occurrenceTotalPages }} 页</span>
-          <button
-            type="button"
-            class="pagination-button"
-            :disabled="occurrencePage >= occurrenceTotalPages || occurrenceLoading"
-            @click="goOccurrencePage(occurrencePage + 1)"
-          >下一页</button>
-        </nav>
+      <button
+        ref="occurrenceSection"
+        type="button"
+        class="section-head occurrence-head section-toggle"
+        :aria-expanded="occurrencesExpanded"
+        @click="occurrencesExpanded = !occurrencesExpanded"
+      >
+        <span class="section-title">执行记录</span>
+        <span class="section-toggle-meta">
+          <span class="meta">共 {{ occurrenceTotal }} 条</span>
+          <span class="section-chevron" :class="{ open: occurrencesExpanded }" aria-hidden="true">⌄</span>
+        </span>
+      </button>
+      <template v-if="occurrencesExpanded">
+        <div v-if="occurrenceError" class="occurrence-state">
+          <span>{{ occurrenceError }}</span>
+          <button type="button" class="text-button" @click="loadOccurrences()">重试</button>
+        </div>
+        <template v-else>
+          <section
+            v-if="occurrenceItems.length"
+            class="occurrence-list"
+            :class="{ 'is-loading': occurrenceLoading }"
+          >
+            <article v-for="occurrence in occurrenceItems" :key="occurrence.id" class="occurrence-card">
+              <div>
+                <strong>{{ occurrence.planName }}</strong>
+                <small>
+                  {{ occurrence.dueDate }} {{ occurrence.dueTime.slice(0, 5) }} · ¥{{ formatMoney(occurrence.amount) }} ·
+                  <span :class="statusClass(occurrence.status)">{{ statusLabel(occurrence.status) }}</span>
+                </small>
+                <small v-if="occurrence.errorMessage" class="occurrence-error">{{ occurrence.errorMessage }}</small>
+              </div>
+            </article>
+          </section>
+          <p v-else-if="occurrenceLoading" class="occurrence-state">正在读取执行记录…</p>
+          <p v-else class="summary-note">还没有执行记录。</p>
+          <nav v-if="occurrenceTotal > occurrencePageSize" class="occurrence-pagination" aria-label="执行记录分页">
+            <button
+              type="button"
+              class="pagination-button"
+              :disabled="occurrencePage <= 1 || occurrenceLoading"
+              @click="goOccurrencePage(occurrencePage - 1)"
+            >上一页</button>
+            <span class="pagination-status">第 {{ occurrencePage }} / {{ occurrenceTotalPages }} 页</span>
+            <button
+              type="button"
+              class="pagination-button"
+              :disabled="occurrencePage >= occurrenceTotalPages || occurrenceLoading"
+              @click="goOccurrencePage(occurrencePage + 1)"
+            >下一页</button>
+          </nav>
+        </template>
       </template>
 
       <p class="summary-note">
@@ -1364,60 +1398,45 @@ function goBack(): void {
   font-weight: 600;
 }
 
-.header-spacer {
-  width: 36px;
-  flex-shrink: 0;
-}
-
-.plan-hero {
-  padding: var(--card-padding);
-  border-radius: var(--radius-card);
-  background: var(--color-brand-soft);
-}
-
-.hero-label {
-  margin: 0;
-  color: var(--color-text-secondary);
-  font-size: var(--text-footnote);
-}
-
-.plan-hero h2 {
-  margin: 8px 0 7px;
-  font-size: 1.875rem;
-  font-weight: 600;
-}
-
-.hero-meta {
-  margin: 0;
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-  line-height: 1.6;
-}
-
-.plan-actions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.plan-actions button {
-  min-height: 42px;
-  border-radius: var(--radius-control);
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-.action-primary {
-  border: 1px solid var(--color-brand);
-  background: var(--color-brand);
-  color: var(--color-on-brand);
-}
-
-.action-secondary {
-  border: 1px solid var(--color-border-control);
+.header-action {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  padding: 0;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 50%;
   background: var(--color-bg-surface);
   color: var(--color-brand);
+  transition: background var(--motion-fast) ease, transform var(--motion-fast) ease;
+}
+
+.header-action:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+
+.header-action:active:not(:disabled) {
+  transform: scale(.94);
+}
+
+.header-action:disabled {
+  color: var(--color-text-disabled);
+}
+
+.header-action :deep(.app-icon) {
+  width: 20px;
+  height: 20px;
+}
+
+.spinning {
+  animation: spin .9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .notice {
@@ -1444,8 +1463,40 @@ function goBack(): void {
   font-weight: 600;
 }
 
+.section-head .section-title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
 .occurrence-head {
   scroll-margin-top: 12px;
+}
+
+.section-toggle {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  text-align: left;
+}
+
+.section-toggle-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.section-chevron {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  line-height: 1;
+  transition: transform .15s ease;
+}
+
+.section-chevron.open {
+  transform: rotate(180deg);
 }
 
 .meta {
@@ -1477,7 +1528,36 @@ function goBack(): void {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 9px;
+}
+
+.group-toggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: var(--touch-target);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.group-chevron {
+  flex: 0 0 auto;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  line-height: 1;
+  transition: transform .15s ease;
+}
+
+.group-chevron.open {
+  transform: rotate(180deg);
+}
+
+.plan-group-body {
+  margin-top: 9px;
 }
 
 .group-icon {
@@ -1497,19 +1577,20 @@ function goBack(): void {
 }
 
 .group-heading {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   min-width: 0;
 }
 
-.group-heading h3 {
-  margin: 0;
+.group-title {
   font-size: 0.8125rem;
   font-weight: 600;
   letter-spacing: -0.1px;
 }
 
-.group-heading p {
-  margin: 3px 0 0;
+.group-summary {
+  margin-top: 3px;
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
   line-height: 1.5;
