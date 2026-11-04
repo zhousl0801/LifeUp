@@ -390,8 +390,6 @@ function goBack(): void {
         :action-label="hasFilters ? '清除筛选' : '记一笔'"
         @action="hasFilters ? clearFilters() : openEntry()"
       />
-
-      <p class="list-note">{{ summary?.entries.length ?? 0 }} 笔日常收支</p>
     </template>
   <button v-if="summary && summary.entries.length < summary.totalCount" type="button" class="secondary-button" :disabled="isLoading" @click="loadEntries(true)">加载更多（已显示 {{ summary.entries.length }} / {{ summary.totalCount }}）</button>
     </template>
@@ -474,16 +472,44 @@ function goBack(): void {
   border: 0;
   background: transparent;
   color: var(--color-brand);
-  font-size: 0.75rem;
+  font-size: var(--text-footnote);
+  font-weight: 600;
 }
 
 .view-tabs {
   width: 100%;
-  margin-bottom: 10px;
+  gap: 4px;
+  margin-bottom: 14px;
+  padding: 4px;
+  border-bottom: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-subtle);
 }
+
+.view-tabs button {
+  min-height: 40px;
+  border-radius: var(--radius-pill);
+  font-weight: 600;
+}
+
+.view-tabs button.active {
+  background: var(--color-bg-surface);
+  color: var(--color-brand);
+  box-shadow: 0 2px 10px var(--color-shadow);
+}
+
+.view-tabs button.active::after {
+  display: none;
+}
+
 .filter-disclosure {
   margin-bottom: 16px;
+  padding: 2px 20px;
+  border-radius: var(--radius-card);
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-card);
 }
+
 .filter-disclosure summary .app-icon {
   width: 16px;
   height: 16px;
@@ -494,8 +520,7 @@ function goBack(): void {
   align-items: center;
 }
 .filter-disclosure[open] {
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--color-border-subtle);
+  padding-bottom: 16px;
 }
 .ledger-history {
   display: flex;
@@ -507,34 +532,37 @@ function goBack(): void {
 .stats-direction {
   display: flex;
   gap: 8px;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
 .stats-direction button {
-  min-height: var(--touch-target);
-  padding: 0 16px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-tag);
+  min-height: 44px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: var(--radius-pill);
   background: var(--color-bg-surface);
   color: var(--color-text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--text-subhead);
+  font-weight: 600;
+  box-shadow: 0 2px 10px var(--color-shadow);
 }
 
 .stats-direction button.active {
-  border-color: var(--color-brand);
   background: var(--color-brand-soft);
   color: var(--color-brand);
-  font-weight: 500;
+  font-weight: 700;
+  box-shadow: none;
 }
 
 .stats-panel,
 .chart-card,
 .ranking-panel {
   margin-bottom: 14px;
-  padding: 14px;
-  border: 1px solid var(--color-border-subtle);
+  padding: 20px;
+  border: 0;
   border-radius: var(--radius-card);
   background: var(--color-bg-surface);
+  box-shadow: var(--shadow-card);
 }
 
 .stats-head {
@@ -542,19 +570,34 @@ function goBack(): void {
   justify-content: space-between;
   align-items: baseline;
   gap: 10px;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .stats-head h2 {
   margin: 0;
-  font-size: 0.875rem;
-  font-weight: 600;
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.3px;
 }
 
 .stats-head b {
-  font-size: 1.375rem;
-  font-weight: 500;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
+}
+
+.stats-head .tiny {
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+  font-weight: 500;
+}
+
+.ledger-page > .secondary-button {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  margin-top: 4px;
 }
 
 .stats-meta {
@@ -582,12 +625,15 @@ function goBack(): void {
   display: block;
   box-sizing: border-box;
   width: 100%;
-  padding: 9px 0;
+  padding: 12px 0;
   border: 0;
-  border-top: 1px solid var(--color-border-subtle);
   background: transparent;
   color: inherit;
   text-align: left;
+}
+
+.rank-row + .rank-row {
+  border-top: 1px solid var(--color-border-subtle);
 }
 
 .rank-row:hover {
@@ -599,11 +645,13 @@ function goBack(): void {
   justify-content: space-between;
   align-items: baseline;
   gap: 10px;
-  font-size: 0.75rem;
+  font-size: var(--text-footnote);
+  font-weight: 600;
 }
 
 .rank-top b {
-  font-weight: 500;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
 
@@ -634,10 +682,11 @@ function goBack(): void {
 
 .period-panel {
   margin-bottom: 18px;
-  padding: 16px;
-  border: 1px solid var(--color-border-subtle);
+  padding: 20px;
+  border: 0;
   border-radius: var(--radius-card);
   background: var(--color-bg-surface);
+  box-shadow: var(--shadow-card);
 }
 
 .period-top {
@@ -646,31 +695,33 @@ function goBack(): void {
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  margin-bottom: 14px;
+  margin-bottom: 18px;
 }
 
 .period-tabs {
   display: flex;
   gap: 2px;
-  padding: 2px;
-  border-radius: var(--radius-tag);
+  padding: 3px;
+  border-radius: var(--radius-pill);
   background: var(--color-bg-subtle);
 }
 
 .period-tabs button {
-  min-height: var(--touch-target);
-  padding: 0 10px;
+  min-height: 38px;
+  padding: 0 14px;
   border: 0;
-  border-radius: var(--radius-tag);
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--color-text-secondary);
   font-size: var(--text-footnote);
+  font-weight: 600;
 }
 
 .period-tabs button.active {
   background: var(--color-bg-surface);
   color: var(--color-brand);
-  font-weight: 600;
+  font-weight: 700;
+  box-shadow: 0 2px 8px var(--color-shadow);
 }
 
 .period-nav {
@@ -683,11 +734,15 @@ function goBack(): void {
   width: var(--touch-target);
   height: var(--touch-target);
   border: 0;
-  border-radius: var(--radius-tag);
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--color-brand);
   font-size: 1.125rem;
   line-height: 1;
+}
+
+.period-nav button:hover:not(:disabled) {
+  background: var(--color-brand-soft);
 }
 
 .period-nav button:disabled {
@@ -696,8 +751,8 @@ function goBack(): void {
 }
 
 .period-nav strong {
-  font-size: 0.8125rem;
-  font-weight: 600;
+  font-size: var(--text-footnote);
+  font-weight: 700;
   letter-spacing: -0.2px;
   white-space: nowrap;
 }
@@ -709,21 +764,24 @@ function goBack(): void {
 }
 
 .summary-grid > div + div {
-  padding-left: 12px;
-  border-left: 1px solid var(--color-border-subtle);
+  padding-left: 14px;
+  border-left: 1px solid color-mix(in srgb, var(--color-border-subtle) 55%, transparent);
 }
 
 .summary-grid span {
   display: block;
   color: var(--color-text-secondary);
   font-size: var(--text-footnote);
+  font-weight: 500;
 }
 
 .summary-grid b {
   display: block;
   margin-top: 8px;
-  font-size: clamp(0.8125rem, 4.4vw, 1.25rem);
-  font-weight: 500;
+  font-size: clamp(1rem, 5vw, 1.375rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
   font-variant-numeric: tabular-nums;
 }
 
@@ -734,30 +792,30 @@ function goBack(): void {
 .filter-bar {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 16px;
+  gap: 10px;
+  margin-bottom: 0;
 }
 
 .kind-tabs {
   display: flex;
-  gap: 4px;
+  gap: 6px;
 }
 
 .kind-tabs button {
-  min-height: var(--touch-target);
-  padding: 0 12px;
-  border: 1px solid var(--color-border-subtle);
+  min-height: 40px;
+  padding: 0 16px;
+  border: 0;
   border-radius: var(--radius-pill);
-  background: var(--color-bg-surface);
+  background: var(--color-bg-subtle);
   color: var(--color-text-secondary);
   font-size: var(--text-footnote);
+  font-weight: 600;
 }
 
 .kind-tabs button.active {
-  border-color: var(--color-brand);
   background: var(--color-brand-soft);
   color: var(--color-brand);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .filter-row {
@@ -768,13 +826,19 @@ function goBack(): void {
 .filter-row input,
 .filter-row select {
   box-sizing: border-box;
-  min-height: var(--touch-target);
-  padding: 0 10px;
-  border: 1px solid var(--color-border-control);
-  border-radius: var(--radius-tag);
-  background: var(--color-bg-surface);
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: var(--color-bg-subtle);
   color: var(--color-text-primary);
-  font-size: 0.8125rem;
+  font-size: var(--text-subhead);
+}
+
+.filter-row input:focus-visible,
+.filter-row select:focus-visible {
+  border-color: var(--color-border-focus);
+  background: var(--color-bg-surface);
 }
 
 .filter-row input {
@@ -795,29 +859,32 @@ function goBack(): void {
   justify-content: space-between;
   align-items: baseline;
   gap: 10px;
-  padding: 0 2px 8px;
+  padding: 0 4px 10px;
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
+  font-weight: 500;
 }
 
 .day-totals {
   display: inline-flex;
   gap: 10px;
+  font-variant-numeric: tabular-nums;
 }
 
 .day-card {
   overflow: hidden;
-  border: 1px solid var(--color-border-subtle);
+  border: 0;
   border-radius: var(--radius-card);
   background: var(--color-bg-surface);
+  box-shadow: var(--shadow-card);
 }
 
 .entry-row {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 12px;
   width: 100%;
-  padding: 12px 13px;
+  padding: 14px 18px;
   border: 0;
   border-bottom: 1px solid var(--color-border-subtle);
   background: transparent;
@@ -837,13 +904,13 @@ function goBack(): void {
   justify-content: center;
   align-items: center;
   flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   background: var(--color-brand-soft);
   color: var(--color-brand);
-  font-size: 0.8125rem;
-  font-weight: 500;
+  font-size: var(--text-footnote);
+  font-weight: 600;
 }
 
 .entry-copy {
@@ -855,7 +922,8 @@ function goBack(): void {
 }
 
 .entry-title {
-  font-size: 0.8125rem;
+  font-size: var(--text-subhead);
+  font-weight: 600;
 }
 
 .entry-copy small {
@@ -868,8 +936,9 @@ function goBack(): void {
 
 .entry-row b {
   flex: 0 0 auto;
-  font-size: 0.875rem;
-  font-weight: 500;
+  font-size: var(--text-body);
+  font-weight: 700;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
 
@@ -890,15 +959,9 @@ function goBack(): void {
   width: 100%;
 }
 
-.list-note {
-  margin: 4px 0 0;
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-  text-align: center;
-}
 @media (max-width: 360px) {
   .period-panel {
-    padding: 14px;
+    padding: 16px;
   }
 
   .summary-grid {
@@ -906,11 +969,11 @@ function goBack(): void {
   }
 
   .summary-grid > div + div {
-    padding-left: 6px;
+    padding-left: 8px;
   }
 
   .summary-grid b {
-    font-size: 0.8125rem;
+    font-size: 1rem;
   }
 }
 </style>

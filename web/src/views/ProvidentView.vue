@@ -372,9 +372,7 @@ function goBack(): void {
           <span class="hero-tag">个人＋单位</span>
         </p>
         <h2 class="hero-balance"><span>¥</span>{{ formatMoney(overview.balance) }}</h2>
-        <p class="hero-meta">
-          截至 {{ formatBusinessDate(overview.asOfDate) }} · 按实际缴存与提取记录
-        </p>
+        <p class="hero-meta">截至 {{ formatBusinessDate(overview.asOfDate) }}</p>
         <div class="hero-metrics">
           <div>
             <span>本月缴存</span>
@@ -553,46 +551,50 @@ function goBack(): void {
 .provident-hero {
   padding: var(--card-padding);
   border-radius: var(--radius-card);
-  background: var(--color-brand-soft);
+  background: linear-gradient(180deg, var(--color-hero-bg) 0%, var(--color-hero-bg-end) 100%);
+  box-shadow: var(--shadow-hero);
+  color: var(--color-hero-text);
 }
 
 .hero-label {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   margin: 0;
-  color: var(--color-text-secondary);
+  color: var(--color-hero-text-secondary);
   font-size: var(--text-footnote);
+  font-weight: 500;
 }
 
 .hero-tag {
-  padding: 2px 5px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-tag);
-  background: var(--color-bg-surface);
-  color: var(--color-brand);
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-hero-surface);
+  color: var(--color-hero-text-secondary);
   font-size: var(--text-caption);
 }
 
 .hero-balance {
-  margin: 8px 0 7px;
-  font-size: 2.375rem;
-  font-weight: 600;
-  letter-spacing: -1.1px;
+  margin: 10px 0 0;
+  color: var(--color-hero-text);
+  font-size: clamp(2rem, 10.5vw, 2.375rem);
+  font-weight: 700;
+  letter-spacing: -0.04em;
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
 
 .hero-balance span {
   margin-right: 5px;
+  color: var(--color-hero-text-secondary);
   font-size: 1.1875rem;
-  font-weight: 400;
+  font-weight: 500;
   letter-spacing: 0;
 }
 
 .hero-meta {
-  margin: 0;
-  color: var(--color-text-secondary);
+  margin: 8px 0 0;
+  color: var(--color-hero-text-muted);
   font-size: var(--text-caption);
   line-height: 1.6;
 }
@@ -601,25 +603,26 @@ function goBack(): void {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
-  margin-top: 22px;
+  margin-top: 20px;
 }
 
 .hero-metrics > div + div {
   padding-left: 12px;
-  border-left: 1px solid var(--color-border-subtle);
+  border-left: 1px solid var(--color-hero-border);
 }
 
 .hero-metrics span {
   display: block;
-  color: var(--color-text-secondary);
+  color: var(--color-hero-text-secondary);
   font-size: var(--text-caption);
 }
 
 .hero-metrics b {
   display: block;
   margin-top: 7px;
+  color: var(--color-hero-text);
   font-size: 0.9375rem;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: -0.3px;
   font-variant-numeric: tabular-nums;
 }
@@ -627,31 +630,29 @@ function goBack(): void {
 .provident-actions {
   display: flex;
   gap: 10px;
-  margin-top: 14px;
+  margin-top: 16px;
 }
 
 .provident-actions button {
   flex: 1;
-  min-height: 44px;
-  border-radius: var(--radius-control);
-  font-size: 0.8125rem;
-  font-weight: 500;
+  min-height: 48px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  font-size: 0.9375rem;
+  font-weight: 600;
 }
 
 .action-primary {
-  border: 1px solid var(--color-brand);
   background: var(--color-brand);
   color: var(--color-on-brand);
 }
 
 .action-primary:hover {
   background: var(--color-brand-hover);
-  border-color: var(--color-brand-hover);
 }
 
 .action-secondary {
-  border: 1px solid var(--color-border-control);
-  background: var(--color-bg-surface);
+  background: var(--color-bg-subtle);
   color: var(--color-brand);
 }
 
@@ -677,19 +678,23 @@ function goBack(): void {
   line-height: 1.7;
 }
 
+.summary-line {
+  border-radius: 16px;
+}
+
 .section-head {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: 12px;
-  margin: 22px 0 10px;
+  margin: 26px 0 12px;
 }
 
 .section-head h2 {
   margin: 0;
-  font-size: 0.875rem;
-  font-weight: 600;
-  letter-spacing: -0.2px;
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.3px;
 }
 
 .meta {
@@ -699,16 +704,17 @@ function goBack(): void {
 
 .activity-card {
   overflow: hidden;
-  border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-card);
   background: var(--color-bg-surface);
+  box-shadow: var(--shadow-card);
 }
 
 .activity-row {
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 13px;
+  gap: 12px;
+  min-height: 64px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
@@ -739,8 +745,8 @@ function goBack(): void {
 }
 
 .activity-copy strong {
-  font-size: 0.8125rem;
-  font-weight: 500;
+  font-size: 0.9375rem;
+  font-weight: 600;
 }
 
 .activity-copy small {
@@ -754,8 +760,8 @@ function goBack(): void {
 
 .activity-value {
   flex: 0 0 auto;
-  font-size: 0.875rem;
-  font-weight: 500;
+  font-size: 0.9375rem;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -764,16 +770,17 @@ function goBack(): void {
 }
 
 .empty-state {
-  padding: 34px 16px;
-  border: 1px dashed var(--color-border-default);
+  padding: 34px 20px;
   border-radius: var(--radius-card);
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-card);
   text-align: center;
 }
 
 .empty-state p {
-  margin: 0 0 14px;
+  margin: 0;
   color: var(--color-text-secondary);
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
 }
 
 .summary-note {
@@ -783,10 +790,9 @@ function goBack(): void {
 .monthly-setting {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 12px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-control);
+  gap: 14px;
+  padding: 16px;
+  border-radius: var(--radius-card);
   background: var(--color-bg-subtle);
 }
 
@@ -812,8 +818,8 @@ function goBack(): void {
 
 .monthly-toggle b {
   color: var(--color-text-primary);
-  font-size: 0.75rem;
-  font-weight: 500;
+  font-size: 0.875rem;
+  font-weight: 600;
 }
 
 .monthly-toggle small {

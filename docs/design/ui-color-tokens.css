@@ -1,77 +1,107 @@
-/* 资产管家 · 瓷白 + 克莱因蓝 · v1.1 · 2026-10-28
- * 配套说明：UI配色规范.md。浅色为默认主题，通过 data-color-scheme="light|dark" 切换深色。
- * 应用在页面或根容器设置 data-theme="porcelain" 后生效。
+/* 资产管家 · Midnight Mint 午夜薄荷金融风 · v2.0 · 2026-11-04
+ * 深色 Hero + 浅色内容；品牌紫负责导航与选择，薄荷绿负责正向强调，
+ * 青色与橙色只用于图表分类。浅色为默认主题，通过 data-color-scheme="light|dark" 切换深色。
+ * 应用在 html 根节点设置 data-theme="midnight-mint" 后生效。
  */
-[data-theme="porcelain"] {
+[data-theme="midnight-mint"] {
   color-scheme: light;
 
   /* 原始色板：业务组件优先引用下方语义变量。 */
   --palette-white: #FFFFFF;
-  --palette-blue-50: #F5F7FF;
-  --palette-blue-100: #EDF1FF;
-  --palette-blue-200: #DCE5FF;
-  --palette-blue-300: #B6C8FF;
-  --palette-blue-400: #7898ED;
-  --palette-blue-500: #315CD1;
-  --palette-blue-600: #002FA7;
-  --palette-blue-700: #00298F;
-  --palette-blue-800: #002276;
-  --palette-blue-900: #071D57;
+  --palette-ink-950: #120F24;
+  --palette-ink-900: #1E1B38;
+  --palette-ink-800: #2E2B46;
+  --palette-ink-700: #35324D;
 
-  --palette-gray-50: #F6F7FB;
-  --palette-gray-100: #F1F3F7;
-  --palette-gray-150: #E9EDF3;
-  --palette-gray-200: #E2E6EE;
-  --palette-gray-300: #D0D7E2;
-  --palette-gray-400: #7B8495;
-  --palette-gray-500: #7A879C;
-  --palette-gray-600: #626C80;
-  --palette-gray-900: #182033;
+  --palette-page: #EDECF1;
+  --palette-lilac-50: #F6F4FA;
+  --palette-lilac-100: #EFECF5;
+  --palette-lilac-200: #E4E1EB;
+  --palette-lilac-300: #D6D1E0;
+  --palette-lilac-400: #B8B3C6;
+  --palette-lilac-500: #8E8C9A;
+  --palette-lilac-600: #6A6578;
+  --palette-ink-text: #1A1728;
 
-  --palette-green: #18734E;
-  --palette-green-soft: #EAF6EF;
+  --palette-violet-50: #F5F3FF;
+  --palette-violet-100: #ECE9FE;
+  --palette-violet-200: #DCD7FD;
+  --palette-violet-400: #8B86F2;
+  --palette-violet-500: #5B5BD7;
+  --palette-violet-600: #4B4BC9;
+  --palette-violet-700: #3F3FAF;
+
+  --palette-mint: #7CE7B1;
+  --palette-mint-strong: #37B985;
+  --palette-mint-soft: #E7FBF2;
+  --palette-cyan: #25C6DA;
+  --palette-orange: #EF9849;
+
+  --palette-red: #D94A4A;
+  --palette-red-hover: #C13C3C;
+  --palette-red-active: #A83232;
+  --palette-red-soft: #FDECEC;
+  --palette-green: #2E9E75;
+  --palette-green-soft: #E8F7F0;
   --palette-amber: #946200;
   --palette-amber-soft: #FFF5DF;
-  --palette-red: #B93838;
-  --palette-red-hover: #A02D2D;
-  --palette-red-active: #862424;
-  --palette-red-soft: #FDEEEE;
 
   /* 品牌与基础界面。 */
-  --color-brand: var(--palette-blue-600);
-  --color-brand-hover: var(--palette-blue-700);
-  --color-brand-active: var(--palette-blue-800);
-  --color-brand-soft: var(--palette-blue-100);
-  --color-brand-soft-hover: var(--palette-blue-200);
+  --color-brand: var(--palette-violet-500);
+  --color-brand-hover: var(--palette-violet-600);
+  --color-brand-active: var(--palette-violet-700);
+  --color-brand-soft: var(--palette-violet-100);
+  --color-brand-soft-hover: var(--palette-violet-200);
   --color-on-brand: var(--palette-white);
-  --color-bg-page: var(--palette-gray-50);
-  --color-bg-canvas: var(--palette-gray-150);
+  --color-bg-page: var(--palette-page);
+  --color-bg-canvas: #E4E1EB;
   --color-bg-surface: var(--palette-white);
-  --color-bg-subtle: var(--palette-gray-100);
-  --color-bg-hover: var(--palette-blue-50);
-  --color-bg-selected: var(--palette-blue-100);
-  --color-text-primary: var(--palette-gray-900);
-  --color-text-secondary: var(--palette-gray-600);
-  --color-text-placeholder: var(--palette-gray-600);
-  --color-text-link: var(--palette-blue-600);
+  --color-bg-subtle: var(--palette-lilac-50);
+  --color-bg-hover: var(--palette-violet-50);
+  --color-bg-selected: var(--palette-violet-100);
+  --color-text-primary: var(--palette-ink-text);
+  --color-text-secondary: var(--palette-lilac-600);
+  --color-text-placeholder: var(--palette-lilac-600);
+  --color-text-link: var(--palette-violet-600);
   --color-text-inverse: var(--palette-white);
-  --color-icon-default: var(--palette-gray-600);
-  --color-border-subtle: var(--palette-gray-200);
-  --color-border-default: var(--palette-gray-300);
-  --color-border-control: var(--palette-gray-500);
-  --color-border-hover: var(--palette-gray-600);
-  --color-border-focus: var(--palette-blue-600);
-  --color-focus-ring: var(--palette-blue-600);
+  --color-icon-default: var(--palette-lilac-600);
+  --color-border-subtle: var(--palette-lilac-200);
+  --color-border-default: var(--palette-lilac-300);
+  --color-border-control: #9B95AB;
+  --color-border-hover: var(--palette-lilac-600);
+  --color-border-focus: var(--palette-violet-500);
+  --color-focus-ring: var(--palette-violet-500);
   --color-focus-gap: var(--palette-white);
-  --color-bg-disabled: var(--palette-gray-150);
-  --color-text-disabled: var(--palette-gray-400);
-  --color-border-disabled: var(--palette-gray-300);
-  --color-bg-readonly: var(--palette-gray-100);
+  --color-bg-disabled: var(--palette-lilac-100);
+  --color-text-disabled: #A9A4B5;
+  --color-border-disabled: var(--palette-lilac-300);
+  --color-bg-readonly: var(--palette-lilac-50);
+
+  /* 深色 Hero 与薄荷强调，首页及深色头部共用。 */
+  --color-hero-bg: var(--palette-ink-900);
+  --color-hero-bg-end: #2A2548;
+  --color-hero-surface: rgba(255, 255, 255, 0.08);
+  --color-hero-surface-strong: var(--palette-ink-700);
+  --color-hero-track: var(--palette-ink-800);
+  --color-hero-text: var(--palette-white);
+  --color-hero-text-secondary: #A9A6C5;
+  --color-hero-text-muted: #8F8BAC;
+  --color-hero-border: rgba(169, 166, 197, 0.14);
+  --color-hero-active: var(--palette-white);
+  --color-hero-active-text: var(--palette-ink-900);
+  --color-hero-line: var(--palette-mint);
+  --color-hero-line-area: rgba(124, 231, 177, 0.22);
+  --color-accent-mint: var(--palette-mint);
+  --color-accent-mint-strong: var(--palette-mint-strong);
+  --color-accent-mint-soft: rgba(124, 231, 177, 0.14);
+  --color-on-accent-mint: #0F3A2B;
+  --color-accent-cyan: var(--palette-cyan);
+  --color-accent-orange: var(--palette-orange);
 
   /* 状态：文字、图标、实线边界用主色，背景用 soft。 */
-  --color-info: var(--palette-blue-600);
-  --color-info-bg: var(--palette-blue-100);
-  --color-success: var(--palette-green);
+  --color-info: var(--palette-violet-600);
+  --color-info-bg: var(--palette-violet-100);
+  --color-success: #237A58;
   --color-success-bg: var(--palette-green-soft);
   --color-warning: var(--palette-amber);
   --color-warning-bg: var(--palette-amber-soft);
@@ -82,129 +112,145 @@
   --color-danger-active: var(--palette-red-active);
   --color-on-danger: var(--palette-white);
 
-  /* 财务：语义独立，即使当前复用相同原始色值也不能互换变量。 */
+  /* 财务：保留红盈绿亏，薄荷绿只承担品牌和图表强调。 */
   --color-finance-gain: var(--palette-red);
   --color-finance-loss: var(--palette-green);
   --color-finance-gain-bg: var(--palette-red-soft);
   --color-finance-loss-bg: var(--palette-green-soft);
-  --color-finance-flat: var(--palette-gray-600);
+  --color-finance-flat: var(--palette-lilac-600);
   --color-finance-income: var(--palette-green);
-  --color-finance-expense: var(--palette-gray-900);
-  --color-finance-transfer: var(--palette-blue-600);
-  --color-finance-net-change: var(--palette-gray-900);
-  --color-finance-liability: var(--palette-gray-900);
+  --color-finance-expense: var(--palette-ink-text);
+  --color-finance-transfer: var(--palette-violet-500);
+  --color-finance-net-change: var(--palette-ink-text);
+  --color-finance-liability: var(--palette-ink-text);
 
   /* 图表分类：映射固定；文字标签统一使用 text-primary/secondary。 */
-  --color-chart-cash: var(--palette-blue-600);
-  --color-chart-investment: #6A4BC3;
-  --color-chart-property: #187E88;
-  --color-chart-receivable: #9B6B13;
-  --color-chart-stock: #C15A3A;
-  --color-chart-other: #65748D;
-  --color-chart-liability: #8D4F70;
-  --color-chart-net-assets: var(--palette-blue-600);
-  --color-chart-total-assets: #187E88;
-  --color-chart-total-liabilities: #8D4F70;
-  --color-chart-grid: var(--palette-gray-200);
-  --color-chart-track: var(--palette-gray-150);
+  --color-chart-cash: var(--palette-violet-500);
+  --color-chart-investment: var(--palette-violet-400);
+  --color-chart-property: var(--palette-cyan);
+  --color-chart-receivable: var(--palette-orange);
+  --color-chart-stock: #E76F51;
+  --color-chart-other: var(--palette-lilac-500);
+  --color-chart-liability: #C05A8A;
+  --color-chart-net-assets: var(--palette-violet-500);
+  --color-chart-total-assets: var(--palette-cyan);
+  --color-chart-total-liabilities: #C05A8A;
+  --color-chart-grid: var(--palette-lilac-200);
+  --color-chart-track: var(--palette-lilac-100);
   --color-chart-separator: var(--palette-white);
-  --color-chart-reference: var(--palette-gray-600);
+  --color-chart-reference: var(--palette-lilac-600);
 
   /* 浮层与临时状态。 */
   --color-bg-popover: var(--palette-white);
-  --color-bg-tooltip: var(--palette-gray-900);
+  --color-bg-tooltip: var(--palette-ink-900);
   --color-text-tooltip: var(--palette-white);
-  --color-overlay: rgba(24, 32, 51, 0.40);
-  --color-shadow: rgba(24, 32, 51, 0.08);
-  --color-shadow-strong: rgba(24, 32, 51, 0.16);
-  --color-skeleton-base: var(--palette-gray-150);
-  --color-skeleton-highlight: var(--palette-gray-100);
-  --color-text-selection-bg: var(--palette-blue-200);
-  --color-text-selection-fg: var(--palette-gray-900);
+  --color-overlay: rgba(18, 15, 36, 0.48);
+  --color-shadow: rgba(30, 27, 56, 0.06);
+  --color-shadow-strong: rgba(30, 27, 56, 0.14);
+  --color-shadow-hero: rgba(30, 27, 56, 0.28);
+  --color-skeleton-base: var(--palette-lilac-100);
+  --color-skeleton-highlight: var(--palette-lilac-50);
+  --color-text-selection-bg: var(--palette-violet-200);
+  --color-text-selection-fg: var(--palette-ink-text);
 }
 
 
-[data-theme="porcelain"][data-color-scheme="dark"] {
+[data-theme="midnight-mint"][data-color-scheme="dark"] {
   color-scheme: dark;
 
-  --color-brand: #6E8EFF;
-    --color-brand-hover: #8AA4FF;
-    --color-brand-active: #5F7FF0;
-    --color-brand-soft: #1E2A4D;
-    --color-brand-soft-hover: #28365F;
-    --color-on-brand: #07101F;
+  --color-brand: #8B86FF;
+  --color-brand-hover: #A09CFF;
+  --color-brand-active: #7770F0;
+  --color-brand-soft: #29244A;
+  --color-brand-soft-hover: #342E5C;
+  --color-on-brand: #0F0D1A;
 
-    --color-bg-page: #0B0C0F;
-    --color-bg-canvas: #050506;
-    --color-bg-surface: #1C1C1E;
-    --color-bg-subtle: #2C2C2E;
-    --color-bg-hover: #242428;
-    --color-bg-selected: #1E2A4D;
-    --color-text-primary: #F5F5F7;
-    --color-text-secondary: #A1A1A6;
-    --color-text-placeholder: #8E8E93;
-    --color-text-link: #9BB6FF;
-    --color-text-inverse: #0B0C0F;
-    --color-icon-default: #A1A1A6;
-    --color-border-subtle: rgba(84, 84, 88, 0.55);
-    --color-border-default: rgba(84, 84, 88, 0.75);
-    --color-border-control: #7A7A7E;
-    --color-border-hover: #8E8E93;
-    --color-border-focus: #9BB6FF;
-    --color-focus-ring: #9BB6FF;
-    --color-focus-gap: #0B0C0F;
-    --color-bg-disabled: #2C2C2E;
-    --color-text-disabled: #636366;
-    --color-border-disabled: #3A3A3C;
-    --color-bg-readonly: #242428;
+  --color-bg-page: #0F0D1A;
+  --color-bg-canvas: #07060C;
+  --color-bg-surface: #1A1730;
+  --color-bg-subtle: #24203A;
+  --color-bg-hover: #262142;
+  --color-bg-selected: #2E2950;
+  --color-text-primary: #F7F5FF;
+  --color-text-secondary: #A9A6C5;
+  --color-text-placeholder: #8F8BAC;
+  --color-text-link: #A9A4FF;
+  --color-text-inverse: #0F0D1A;
+  --color-icon-default: #A9A6C5;
+  --color-border-subtle: rgba(169, 166, 197, 0.14);
+  --color-border-default: rgba(169, 166, 197, 0.22);
+  --color-border-control: #6F6A8A;
+  --color-border-hover: #8F8BAC;
+  --color-border-focus: #A9A4FF;
+  --color-focus-ring: #A9A4FF;
+  --color-focus-gap: #0F0D1A;
+  --color-bg-disabled: #24203A;
+  --color-text-disabled: #6F6A8A;
+  --color-border-disabled: #363050;
+  --color-bg-readonly: #24203A;
 
-    --color-info: #9BB6FF;
-    --color-info-bg: #1E2A4D;
-    --color-success: #4CD97B;
-    --color-success-bg: #112B1C;
-    --color-warning: #FFC65C;
-    --color-warning-bg: #2B2110;
-    --color-error: #FF6B6B;
-    --color-error-bg: #2E1414;
-    --color-danger: #FF6B6B;
-    --color-danger-hover: #FF8585;
-    --color-danger-active: #E85A5A;
-    --color-on-danger: #0B0C0F;
+  --color-hero-bg: #1A1730;
+  --color-hero-bg-end: #241F42;
+  --color-hero-surface: rgba(255, 255, 255, 0.07);
+  --color-hero-surface-strong: #2B2547;
+  --color-hero-track: #2B2547;
+  --color-hero-text: #F7F5FF;
+  --color-hero-text-secondary: #A9A6C5;
+  --color-hero-text-muted: #8F8BAC;
+  --color-hero-border: rgba(169, 166, 197, 0.16);
+  --color-hero-active: #F7F5FF;
+  --color-hero-active-text: #1A1730;
+  --color-hero-line: #7CE7B1;
+  --color-hero-line-area: rgba(124, 231, 177, 0.18);
 
-    --color-finance-gain: #FF6B6B;
-    --color-finance-loss: #4CD97B;
-    --color-finance-gain-bg: #2E1414;
-    --color-finance-loss-bg: #112B1C;
-    --color-finance-flat: #A1A1A6;
-    --color-finance-income: #4CD97B;
-    --color-finance-expense: #F5F5F7;
-    --color-finance-transfer: #9BB6FF;
-    --color-finance-net-change: #F5F5F7;
-    --color-finance-liability: #F5F5F7;
+  --color-info: #A9A4FF;
+  --color-info-bg: #29244A;
+  --color-success: #4ED39B;
+  --color-success-bg: #123526;
+  --color-warning: #FFC65C;
+  --color-warning-bg: #2B2110;
+  --color-error: #FF7A7A;
+  --color-error-bg: #2E1414;
+  --color-danger: #FF7A7A;
+  --color-danger-hover: #FF9494;
+  --color-danger-active: #E86565;
+  --color-on-danger: #0F0D1A;
 
-    --color-chart-cash: #9BB6FF;
-    --color-chart-investment: #B39DFF;
-    --color-chart-property: #5EE0D0;
-    --color-chart-receivable: #FFD166;
-    --color-chart-stock: #FF9D7A;
-    --color-chart-other: #A1A1A6;
-    --color-chart-liability: #E58BB4;
-    --color-chart-net-assets: #9BB6FF;
-    --color-chart-total-assets: #5EE0D0;
-    --color-chart-total-liabilities: #E58BB4;
-    --color-chart-grid: rgba(255, 255, 255, 0.08);
-    --color-chart-track: rgba(255, 255, 255, 0.12);
-    --color-chart-separator: #1C1C1E;
-    --color-chart-reference: #8E8E93;
+  --color-finance-gain: #FF7A7A;
+  --color-finance-loss: #4ED39B;
+  --color-finance-gain-bg: #2E1414;
+  --color-finance-loss-bg: #123526;
+  --color-finance-flat: #A9A6C5;
+  --color-finance-income: #4ED39B;
+  --color-finance-expense: #F7F5FF;
+  --color-finance-transfer: #A9A4FF;
+  --color-finance-net-change: #F7F5FF;
+  --color-finance-liability: #F7F5FF;
 
-    --color-bg-popover: #1C1C1E;
-    --color-bg-tooltip: #F5F5F7;
-    --color-text-tooltip: #0B0C0F;
-    --color-overlay: rgba(0, 0, 0, 0.62);
-    --color-shadow: rgba(0, 0, 0, 0.45);
-    --color-shadow-strong: rgba(0, 0, 0, 0.62);
-    --color-skeleton-base: #2C2C2E;
-    --color-skeleton-highlight: #3A3A3C;
-    --color-text-selection-bg: #1E2A4D;
-    --color-text-selection-fg: #F5F5F7;
+  --color-chart-cash: #A9A4FF;
+  --color-chart-investment: #B39DFF;
+  --color-chart-property: #5EE0D0;
+  --color-chart-receivable: #FFD166;
+  --color-chart-stock: #FF9D7A;
+  --color-chart-other: #A9A6C5;
+  --color-chart-liability: #E58BB4;
+  --color-chart-net-assets: #A9A4FF;
+  --color-chart-total-assets: #5EE0D0;
+  --color-chart-total-liabilities: #E58BB4;
+  --color-chart-grid: rgba(255, 255, 255, 0.08);
+  --color-chart-track: rgba(255, 255, 255, 0.12);
+  --color-chart-separator: #1A1730;
+  --color-chart-reference: #8F8BAC;
+
+  --color-bg-popover: #1A1730;
+  --color-bg-tooltip: #F7F5FF;
+  --color-text-tooltip: #0F0D1A;
+  --color-overlay: rgba(0, 0, 0, 0.62);
+  --color-shadow: rgba(0, 0, 0, 0.40);
+  --color-shadow-strong: rgba(0, 0, 0, 0.58);
+  --color-shadow-hero: rgba(0, 0, 0, 0.52);
+  --color-skeleton-base: #24203A;
+  --color-skeleton-highlight: #302A4A;
+  --color-text-selection-bg: #342E5C;
+  --color-text-selection-fg: #F7F5FF;
 }

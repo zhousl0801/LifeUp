@@ -42,9 +42,10 @@ import AppIcon from './AppIcon.vue'
   box-sizing: border-box;
   width: min(100%, 430px);
   height: calc(var(--nav-height) + env(safe-area-inset-bottom));
-  padding: 6px 2px calc(6px + env(safe-area-inset-bottom));
-  border-top: 1px solid var(--color-border-subtle);
+  padding: 8px 2px calc(8px + env(safe-area-inset-bottom));
+  border-top: 0;
   background: var(--color-bg-surface);
+  box-shadow: 0 -8px 28px var(--color-shadow);
   transform: translateX(-50%);
 }
 
@@ -53,17 +54,18 @@ import AppIcon from './AppIcon.vue'
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
   padding: 0;
   color: var(--color-text-secondary);
-  font-size: var(--text-caption);
+  font-size: 0.6875rem;
+  font-weight: 500;
   text-decoration: none;
 }
 
 .nav-icon {
-  width: 22px;
-  height: 22px;
+  width: 23px;
+  height: 23px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.7;
@@ -110,11 +112,11 @@ import AppIcon from './AppIcon.vue'
   flex-direction: column;
   justify-content: flex-end;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
   padding: 0;
   color: var(--color-brand);
-  font-size: var(--text-caption);
+  font-size: 0.6875rem;
   font-weight: 600;
   text-decoration: none;
 }
@@ -122,24 +124,25 @@ import AppIcon from './AppIcon.vue'
 .nav-add-circle {
   display: grid;
   place-items: center;
-  width: 50px;
-  height: 50px;
-  margin-top: -26px;
-  border: 3px solid var(--color-bg-surface);
+  width: 54px;
+  height: 54px;
+  margin-top: -28px;
+  border: 4px solid var(--color-bg-surface);
   border-radius: 50%;
-  background: var(--color-brand);
-  color: var(--color-on-brand);
-  box-shadow: 0 6px 16px var(--color-shadow);
+  background: var(--color-accent-mint);
+  color: var(--color-on-accent-mint);
+  box-shadow: 0 10px 24px rgba(55, 185, 133, 0.32);
   transition: background var(--motion-fast) ease, transform var(--motion-fast) ease;
 }
 
 .nav-add-circle :deep(.app-icon) {
-  width: 24px;
-  height: 24px;
+  width: 25px;
+  height: 25px;
+  stroke-width: 2.2;
 }
 
 .nav-add:hover .nav-add-circle {
-  background: var(--color-brand-hover);
+  background: #94F3C5;
 }
 
 .nav-add:active .nav-add-circle {

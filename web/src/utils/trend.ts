@@ -1,5 +1,5 @@
 import { addAmounts, formatMoney } from './format'
-import { chartFontSize, chartTheme } from './chartTheme'
+import { chartFontSize, chartTheme, type ChartThemeVariant } from './chartTheme'
 import type { AssetTrend, AssetTrendPoint, TrendRange } from '../types/trend'
 
 export type ScopedAssetKey = 'cash' | 'providentFund' | 'fund' | 'gold' | 'stock'
@@ -140,10 +140,15 @@ export function trendTooltip(point: AssetTrendPoint, scoped: ScopedTrend): strin
   return lines.join('<br/>')
 }
 
-export function buildTrendOption(trend: AssetTrend, scoped: ScopedTrend) {
-  const theme = chartTheme()
+export function buildTrendOption(
+  trend: AssetTrend,
+  scoped: ScopedTrend,
+  variant: ChartThemeVariant = 'default'
+) {
+  const theme = chartTheme(variant)
   const dates = scoped.points.map((point) => point.date)
   const values = scoped.points.map((point) => point.value)
+  const isHero = variant === 'hero'
   const marks = scoped.additions.map((addition) => ({
     xAxis: addition.date,
     lineStyle: { type: 'dashed', color: theme.pointer, width: 1 },
@@ -158,10 +163,15 @@ export function buildTrendOption(trend: AssetTrend, scoped: ScopedTrend) {
 
   return {
     animation: false,
-    grid: { left: 10, right: 46, top: 28, bottom: 24 },
+    grid: isHero
+      ? { left: 0, right: 0, top: 24, bottom: 4 }
+      : { left: 10, right: 46, top: 28, bottom: 24 },
     tooltip: {
       trigger: 'axis',
       confine: true,
+      backgroundColor: isHero ? 'rgba(46, 43, 70, 0.96)' : undefined,
+      borderWidth: 0,
+      textStyle: isHero ? { color: '#F7F5FF', fontSize: chartFontSize(12) } : undefined,
       axisPointer: { type: 'line', lineStyle: { color: theme.pointer, type: 'dashed' } },
       formatter: (params: { dataIndex?: number }[]) => {
         const index = params[0]?.dataIndex
@@ -178,11 +188,12 @@ export function buildTrendOption(trend: AssetTrend, scoped: ScopedTrend) {
       boundaryGap: false,
       data: dates,
       axisLabel: {
+        show: !isHero,
         color: theme.text,
         fontSize: chartFontSize(12),
         formatter: (value: string) => trendAxisLabel(value, trend.range)
       },
-      axisLine: { lineStyle: { color: theme.axis } },
+      axisLine: { show: !isHero, lineStyle: { color: theme.axis } },
       axisTick: { show: false }
     },
     yAxis: {

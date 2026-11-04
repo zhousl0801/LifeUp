@@ -25,6 +25,7 @@ echarts.use([
 
 const props = defineProps<{
   trend: AssetTrend
+  variant?: 'default' | 'hero'
 }>()
 
 const emit = defineEmits<{ select: [point: AssetTrendPoint] }>()
@@ -44,7 +45,10 @@ function resize(): void {
 }
 
 function render(): void {
-  chart?.setOption(buildTrendOption(props.trend, scoped.value) as EChartsOption, { notMerge: true })
+  chart?.setOption(
+    buildTrendOption(props.trend, scoped.value, props.variant ?? 'default') as EChartsOption,
+    { notMerge: true }
+  )
 }
 
 onMounted(() => {
@@ -74,6 +78,11 @@ watch(
   { deep: true }
 )
 
+watch(
+  () => props.variant,
+  () => render()
+)
+
 watch(resolvedTheme, () => render())
 
 onBeforeUnmount(() => {
@@ -84,12 +93,22 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="container" class="trend-chart" role="img" :aria-label="chartLabel" />
+  <div
+    ref="container"
+    class="trend-chart"
+    :class="{ 'is-hero': variant === 'hero' }"
+    role="img"
+    :aria-label="chartLabel"
+  />
 </template>
 
 <style scoped>
 .trend-chart {
   width: 100%;
   height: 120px;
+}
+
+.trend-chart.is-hero {
+  height: 140px;
 }
 </style>

@@ -135,8 +135,8 @@ test('shows recorded assets, no comparable month change and the seven-day trend 
 
   expect(view.find('.hero-label').text()).toContain('已记录资产')
   expect(view.find('.hero-change').text()).toContain('暂无可比数据')
-  expect(view.find('.added-note').text()).toContain('111,166.75')
-  expect(view.find('.hero-meta').text()).toContain('已记录 3 类')
+  expect(view.find('.added-note').exists()).toBe(false)
+  expect(view.find('.hero-meta').exists()).toBe(false)
   expect(view.find('.trend-panel h2').text()).toBe('资产趋势')
   expect(view.find('.trend-wait').text()).toContain('记录满 7 天后显示趋势')
   expect(view.find('.trend-wait').text()).toContain('已记录 1/7 天')

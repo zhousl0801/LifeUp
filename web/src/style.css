@@ -11,7 +11,7 @@ body {
   overflow-x: clip;
   background: var(--color-bg-page);
   color: var(--color-text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, "PingFang SC", "HarmonyOS Sans", "Noto Sans SC", "Microsoft YaHei", sans-serif;
   font-size: var(--text-body);
   line-height: var(--leading-normal);
   -webkit-font-smoothing: antialiased;
@@ -79,11 +79,11 @@ summary:focus-visible {
 .app-name::before {
   content: "";
   display: inline-block;
-  width: 5px;
+  width: 6px;
   height: 19px;
   margin-right: 9px;
-  border-radius: 2px;
-  background: var(--color-brand);
+  border-radius: var(--radius-pill);
+  background: linear-gradient(180deg, var(--color-accent-mint), var(--color-brand));
   vertical-align: -3px;
 }
 
@@ -120,26 +120,29 @@ summary:focus-visible {
 
 .secondary-button {
   min-height: var(--touch-target);
-  padding: 0 16px;
-  border: 1px solid var(--color-border-control);
-  border-radius: var(--radius-control);
-  background: var(--color-bg-surface);
-  color: var(--color-brand);
+  padding: 0 18px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-subtle);
+  color: var(--color-text-primary);
   font-size: 0.875rem;
+  font-weight: 600;
 }
 
 .secondary-button:hover {
-  background: var(--color-brand-soft);
+  background: var(--color-bg-hover);
+  color: var(--color-brand);
 }
 
 .primary-button {
-  min-height: 50px;
+  min-height: 52px;
   border: 0;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-pill);
   background: var(--color-brand);
   color: var(--color-on-brand);
   font-size: var(--text-body);
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .primary-button:hover:not(:disabled) {
@@ -148,6 +151,7 @@ summary:focus-visible {
 
 .primary-button:active:not(:disabled) {
   background: var(--color-brand-active);
+  transform: scale(.99);
 }
 
 .primary-button:disabled {
@@ -193,13 +197,14 @@ summary:focus-visible {
   height: var(--touch-target);
   padding: 0;
   border: 0;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--color-brand);
+  border-radius: 50%;
+  background: var(--color-bg-subtle);
+  color: var(--color-text-primary);
 }
 
 .icon-button:hover {
   background: var(--color-brand-soft);
+  color: var(--color-brand);
 }
 .icon-button:active {
   background: var(--color-bg-selected);
@@ -293,23 +298,24 @@ summary:focus-visible {
 .form-field select {
   box-sizing: border-box;
   width: 100%;
-  min-height: 48px;
-  padding: 0 12px;
-  border: 1px solid var(--color-border-control);
+  min-height: 52px;
+  padding: 0 14px;
+  border: 1px solid transparent;
   border-radius: var(--radius-control);
-  background: var(--color-bg-surface);
+  background: var(--color-bg-subtle);
   color: var(--color-text-primary);
   font-size: 1rem;
 }
 
 .form-field input:hover,
 .form-field select:hover {
-  border-color: var(--color-border-hover);
+  border-color: var(--color-border-default);
 }
 
 .form-field input:focus-visible,
 .form-field select:focus-visible {
   border-color: var(--color-border-focus);
+  background: var(--color-bg-surface);
 }
 
 .form-hint {

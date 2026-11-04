@@ -108,8 +108,6 @@ const barSegments = computed(() => rows.value
   .filter((row) => row.configured && !row.notHeld && row.amount !== null && row.amount > 0)
   .map((row) => ({ key: row.key, width: row.percent ?? 0 })))
 
-const recordedCount = computed(() => rows.value.filter((row) => row.configured && !row.notHeld).length)
-
 const barLabel = computed(() => {
   const parts = rows.value
     .filter((row) => row.configured && !row.notHeld && row.percent !== null)
@@ -174,7 +172,6 @@ function changeTone(row: DistributionRow): string {
     <div class="distribution-head">
       <h2>资产分布</h2>
       <span class="head-meta">
-        <span class="recorded-count">已记录 {{ recordedCount }} 类</span>
         <RouterLink v-if="manageTo" :to="manageTo" class="manage-link">管理 ›</RouterLink>
       </span>
     </div>
@@ -242,6 +239,10 @@ function changeTone(row: DistributionRow): string {
 <style scoped>
 .distribution {
   margin-bottom: 24px;
+  padding: var(--card-padding);
+  border-radius: var(--radius-card);
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-card);
 }
 
 .distribution-head {
@@ -249,20 +250,16 @@ function changeTone(row: DistributionRow): string {
   justify-content: space-between;
   align-items: baseline;
   gap: 12px;
-  margin-bottom: 10px;
+  margin-bottom: 14px;
 }
 
 .distribution-head h2 {
   margin: 0;
-  font-size: var(--text-headline);
-  font-weight: 600;
-  letter-spacing: -0.2px;
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.3px;
 }
 
-.recorded-count {
-  color: var(--color-text-secondary);
-  font-size: var(--text-footnote);
-}
 
 .head-meta {
   display: inline-flex;
@@ -282,23 +279,23 @@ function changeTone(row: DistributionRow): string {
 
 .ratio-bar {
   display: flex;
+  gap: 4px;
   overflow: hidden;
   height: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 6px;
   border-radius: var(--radius-pill);
-  background: var(--color-bg-subtle);
 }
 
 .ratio-segment {
   height: 100%;
-}
-
-.ratio-segment + .ratio-segment {
-  box-shadow: 0 0 0 1px var(--color-bg-surface);
+  min-width: 2px;
+  border-radius: var(--radius-pill);
 }
 
 .ratio-empty {
   width: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-subtle);
 }
 
 .dot {
@@ -330,9 +327,7 @@ function changeTone(row: DistributionRow): string {
 .asset-list {
   margin: 0;
   padding: 0;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-card);
-  background: var(--color-bg-surface);
+  background: transparent;
   list-style: none;
 }
 
@@ -345,7 +340,7 @@ function changeTone(row: DistributionRow): string {
   grid-template-columns: minmax(0, 1fr) auto 58px;
   align-items: center;
   gap: 10px;
-  padding: 13px 13px;
+  padding: 14px 0;
   color: inherit;
   text-decoration: none;
 }
@@ -370,12 +365,12 @@ function changeTone(row: DistributionRow): string {
 .asset-title {
   display: flex;
   align-items: center;
-  gap: 7px;
-  font-size: 0.8125rem;
+  gap: 8px;
+  font-size: 0.875rem;
 }
 
 .asset-title b {
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .asset-main small,
@@ -395,8 +390,8 @@ function changeTone(row: DistributionRow): string {
 }
 
 .asset-amount {
-  font-size: 0.8125rem;
-  font-weight: 500;
+  font-size: 0.875rem;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }

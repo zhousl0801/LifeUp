@@ -930,8 +930,8 @@ function handleKeydown(event: KeyboardEvent): void {
   flex-shrink: 0;
   min-height: calc(56px + env(safe-area-inset-top));
   padding: env(safe-area-inset-top) 72px 0;
-  background: var(--color-brand);
-  color: var(--color-on-brand);
+  background: linear-gradient(180deg, var(--color-hero-bg) 0%, var(--color-hero-bg-end) 100%);
+  color: var(--color-hero-text);
 }
 
 .kind-tabs {
@@ -947,14 +947,14 @@ function handleKeydown(event: KeyboardEvent): void {
   padding: 0 6px;
   border: 0;
   background: transparent;
-  color: var(--color-on-brand);
+  color: var(--color-hero-text);
   font-size: 1.0625rem;
   font-weight: 500;
-  opacity: 0.66;
+  opacity: 0.62;
 }
 
 .kind-tabs button.active {
-  font-weight: 600;
+  font-weight: 700;
   opacity: 1;
 }
 
@@ -975,15 +975,24 @@ function handleKeydown(event: KeyboardEvent): void {
 
 .header-cancel {
   position: absolute;
-  right: 16px;
-  bottom: 0;
-  min-height: 56px;
-  padding: 0 4px;
+  right: 14px;
+  bottom: 10px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 14px;
   border: 0;
-  background: transparent;
-  color: var(--color-on-brand);
-  font-size: var(--text-body);
-  font-weight: 500;
+  border-radius: var(--radius-pill);
+  background: var(--color-hero-surface);
+  color: var(--color-hero-text);
+  font-size: var(--text-subhead);
+  font-weight: 600;
+}
+
+.header-cancel:hover {
+  background: var(--color-hero-surface-strong);
 }
 
 .category-area {
@@ -1063,8 +1072,8 @@ function handleKeydown(event: KeyboardEvent): void {
   width: 58px;
   height: 58px;
   border-radius: 50%;
-  background: var(--color-bg-subtle);
-  color: var(--color-icon-default);
+  background: var(--color-brand-soft);
+  color: var(--color-brand);
   transition: background var(--motion-fast) ease, color var(--motion-fast) ease;
 }
 
@@ -1075,7 +1084,7 @@ function handleKeydown(event: KeyboardEvent): void {
 
 @media (hover: hover) and (pointer: fine) {
   .category-tile:hover:not(:disabled) .category-mark {
-    background: var(--color-brand-soft);
+    background: var(--color-brand-soft-hover);
     color: var(--color-brand);
   }
 }
@@ -1085,11 +1094,13 @@ function handleKeydown(event: KeyboardEvent): void {
 .category-tile.active:active .category-mark {
   background: var(--color-brand);
   color: var(--color-on-brand);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--color-brand) 28%, transparent);
 }
 
 .category-name {
   max-width: 100%;
   overflow: hidden;
+  font-weight: 500;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1097,7 +1108,7 @@ function handleKeydown(event: KeyboardEvent): void {
 
 .category-tile.active .category-name {
   color: var(--color-brand);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .category-tile:disabled {
@@ -1123,13 +1134,13 @@ function handleKeydown(event: KeyboardEvent): void {
 }
 
 .category-add .category-mark {
-  border: 1px dashed var(--color-border-control);
-  background: transparent;
+  background: var(--color-brand-soft);
   color: var(--color-brand);
 }
 
 .category-add .category-name {
   color: var(--color-brand);
+  font-weight: 600;
 }
 
 .category-hint {
@@ -1169,8 +1180,8 @@ function handleKeydown(event: KeyboardEvent): void {
   overflow: hidden;
   color: var(--color-text-primary);
   font-size: clamp(2.75rem, 12vw, 3.25rem);
-  font-weight: 500;
-  letter-spacing: -1.4px;
+  font-weight: 700;
+  letter-spacing: -0.05em;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
@@ -1180,19 +1191,19 @@ function handleKeydown(event: KeyboardEvent): void {
 .note-bar {
   display: block;
   flex-shrink: 0;
-  margin: 4px 16px 12px;
+  margin: 6px 16px 14px;
 }
 
 .note-bar input {
   box-sizing: border-box;
   width: 100%;
-  min-height: 44px;
-  padding: 0 14px;
+  min-height: 48px;
+  padding: 0 18px;
   border: 0;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-pill);
   background: var(--color-bg-subtle);
   color: var(--color-text-primary);
-  font-size: 1rem;
+  font-size: var(--text-body);
 }
 
 .note-bar input::placeholder {
@@ -1201,7 +1212,7 @@ function handleKeydown(event: KeyboardEvent): void {
 
 .note-bar input:focus-visible {
   outline: 2px solid var(--color-focus-ring);
-  outline-offset: 1px;
+  outline-offset: 2px;
 }
 
 .date-proxy {
@@ -1259,11 +1270,11 @@ function handleKeydown(event: KeyboardEvent): void {
 }
 
 .reverse-panel {
-  margin-top: 12px;
-  padding: 14px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-control);
-  background: var(--color-bg-surface);
+  margin-top: 14px;
+  padding: 16px 18px;
+  border: 0;
+  border-radius: var(--radius-card);
+  background: var(--color-bg-subtle);
 }
 
 .reverse-panel p {
@@ -1281,13 +1292,14 @@ function handleKeydown(event: KeyboardEvent): void {
 }
 
 .danger-button {
-  min-height: var(--touch-target);
-  padding: 0 16px;
+  min-height: 48px;
+  padding: 0 20px;
   border: 0;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-pill);
   background: var(--color-danger);
-  color: var(--color-on-brand);
-  font-size: 0.8125rem;
+  color: var(--color-on-danger);
+  font-size: var(--text-subhead);
+  font-weight: 700;
 }
 
 .danger-button:hover:not(:disabled) {
@@ -1305,11 +1317,11 @@ function handleKeydown(event: KeyboardEvent): void {
 
 .form-error {
   margin: 14px 0 0;
-  padding: 10px 12px;
-  border-radius: var(--radius-tag);
+  padding: 12px 14px;
+  border-radius: var(--radius-control);
   background: var(--color-error-bg);
   color: var(--color-error);
-  font-size: 0.75rem;
+  font-size: var(--text-footnote);
   line-height: 1.7;
 }
 

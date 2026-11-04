@@ -18,9 +18,10 @@ defineEmits<{ back: [] }>()
   width: var(--touch-target);
   height: var(--touch-target);
   padding: 0;
-  border: 1px solid var(--color-border-subtle);
+  border: 0;
   border-radius: 50%;
   background: var(--color-bg-surface);
+  box-shadow: var(--shadow-card);
   color: var(--color-text-primary);
   transition: background var(--motion-fast) ease, transform var(--motion-fast) ease;
 }

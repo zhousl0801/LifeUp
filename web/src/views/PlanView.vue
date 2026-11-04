@@ -1218,10 +1218,6 @@ function goBack(): void {
           </nav>
         </template>
       </template>
-
-      <p class="summary-note">
-        计划只生成账本记录，不验证银行或平台的实际资金操作；余额不足时整笔待处理，不部分扣款。
-      </p>
     </template>
 
     <BottomSheet
@@ -1394,8 +1390,9 @@ function goBack(): void {
 
 .plan-header h1 {
   margin: 0;
-  font-size: 1.1875rem;
-  font-weight: 600;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.4px;
 }
 
 .header-action {
@@ -1405,10 +1402,11 @@ function goBack(): void {
   width: var(--touch-target);
   height: var(--touch-target);
   padding: 0;
-  border: 1px solid var(--color-border-subtle);
+  border: 0;
   border-radius: 50%;
   background: var(--color-bg-surface);
   color: var(--color-brand);
+  box-shadow: var(--shadow-card);
   transition: background var(--motion-fast) ease, transform var(--motion-fast) ease;
 }
 
@@ -1454,19 +1452,21 @@ function goBack(): void {
   justify-content: space-between;
   align-items: baseline;
   gap: 12px;
-  margin: 22px 0 10px;
+  margin: 24px 0 12px;
 }
 
 .section-head h2 {
   margin: 0;
-  font-size: 0.875rem;
-  font-weight: 600;
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.3px;
 }
 
 .section-head .section-title {
   margin: 0;
-  font-size: 0.875rem;
-  font-weight: 600;
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.3px;
 }
 
 .occurrence-head {
@@ -1584,13 +1584,13 @@ function goBack(): void {
 }
 
 .group-title {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  letter-spacing: -0.1px;
+  font-size: var(--text-subhead);
+  font-weight: 700;
+  letter-spacing: -0.2px;
 }
 
 .group-summary {
-  margin-top: 3px;
+  margin-top: 4px;
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
   line-height: 1.5;
@@ -1598,17 +1598,18 @@ function goBack(): void {
 
 .group-add {
   flex: 0 0 auto;
-  padding: 4px 7px;
+  min-height: 34px;
+  padding: 0 14px;
   border: 0;
-  border-radius: var(--radius-tag);
-  background: transparent;
-  color: var(--group-accent);
+  border-radius: var(--radius-pill);
+  background: var(--color-brand-soft);
+  color: var(--color-brand);
   font-size: var(--text-caption);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .group-add:hover {
-  background: color-mix(in srgb, var(--group-accent) 10%, var(--color-bg-surface));
+  background: var(--color-brand-soft-hover);
 }
 
 .fund-plan-list {
@@ -1627,18 +1628,11 @@ function goBack(): void {
 
 .plan-card,
 .occurrence-card {
-  padding: 14px;
-  border: 1px solid var(--color-border-subtle);
+  padding: 20px;
+  border: 0;
   border-radius: var(--radius-card);
   background: var(--color-bg-surface);
-}
-
-.plan-group .plan-card {
-  border-left: 3px solid var(--group-accent);
-}
-
-.plan-card.is-paused {
-  border-left-color: var(--color-text-disabled);
+  box-shadow: var(--shadow-card);
 }
 
 .plan-card header {
@@ -1653,20 +1647,24 @@ function goBack(): void {
 
 .plan-card header strong {
   display: block;
-  font-size: 0.8125rem;
-  font-weight: 600;
+  color: var(--color-text-primary);
+  font-size: var(--text-subhead);
+  font-weight: 700;
+  letter-spacing: -0.2px;
 }
 
 .plan-card header small {
   display: block;
-  margin-top: 4px;
+  margin-top: 5px;
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
 }
 
 .plan-amount {
-  font-size: 1rem;
-  font-weight: 500;
+  color: var(--color-text-primary);
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1682,8 +1680,8 @@ function goBack(): void {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-top: 11px;
-  padding-top: 8px;
+  margin-top: 14px;
+  padding-top: 10px;
   border-top: 1px solid var(--color-border-subtle);
 }
 
@@ -1699,7 +1697,7 @@ function goBack(): void {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 9px;
+  gap: 2px;
 }
 
 .action-sep {
@@ -1712,13 +1710,18 @@ function goBack(): void {
   display: inline-flex;
   align-items: center;
   min-height: var(--touch-target);
-  padding: 0;
+  padding: 0 8px;
   border: 0;
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--color-brand);
   font-size: var(--text-caption);
-  font-weight: 500;
+  font-weight: 600;
   white-space: nowrap;
+}
+
+.link-button:hover:not(:disabled) {
+  background: var(--color-brand-soft);
 }
 
 .link-button:disabled {
@@ -1726,20 +1729,31 @@ function goBack(): void {
 }
 
 .small-button {
-  min-height: var(--touch-target);
-  padding: 0 11px;
-  border: 1px solid var(--color-border-control);
-  border-radius: var(--radius-tag);
-  background: var(--color-bg-surface);
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-brand-soft);
   color: var(--color-brand);
   font-size: var(--text-caption);
+  font-weight: 700;
   white-space: nowrap;
+}
+
+.small-button:hover:not(:disabled) {
+  background: var(--color-brand-soft-hover);
+}
+
+.small-button:disabled {
+  background: var(--color-bg-disabled);
+  color: var(--color-text-disabled);
 }
 
 .fund-details > summary {
   display: flex;
   align-items: center;
   gap: 10px;
+  padding-bottom: 4px;
   list-style: none;
   cursor: pointer;
 }
@@ -1770,8 +1784,9 @@ function goBack(): void {
 
 .fund-summary-copy strong {
   overflow: hidden;
-  font-size: 0.8125rem;
-  font-weight: 600;
+  font-size: var(--text-subhead);
+  font-weight: 700;
+  letter-spacing: -0.2px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1790,8 +1805,9 @@ function goBack(): void {
 }
 
 .fund-summary-amount b {
-  font-size: 1rem;
-  font-weight: 500;
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1806,7 +1822,8 @@ function goBack(): void {
 }
 
 .fund-plan-rows {
-  margin-top: 11px;
+  margin-top: 12px;
+  padding-top: 4px;
   border-top: 1px solid var(--color-border-subtle);
 }
 
@@ -1814,8 +1831,8 @@ function goBack(): void {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
-  gap: 8px;
-  padding: 10px 0;
+  gap: 10px;
+  padding: 12px 0;
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
@@ -1833,14 +1850,14 @@ function goBack(): void {
   justify-content: center;
   align-items: center;
   box-sizing: border-box;
-  min-width: 34px;
-  min-height: 22px;
-  padding: 0 6px;
-  border-radius: var(--radius-tag);
+  min-width: 36px;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
   background: var(--color-brand-soft);
   color: var(--color-brand);
   font-size: var(--text-caption);
-  font-weight: 600;
+  font-weight: 700;
   white-space: nowrap;
 }
 
@@ -1864,8 +1881,9 @@ function goBack(): void {
 }
 
 .fund-row-head b {
-  font-size: 0.75rem;
-  font-weight: 500;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1879,7 +1897,7 @@ function goBack(): void {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 9px;
+  gap: 2px;
 }
 
 .occurrence-list {
@@ -1913,19 +1931,21 @@ function goBack(): void {
 
 .pagination-button {
   min-width: 76px;
-  min-height: var(--touch-target);
-  padding: 0 14px;
-  border: 1px solid var(--color-border-control);
-  border-radius: var(--radius-control);
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--radius-pill);
   background: var(--color-bg-surface);
   color: var(--color-brand);
   font-size: var(--text-caption);
-  font-weight: 500;
+  font-weight: 600;
+  box-shadow: var(--shadow-card);
 }
 
 .pagination-button:disabled {
-  border-color: var(--color-border-subtle);
+  background: var(--color-bg-disabled);
   color: var(--color-text-disabled);
+  box-shadow: none;
 }
 
 .pagination-status {
@@ -1937,14 +1957,16 @@ function goBack(): void {
 .occurrence-card {
   display: flex;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
   align-items: flex-start;
+  padding: 16px 18px;
 }
 
 .occurrence-card strong {
   display: block;
-  font-size: 0.75rem;
-  font-weight: 600;
+  color: var(--color-text-primary);
+  font-size: var(--text-footnote);
+  font-weight: 700;
 }
 
 .occurrence-card small {
@@ -1986,16 +2008,21 @@ function goBack(): void {
   text-align: center;
 }
 
+.plan-page :deep(.calendar-card) {
+  border: 0;
+  box-shadow: var(--shadow-card);
+}
+
 .fund-selected {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   min-height: var(--touch-target);
-  padding: 8px 10px;
-  border: 1px solid var(--color-border-control);
+  padding: 10px 14px;
+  border: 0;
   border-radius: var(--radius-control);
-  background: var(--color-bg-surface);
+  background: var(--color-bg-subtle);
 }
 
 .fund-selected strong {
@@ -2019,9 +2046,10 @@ function goBack(): void {
   max-height: 240px;
   margin-top: 6px;
   overflow-y: auto;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-control);
+  border: 0;
+  border-radius: var(--radius-card);
   background: var(--color-bg-surface);
+  box-shadow: var(--shadow-float);
 }
 
 .fund-search-result {
