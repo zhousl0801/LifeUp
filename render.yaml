@@ -3,9 +3,9 @@ services:
     name: asset-manager-api
     runtime: docker
     dockerfilePath: ./api/Dockerfile
-    dockerContext: ./api
+    dockerContext: .
     plan: free
-    region: oregon
+    region: singapore
     envVars:
       - key: ASPNETCORE_ENVIRONMENT
         value: Production

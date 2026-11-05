@@ -8,7 +8,7 @@ import AssetDistribution from '../components/AssetDistribution.vue'
 import BackButton from '../components/BackButton.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import { useLedgerStore } from '../stores/ledger'
-import { formatBusinessDate, formatMoney, todayInBusinessTimeZone } from '../utils/format'
+import { formatMoney, todayInBusinessTimeZone } from '../utils/format'
 import type { AssetKey, LedgerOverview, MonthChange } from '../types/ledger'
 
 const router = useRouter()
@@ -20,16 +20,6 @@ const isLoading = ref(false)
 const errorMessage = ref('')
 const notice = ref('')
 const maintenanceOpen = ref(false)
-
-const recordedCount = computed(() => {
-  if (!overview.value) {
-    return 0
-  }
-
-  return [overview.value.cash, overview.value.providentFund, overview.value.fund, overview.value.gold, overview.value.stock]
-    .filter((asset) => asset.isConfigured && !asset.notHeld)
-    .length
-})
 
 const missingAssets = computed(() => {
   const ledger = overview.value
@@ -172,7 +162,6 @@ function goHome(): void {
         <BackButton @back="goHome" />
         <div class="page-head-title">
           <h1>资产</h1>
-          <p>维护每类资产的余额与覆盖范围</p>
         </div>
         <button type="button" class="maintenance-link" @click="maintenanceOpen = true">维护</button>
       </div>
@@ -192,7 +181,6 @@ function goHome(): void {
           <span class="tag">{{ overview.currency }}</span>
         </p>
         <h1 class="hero-value"><span class="currency">¥</span>{{ formatMoney(overview.totalAssets) }}</h1>
-        <p class="hero-meta">已记录 {{ recordedCount }} 类 · 更新于 {{ formatBusinessDate(updateDate) }}</p>
       </section>
 
       <p v-if="notice" class="notice">{{ notice }}</p>
@@ -213,10 +201,6 @@ function goHome(): void {
         editable
         @toggle-not-held="toggleNotHeld"
       />
-
-      <p class="foot-note">
-        点击资产行查看明细；现金始终计入，公积金、基金、积存金和股票可以标记为不持有。标记不持有不会删除已有记录。
-      </p>
     </template>
 
     <BottomSheet
@@ -261,10 +245,9 @@ function goHome(): void {
 }
 
 .page-head {
-  margin: 0 calc(var(--page-gutter) * -1) 18px;
-  padding: max(14px, env(safe-area-inset-top)) var(--page-gutter) 13px;
-  border-bottom: 1px solid var(--color-border-subtle);
-  background: var(--color-bg-surface);
+  margin: 0 calc(var(--page-gutter) * -1) 16px;
+  padding: max(14px, env(safe-area-inset-top)) var(--page-gutter) 10px;
+  background: transparent;
 }
 
 .page-head-row {
@@ -278,15 +261,19 @@ function goHome(): void {
 }
 
 .maintenance-link {
-  min-height: var(--touch-target);
+  min-height: 40px;
   margin-left: auto;
-  padding: 0 12px;
-  border: 1px solid var(--color-border-subtle);
+  padding: 0 16px;
+  border: 0;
   border-radius: var(--radius-pill);
-  background: var(--color-bg-surface);
+  background: var(--color-bg-subtle);
   color: var(--color-brand);
-  font-size: var(--text-footnote);
+  font-size: 0.875rem;
   font-weight: 600;
+}
+
+.maintenance-link:hover {
+  background: var(--color-brand-soft);
 }
 
 .maintenance-list {
@@ -346,19 +333,18 @@ function goHome(): void {
 
 .page-head h1 {
   margin: 0;
-  font-size: 1.0625rem;
-  font-weight: 600;
-  letter-spacing: -0.3px;
-}
-
-.page-head p {
-  margin: 4px 0 0;
-  color: var(--color-text-secondary);
-  font-size: var(--text-footnote);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.4px;
 }
 
 .hero {
-  padding: 0 3px 18px;
+  margin: 0 0 16px;
+  padding: var(--card-padding);
+  border-radius: var(--radius-card);
+  background: linear-gradient(180deg, var(--color-hero-bg) 0%, var(--color-hero-bg-end) 100%);
+  box-shadow: var(--shadow-hero);
+  color: var(--color-hero-text);
 }
 
 .hero-label {
@@ -366,38 +352,38 @@ function goHome(): void {
   align-items: center;
   gap: 8px;
   margin: 0;
-  color: var(--color-text-secondary);
-  font-size: 0.75rem;
+  color: var(--color-hero-text-secondary);
+  font-size: var(--text-footnote);
+  font-weight: 500;
 }
 
 .tag {
-  padding: 2px 5px;
-  border-radius: var(--radius-tag);
-  background: var(--color-bg-subtle);
-  color: var(--color-text-secondary);
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-hero-surface);
+  color: var(--color-hero-text-secondary);
   font-size: var(--text-caption);
 }
 
 .hero-value {
-  margin: 8px 0 8px;
-  font-size: 2.5rem;
-  font-weight: 500;
-  letter-spacing: -1.7px;
-  line-height: 1.25;
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  margin: 10px 0 0;
+  color: var(--color-hero-text);
+  font-size: clamp(2rem, 11vw, 2.5rem);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.15;
   font-variant-numeric: tabular-nums;
 }
 
 .hero-value .currency {
   margin-right: 5px;
-  font-size: 1.5rem;
-  font-weight: 400;
+  color: var(--color-hero-text-secondary);
+  font-size: 1.25rem;
+  font-weight: 500;
   letter-spacing: 0;
-}
-
-.hero-meta {
-  margin: 0;
-  color: var(--color-text-secondary);
-  font-size: var(--text-footnote);
 }
 
 .notice {
@@ -446,20 +432,13 @@ function goHome(): void {
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  min-height: var(--touch-target);
-  padding: 0 14px;
+  min-height: 40px;
+  padding: 0 16px;
   border-radius: var(--radius-pill);
   background: var(--color-bg-surface);
   color: var(--color-brand);
   font-size: var(--text-footnote);
   font-weight: 600;
   text-decoration: none;
-}
-
-.foot-note {
-  margin: 0 0 16px;
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-  line-height: 1.7;
 }
 </style>

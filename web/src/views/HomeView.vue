@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { fetchAssetTrend, fetchMonthChange } from '../api/ledger'
 import { fetchPlanOverview } from '../api/plans'
+import { refreshQuotes } from '../api/quotes'
+import { getApiErrorMessage } from '../api/client'
+import AppIcon from '../components/AppIcon.vue'
 import AppNav from '../components/AppNav.vue'
 import AssetDistribution from '../components/AssetDistribution.vue'
 import AssetTrendChart from '../components/AssetTrendChart.vue'
@@ -13,24 +16,17 @@ import { useLedgerStore } from '../stores/ledger'
 import { amountTone, formatBusinessDate, formatMoney, formatSignedMoney, sumAmounts, todayInBusinessTimeZone } from '../utils/format'
 import { buildScopedTrend } from '../utils/trend'
 import type { MonthChange } from '../types/ledger'
-import type { AutoPlan, PlanOccurrence, PlanOverview, PlanType } from '../types/plan'
+import type { AutoPlan, PlanCycle, PlanOccurrence, PlanOverview } from '../types/plan'
 import type { AssetTrend, AssetTrendPoint, TrendRange } from '../types/trend'
 
 interface PlanPreviewRow {
   key: string
   date: string
   title: string
-  detail: string
+  cycleLabel: string
   amount: number | null
 }
 
-const planTypeLabels: Record<PlanType, string> = {
-  salaryIncome: '工资到账',
-  providentDeposit: '公积金缴存',
-  providentWithdrawal: '公积金提取',
-  fundSip: '基金定投'
-}
-const weekdayLabels = ['一', '二', '三', '四', '五', '六', '日']
 const rangeOptions: { value: TrendRange; label: string }[] = [
   { value: 'week', label: '7日' },
   { value: 'month', label: '1月' },
@@ -52,18 +48,9 @@ const monthChangeError = ref('')
 const planOverview = ref<PlanOverview | null>(null)
 const planError = ref('')
 const changeSheetOpen = ref(false)
-
-const recordedCount = computed(() => {
-  const ledger = overview.value
-
-  if (!ledger) {
-    return 0
-  }
-
-  return [ledger.cash, ledger.providentFund, ledger.fund, ledger.gold, ledger.stock]
-    .filter((asset) => asset.isConfigured && !asset.notHeld)
-    .length
-})
+const quoteRefreshing = ref(false)
+const quoteNotice = ref('')
+const quoteError = ref('')
 
 const daysRecorded = computed(() => {
   if (!overview.value) {
@@ -76,6 +63,10 @@ const daysRecorded = computed(() => {
 const trendReady = computed(() => daysRecorded.value >= 7)
 const trendProgress = computed(() => Math.min(100, Math.round(daysRecorded.value / 7 * 100)))
 const updateDate = computed(() => trend.value?.to ?? today)
+const totalAmountParts = computed(() => {
+  const [integer, fraction = '00'] = formatMoney(overview.value?.totalAssets ?? 0).split('.')
+  return { integer: integer ?? '0', fraction }
+})
 const scopedTrend = computed(() => trend.value ? buildScopedTrend(trend.value) : null)
 const selectedPoint = computed(() => {
   const scoped = scopedTrend.value
@@ -107,6 +98,7 @@ const planPreview = computed<PlanPreviewRow[]>(() => {
   }
 
   const rows: PlanPreviewRow[] = []
+  const cycleByPlanId = new Map(data.plans.map((plan) => [plan.id, plan.cycle]))
   const pendingByDate = new Map<string, PlanOccurrence[]>()
 
   for (const occurrence of data.pendingOccurrences) {
@@ -120,7 +112,7 @@ const planPreview = computed<PlanPreviewRow[]>(() => {
       key: `pending-${date}`,
       date,
       title: items.length > 1 ? `${items.length} 项待处理记账` : items[0]!.planName,
-      detail: items.some((item) => item.status === 'failed') ? '执行失败，请及时处理' : '等待执行，请确认现金与资产余额',
+      cycleLabel: cycleSummary(items.map((item) => cycleByPlanId.get(item.planId))),
       amount: sumAmounts(items.map(item => item.amount))
     })
   }
@@ -142,13 +134,34 @@ const planPreview = computed<PlanPreviewRow[]>(() => {
       key: `plan-${date}`,
       date,
       title: plans.length > 1 ? `${plans.length} 项自动记账` : plans[0]!.name,
-      detail: plans.map(describePlan).join('、'),
+      cycleLabel: cycleSummary(plans.map((plan) => plan.cycle)),
       amount: sumAmounts(plans.map(plan => plan.amount))
     })
   }
 
   return rows.sort((first, second) => first.date.localeCompare(second.date)).slice(0, 2)
 })
+
+function cycleSummary(cycles: (PlanCycle | undefined)[]): string {
+  const unique = [...new Set(cycles.filter((cycle): cycle is PlanCycle => cycle !== undefined))]
+
+  if (unique.length === 0) {
+    return ''
+  }
+
+  if (unique.length > 1) {
+    return '多类型'
+  }
+
+  switch (unique[0]) {
+    case 'monthly':
+      return '每月'
+    case 'weekly':
+      return '每周'
+    case 'tradingDay':
+      return '交易日'
+  }
+}
 
 function daysBetween(from: string, to: string): number {
   const start = Date.parse(`${from}T00:00:00Z`)
@@ -159,20 +172,6 @@ function daysBetween(from: string, to: string): number {
   }
 
   return Math.round((end - start) / 86_400_000)
-}
-
-function describePlan(plan: AutoPlan): string {
-  const label = planTypeLabels[plan.type]
-
-  if (plan.cycle === 'weekly' && plan.dayOfWeek) {
-    return `每周${weekdayLabels[plan.dayOfWeek - 1] ?? ''} · ${label}`
-  }
-
-  if (plan.dayOfMonth) {
-    return `每月${plan.dayOfMonth}日 · ${label}`
-  }
-
-  return label
 }
 
 function monthLabel(date: string): string {
@@ -249,81 +248,162 @@ async function loadPlans(): Promise<void> {
   }
 }
 
-onMounted(loadLedger)
+async function syncQuotes(): Promise<void> {
+  if (quoteRefreshing.value) {
+    return
+  }
+
+  quoteRefreshing.value = true
+  quoteNotice.value = ''
+  quoteError.value = ''
+
+  try {
+    const run = await refreshQuotes('all')
+    const failed = run.fundFailed + run.goldFailed + run.stockFailed
+    const succeeded = run.fundSucceeded + run.goldSucceeded + run.stockSucceeded
+
+    quoteNotice.value = failed > 0
+      ? `行情同步完成：成功 ${succeeded} 项，失败 ${failed} 项。`
+      : `行情已同步：更新 ${run.updated} 项。`
+
+    await Promise.all([ledgerStore.load(), loadTrend(trendRange.value), loadMonthChange()])
+  } catch (error) {
+    quoteError.value = getApiErrorMessage(error, '行情同步失败，请稍后重试。')
+  } finally {
+    quoteRefreshing.value = false
+  }
+}
+
+onMounted(() => {
+  const statusBar = document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-status-bar-style"]')
+
+  if (statusBar) {
+    statusBar.dataset.previousContent = statusBar.getAttribute('content') ?? 'default'
+    statusBar.setAttribute('content', 'black-translucent')
+  }
+
+  void loadLedger()
+})
+
+onBeforeUnmount(() => {
+  const statusBar = document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-status-bar-style"]')
+
+  if (statusBar) {
+    statusBar.setAttribute('content', statusBar.dataset.previousContent ?? 'default')
+    delete statusBar.dataset.previousContent
+  }
+})
 </script>
 
 <template>
-  <main class="page with-nav">
-    <header class="home-header">
-      <div>
-        <p class="brand">资产管家</p>
-        <h1>总览</h1>
+  <main class="page home-page with-nav">
+    <section class="home-hero">
+      <header class="hero-top">
+        <div class="hero-brand">
+          <p class="brand">资产管家</p>
+          <h1>总览</h1>
+        </div>
+        <div class="hero-actions">
+          <span class="hero-date">{{ formatBusinessDate(updateDate) }}</span>
+          <button
+            type="button"
+            class="sync-button"
+            :disabled="quoteRefreshing"
+            :aria-label="quoteRefreshing ? '正在同步行情' : '同步行情'"
+            :title="quoteRefreshing ? '正在同步行情' : '同步行情'"
+            @click="syncQuotes"
+          >
+            <AppIcon name="refresh" :class="{ spinning: quoteRefreshing }" />
+          </button>
+        </div>
+      </header>
+
+      <p v-if="quoteNotice" class="sync-note" role="status">{{ quoteNotice }}</p>
+      <p v-else-if="quoteError" class="sync-note error" role="alert">{{ quoteError }}</p>
+
+      <div v-if="isLoading" class="hero-loading" role="status" aria-label="正在读取账本">
+        <div class="hero-skeleton-line short" />
+        <div class="hero-skeleton-line amount" />
+        <div class="hero-skeleton-chart" />
       </div>
-      <span class="header-date">{{ formatBusinessDate(updateDate) }}</span>
-    </header>
 
-    <div v-if="isLoading" class="skeleton-stack" role="status" aria-label="正在读取账本">
-      <div class="skeleton skeleton-hero" />
-      <div class="skeleton skeleton-card" />
-      <div class="skeleton skeleton-row" />
-      <div class="skeleton skeleton-row" />
-    </div>
-
-    <section v-else-if="errorMessage" class="state">
-      <p>{{ errorMessage }}</p>
-      <button class="secondary-button" type="button" @click="loadLedger">重新加载</button>
-    </section>
-
-    <template v-else-if="overview">
-      <section class="hero">
-        <p class="hero-label">
-          {{ overview.coverageComplete ? '总资产' : '已记录资产' }}
-          <span class="tag">{{ overview.currency }}</span>
-        </p>
-        <h1 class="hero-value"><span class="currency">¥</span>{{ formatMoney(overview.totalAssets) }}</h1>
-
-        <button
-          v-if="monthChange?.hasComparableData"
-          type="button"
-          class="hero-change"
-          :aria-expanded="changeSheetOpen"
-          @click="changeSheetOpen = true"
-        >
-          <span>本月变化</span>
-          <b :class="amountTone(monthChange.comparableChange)">
-            {{ formatSignedMoney(monthChange.comparableChange ?? 0) }}
-          </b>
-          <span v-if="changePercent !== null" class="change-percent" :class="amountTone(changePercent)">
-            {{ percentLabel(changePercent) }}
-          </span>
-          <span class="info-mark">ⓘ</span>
-        </button>
-        <button
-          v-else
-          type="button"
-          class="hero-change muted"
-          :aria-expanded="changeSheetOpen"
-          @click="changeSheetOpen = true"
-        >
-          <span>本月变化</span>
-          <b>暂无可比数据</b>
-          <span class="info-mark">ⓘ</span>
-        </button>
-
-        <p v-if="addedRecords > 0" class="added-note">
-          含新增记录 {{ formatSignedMoney(addedRecords) }}，不计入变化
-        </p>
-        <p v-if="monthChangeError" class="meta">{{ monthChangeError }}</p>
-
-        <p class="hero-meta">
-          已记录 {{ recordedCount }} 类 · 更新于 {{ formatBusinessDate(updateDate) }}
-        </p>
+      <section v-else-if="errorMessage" class="hero-error">
+        <p>{{ errorMessage }}</p>
+        <button class="hero-reload" type="button" @click="loadLedger">重新加载</button>
       </section>
 
-      <section class="trend-panel">
-        <div class="section-head">
-          <h2>资产趋势</h2>
-          <div class="range" role="tablist" aria-label="趋势范围">
+      <template v-else-if="overview">
+        <div class="hero-amount">
+          <p class="hero-label">
+            {{ overview.coverageComplete ? '总资产' : '已记录资产' }}
+            <span class="tag">{{ overview.currency }}</span>
+          </p>
+          <h2 class="hero-value">
+            <span class="currency">¥</span>{{ totalAmountParts.integer }}<span class="fraction">.{{ totalAmountParts.fraction }}</span>
+          </h2>
+
+          <div class="hero-change-row">
+            <button
+              v-if="monthChange?.hasComparableData"
+              type="button"
+              class="hero-change"
+              :aria-expanded="changeSheetOpen"
+              @click="changeSheetOpen = true"
+            >
+              <span class="change-arrow" :class="amountTone(monthChange.comparableChange)">▲</span>
+              <b :class="amountTone(monthChange.comparableChange)">
+                {{ formatSignedMoney(monthChange.comparableChange ?? 0) }}
+              </b>
+              <span v-if="changePercent !== null" class="change-percent" :class="amountTone(changePercent)">
+                {{ percentLabel(changePercent) }}
+              </span>
+              <span class="info-mark">ⓘ</span>
+            </button>
+            <button
+              v-else
+              type="button"
+              class="hero-change muted"
+              :aria-expanded="changeSheetOpen"
+              @click="changeSheetOpen = true"
+            >
+              <span>本月变化</span>
+              <b>暂无可比数据</b>
+              <span class="info-mark">ⓘ</span>
+            </button>
+            <span class="change-caption">本月</span>
+          </div>
+        </div>
+
+        <section class="trend-panel">
+          <h2 class="sr-only">资产趋势</h2>
+
+          <template v-if="trendReady">
+            <div class="chart-readout">
+              <span>{{ selectedPoint ? formatBusinessDate(selectedPoint.date) : '按日重算' }}</span>
+              <b :class="{ faint: !selectedPoint || selectedPoint.value === null }">
+                {{ selectedPoint?.value == null ? '依据不足' : `¥${formatMoney(selectedPoint.value)}` }}
+              </b>
+            </div>
+            <p v-if="trendLoading && !trend" class="hero-hint">正在读取趋势…</p>
+            <p v-else-if="trendError" class="hero-hint">{{ trendError }}</p>
+            <AssetTrendChart
+              v-else-if="trend && scopedTrend"
+              :trend="trend"
+              variant="hero"
+              @select="selectPoint"
+            />
+            <p v-else class="hero-hint">还没有可展示的趋势数据。</p>
+          </template>
+
+          <div v-else class="trend-wait">
+            <p>记录满 7 天后显示趋势</p>
+            <div class="progress" role="progressbar" :aria-valuenow="daysRecorded" aria-valuemin="0" aria-valuemax="7">
+              <span :style="{ width: `${trendProgress}%` }" />
+            </div>
+            <small>已记录 {{ Math.min(daysRecorded, 7) }}/7 天</small>
+          </div>
+
+          <div class="hero-range" role="tablist" aria-label="趋势范围">
             <button
               v-for="option in rangeOptions"
               :key="option.value"
@@ -336,29 +416,36 @@ onMounted(loadLedger)
               {{ option.label }}
             </button>
           </div>
-        </div>
+        </section>
+      </template>
+    </section>
 
-        <template v-if="trendReady">
-          <div class="chart-readout">
-            <span>{{ selectedPoint ? formatBusinessDate(selectedPoint.date) : '按日重算' }}</span>
-            <b :class="{ faint: !selectedPoint || selectedPoint.value === null }">
-              {{ selectedPoint?.value == null ? '依据不足' : `¥${formatMoney(selectedPoint.value)}` }}
-            </b>
-          </div>
-          <p v-if="trendLoading && !trend" class="hint">正在读取趋势…</p>
-          <p v-else-if="trendError" class="hint">{{ trendError }}</p>
-          <AssetTrendChart v-else-if="trend && scopedTrend" :trend="trend" @select="selectPoint" />
-          <p v-else class="hint">还没有可展示的趋势数据。</p>
-        </template>
+    <p v-if="monthChangeError" class="home-error">{{ monthChangeError }}</p>
 
-        <div v-else class="trend-wait">
-          <p>记录满 7 天后显示趋势</p>
-          <div class="progress" role="progressbar" :aria-valuenow="daysRecorded" aria-valuemin="0" aria-valuemax="7">
-            <span :style="{ width: `${trendProgress}%` }" />
-          </div>
-          <small>已记录 {{ Math.min(daysRecorded, 7) }}/7 天</small>
-        </div>
+    <template v-if="!isLoading && !errorMessage && overview">
+      <section class="metric-grid">
+        <article class="metric-card">
+          <span class="metric-label"><i class="metric-dot income" />本月收入</span>
+          <b class="metric-value">{{ formatMoney(overview.month.income) }}</b>
+        </article>
+        <article class="metric-card">
+          <span class="metric-label"><i class="metric-dot expense" />本月支出</span>
+          <b class="metric-value">{{ formatMoney(overview.month.expense) }}</b>
+        </article>
       </section>
+
+      <div class="month-summary">
+        <p class="month-surplus">
+          <span>本月结余</span>
+          <b :class="amountTone(overview.month.hasRecords ? overview.month.surplus : null)">
+            {{ formatSignedMoney(overview.month.surplus) }}
+          </b>
+        </p>
+        <RouterLink class="text-btn" :to="{ name: 'ledger' }">查看账本 ›</RouterLink>
+      </div>
+      <p v-if="!overview.month.hasRecords" class="month-empty">
+        本月还没有收支记录。<RouterLink class="text-btn" :to="{ name: 'entry' }">去记一笔 ›</RouterLink>
+      </p>
 
       <AssetDistribution
         :overview="overview"
@@ -367,31 +454,6 @@ onMounted(loadLedger)
         manage-to="/assets"
         hide-fund-count
       />
-
-      <div class="section-head">
-        <h2>本月收支</h2>
-        <RouterLink class="text-btn" :to="{ name: 'ledger' }">查看账本 ›</RouterLink>
-      </div>
-      <section class="month-card">
-        <div class="month-grid">
-          <div>
-            <span>收入</span>
-            <b :class="{ income: overview.month.hasRecords && overview.month.income > 0 }">
-              {{ formatMoney(overview.month.income) }}
-            </b>
-          </div>
-          <div>
-            <span>支出</span>
-            <b>{{ formatMoney(overview.month.expense) }}</b>
-          </div>
-          <div>
-            <span>结余</span>
-            <b :class="amountTone(overview.month.hasRecords ? overview.month.surplus : null)">{{ formatSignedMoney(overview.month.surplus) }}</b>
-          </div>
-        </div>
-        <p v-if="!overview.month.hasRecords" class="hint">本月还没有收支记录。<RouterLink class="text-btn" :to="{ name: 'entry' }">去记一笔 ›</RouterLink></p>
-        <p class="card-foot">公积金缴存、内部转账、投资买卖单独记录</p>
-      </section>
 
       <div class="section-head">
         <h2>自动记账</h2>
@@ -404,15 +466,16 @@ onMounted(loadLedger)
             <b>{{ dayLabel(row.date) }}</b>
           </span>
           <span class="plan-main">
-            <b>{{ row.title }}</b>
-            <small>{{ row.detail }}</small>
+            <span class="plan-title-row">
+              <b>{{ row.title }}</b>
+              <em v-if="row.cycleLabel" class="plan-cycle">{{ row.cycleLabel }}</em>
+            </span>
           </span>
           <span class="plan-amount">{{ row.amount === null ? '›' : `¥${formatMoney(row.amount)}` }}</span>
         </RouterLink>
         <EmptyState v-if="!planPreview.length" compact icon="clock" title="让固定收支自动记录" description="工资、缴存和定投，到期后按计划记账。" action-label="设置自动记账" @action="router.push('/plans')" />
       </div>
       <p v-else-if="planError" class="hint">{{ planError }}</p>
-      <p v-if="planPreview.length" class="tiny plan-note">待处理计划会在这里提醒。</p>
     </template>
 
     <AppNav />
@@ -446,45 +509,167 @@ onMounted(loadLedger)
 </template>
 
 <style scoped>
-.page {
-  padding-top: 0;
+.home-page {
+  padding-bottom: calc(97px + env(safe-area-inset-bottom));
 }
 
-.home-header {
+.home-hero {
+  margin: calc(max(20px, env(safe-area-inset-top)) * -1) calc(var(--page-gutter) * -1) 14px;
+  padding: calc(max(20px, env(safe-area-inset-top)) + 16px) var(--page-gutter) 20px;
+  border-radius: 0 0 28px 28px;
+  background: linear-gradient(180deg, var(--color-hero-bg) 0%, var(--color-hero-bg-end) 100%);
+  box-shadow: var(--shadow-hero);
+  color: var(--color-hero-text);
+}
+
+.hero-top {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 12px;
-  margin: 0 calc(var(--page-gutter) * -1) 18px;
-  padding: max(12px, env(safe-area-inset-top)) var(--page-gutter) 14px;
-  border-bottom: 1px solid var(--color-border-subtle);
-  background: var(--color-bg-surface);
 }
 
 .brand {
-  margin: 0 0 2px;
-  color: var(--color-text-secondary);
+  margin: 0 0 3px;
+  color: var(--color-hero-text-secondary);
   font-size: var(--text-caption);
   font-weight: 500;
   letter-spacing: 0.2px;
 }
 
-.home-header h1 {
+.hero-brand h1 {
   margin: 0;
-  font-size: var(--text-large-title);
-  font-weight: 600;
-  letter-spacing: -0.8px;
-  line-height: var(--leading-tight);
+  color: var(--color-hero-text);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  line-height: 1.15;
 }
 
-.header-date {
-  padding-bottom: 4px;
-  color: var(--color-text-secondary);
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hero-date {
+  padding-top: 4px;
+  color: var(--color-hero-text-secondary);
   font-size: var(--text-caption);
 }
 
-.hero {
-  padding: 4px 3px 22px;
+.sync-button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--color-hero-surface);
+  color: var(--color-hero-text);
+  transition: background var(--motion-fast) ease, transform var(--motion-fast) ease;
+}
+
+.sync-button:hover:not(:disabled) {
+  background: var(--color-hero-surface-strong);
+}
+
+.sync-button:active:not(:disabled) {
+  transform: scale(.94);
+}
+
+.sync-button:disabled {
+  color: var(--color-hero-text-muted);
+}
+
+.sync-button :deep(.app-icon) {
+  width: 20px;
+  height: 20px;
+}
+
+.spinning {
+  animation: spin .9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.sync-note {
+  margin: 14px 0 0;
+  padding: 9px 12px;
+  border-radius: var(--radius-tag);
+  background: var(--color-accent-mint-soft);
+  color: var(--color-accent-mint);
+  font-size: var(--text-caption);
+  line-height: 1.6;
+}
+
+.sync-note.error {
+  background: rgba(255, 122, 122, 0.12);
+  color: #FF9B9B;
+}
+
+.hero-loading {
+  display: grid;
+  gap: 12px;
+  padding: 24px 0 8px;
+}
+
+.hero-skeleton-line,
+.hero-skeleton-chart {
+  border-radius: var(--radius-control);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.hero-skeleton-line {
+  height: 14px;
+}
+
+.hero-skeleton-line.short {
+  width: 38%;
+}
+
+.hero-skeleton-line.amount {
+  width: 72%;
+  height: 48px;
+  border-radius: var(--radius-card);
+}
+
+.hero-skeleton-chart {
+  height: 150px;
+  margin-top: 10px;
+  border-radius: var(--radius-card);
+}
+
+.hero-error {
+  padding: 28px 0 8px;
+  color: var(--color-hero-text-secondary);
+  font-size: var(--text-footnote);
+  line-height: 1.7;
+}
+
+.hero-error p {
+  margin: 0 0 14px;
+}
+
+.hero-reload {
+  min-height: 42px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-hero-surface);
+  color: var(--color-hero-text);
+  font-size: var(--text-footnote);
+  font-weight: 600;
+}
+
+.hero-amount {
+  margin-top: 24px;
 }
 
 .hero-label {
@@ -492,32 +677,53 @@ onMounted(loadLedger)
   align-items: center;
   gap: 8px;
   margin: 0;
-  color: var(--color-text-secondary);
+  color: var(--color-hero-text-secondary);
   font-size: var(--text-footnote);
+  font-weight: 500;
 }
 
 .tag {
-  padding: 2px 5px;
-  border-radius: var(--radius-tag);
-  background: var(--color-bg-subtle);
-  color: var(--color-text-secondary);
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--color-hero-surface);
+  color: var(--color-hero-text-secondary);
   font-size: var(--text-caption);
 }
 
 .hero-value {
-  margin: 8px 0 12px;
-  font-size: clamp(2.125rem, 10.5vw, 2.75rem);
-  font-weight: 600;
-  letter-spacing: -1.4px;
-  line-height: 1.2;
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  margin: 10px 0 12px;
+  color: var(--color-hero-text);
+  font-size: clamp(2.75rem, 13.5vw, 3.5rem);
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .hero-value .currency {
   margin-right: 5px;
+  color: var(--color-hero-text-secondary);
   font-size: 1.5rem;
-  font-weight: 400;
+  font-weight: 500;
   letter-spacing: 0;
+}
+
+.hero-value .fraction {
+  color: var(--color-hero-text-secondary);
+  font-size: 1.625rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.hero-change-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
 }
 
 .hero-change {
@@ -525,146 +731,115 @@ onMounted(loadLedger)
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  min-height: var(--touch-target);
-  padding: 6px 12px;
-  border: 1px solid var(--color-border-subtle);
+  min-height: 38px;
+  padding: 7px 12px;
+  border: 0;
   border-radius: var(--radius-pill);
-  background: var(--color-bg-surface);
-  color: var(--color-text-secondary);
+  background: var(--color-hero-surface);
+  color: var(--color-hero-text-secondary);
   font-size: var(--text-footnote);
   line-height: 1.4;
 }
 
 .hero-change b {
-  color: var(--color-text-primary);
-  font-weight: 600;
+  color: var(--color-hero-text);
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
 .hero-change.muted b {
-  color: var(--color-text-secondary);
+  color: var(--color-hero-text-secondary);
   font-weight: 500;
+}
+
+.change-arrow {
+  font-size: 0.625rem;
 }
 
 .change-percent {
   font-variant-numeric: tabular-nums;
 }
 
-.info-mark {
-  color: var(--color-text-secondary);
-  font-size: var(--text-footnote);
-}
-
-.added-note {
-  margin: 4px 0 0;
-  color: var(--color-text-secondary);
+.change-caption {
+  color: var(--color-hero-text-muted);
   font-size: var(--text-caption);
 }
 
-.hero-meta {
-  margin: 8px 0 0;
-  color: var(--color-text-secondary);
+.info-mark {
+  color: var(--color-hero-text-muted);
   font-size: var(--text-footnote);
-  line-height: 1.7;
 }
 
-.meta {
-  margin: 4px 0 0;
-  color: var(--color-text-secondary);
-  font-size: var(--text-footnote);
+.home-error {
+  margin: 0 4px 14px;
+  color: var(--color-error);
+  font-size: var(--text-caption);
+  line-height: 1.6;
 }
 
 .trend-panel {
   position: relative;
-  margin-bottom: 20px;
-  padding: 15px 13px 11px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-card);
-  background: var(--color-bg-surface);
+  margin-top: 10px;
 }
 
-.section-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-
-.section-head h2 {
-  margin: 0;
-  font-size: var(--text-headline);
-  font-weight: 600;
-  letter-spacing: -0.2px;
-}
-
-.trend-panel .section-head h2 {
-  font-size: var(--text-headline);
-}
-
-.range {
-  display: flex;
-  gap: 1px;
-}
-
-.range-button {
-  min-height: var(--touch-target);
-  padding: 5px 6px;
+.sr-only {
+  position: absolute;
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
   border: 0;
-  border-radius: var(--radius-tag);
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-}
-
-.range-button:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-brand);
-}
-
-.range-button.active {
-  background: var(--color-brand-soft);
-  color: var(--color-brand);
-  font-weight: 600;
-}
-
-.range-button:disabled {
-  opacity: 0.6;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .chart-readout {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 1;
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: 10px;
   min-height: 22px;
-  margin: 10px 1px 2px;
-  color: var(--color-text-secondary);
+  margin: 0 1px;
+  color: var(--color-hero-text-secondary);
   font-size: var(--text-caption);
+  pointer-events: none;
 }
 
 .chart-readout b {
-  color: var(--color-text-primary);
+  color: var(--color-hero-text);
   font-size: 0.8125rem;
-  font-weight: 500;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
 .chart-readout b.faint {
-  color: var(--color-text-secondary);
+  color: var(--color-hero-text-secondary);
   font-size: var(--text-footnote);
   font-weight: 500;
 }
 
+.hero-hint {
+  margin: 10px 0 0;
+  color: var(--color-hero-text-secondary);
+  font-size: var(--text-caption);
+  line-height: 1.7;
+}
+
 .trend-wait {
-  padding: 14px 4px 16px;
-  color: var(--color-text-secondary);
+  padding: 14px 2px 6px;
+  color: var(--color-hero-text-secondary);
   font-size: var(--text-footnote);
 }
 
 .trend-wait p {
   margin: 0 0 10px;
-  color: var(--color-text-primary);
+  color: var(--color-hero-text);
   font-size: 0.75rem;
   font-weight: 500;
 }
@@ -679,15 +854,143 @@ onMounted(loadLedger)
   overflow: hidden;
   height: 5px;
   border-radius: var(--radius-pill);
-  background: var(--color-bg-subtle);
+  background: var(--color-hero-track);
 }
 
 .progress span {
   display: block;
   height: 100%;
   border-radius: var(--radius-pill);
-  background: var(--color-brand);
+  background: var(--color-hero-line);
   transition: width 0.2s ease;
+}
+
+.hero-range {
+  display: flex;
+  gap: 2px;
+  margin-top: 12px;
+  padding: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--color-hero-surface);
+}
+
+.range-button {
+  flex: 1;
+  min-height: 38px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-hero-text-secondary);
+  font-size: var(--text-caption);
+  font-weight: 600;
+}
+
+.range-button:hover:not(:disabled):not(.active) {
+  color: var(--color-hero-text);
+}
+
+.range-button.active {
+  background: var(--color-hero-active);
+  color: var(--color-hero-active-text);
+  font-weight: 700;
+}
+
+.range-button:disabled {
+  opacity: 0.6;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.metric-card {
+  padding: 18px;
+  border-radius: var(--radius-card);
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.metric-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+  font-weight: 500;
+}
+
+.metric-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.metric-dot.income {
+  background: var(--color-finance-income);
+}
+
+.metric-dot.expense {
+  background: var(--color-finance-expense);
+}
+
+.metric-value {
+  display: block;
+  margin-top: 10px;
+  color: var(--color-text-primary);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.month-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin: 0 4px 18px;
+}
+
+.month-surplus {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-footnote);
+}
+
+.month-surplus b {
+  color: var(--color-text-primary);
+  font-size: 1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.month-empty {
+  margin: -8px 4px 18px;
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+}
+
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin: 24px 0 12px;
+}
+
+.section-head h2 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.3px;
 }
 
 .text-btn {
@@ -696,79 +999,19 @@ onMounted(loadLedger)
   background: transparent;
   color: var(--color-brand);
   font-size: var(--text-footnote);
+  font-weight: 600;
   text-decoration: none;
 }
 
 .text-btn:hover {
   color: var(--color-brand-hover);
-  text-decoration: underline;
-}
-
-.month-card {
-  margin-bottom: 22px;
-  padding: 15px 13px 11px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-card);
-  background: var(--color-bg-surface);
-}
-
-.month-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.month-grid > div + div {
-  padding-left: 12px;
-  border-left: 1px solid var(--color-border-subtle);
-}
-
-.month-grid span {
-  display: block;
-  color: var(--color-text-secondary);
-  font-size: var(--text-footnote);
-}
-
-.month-grid b {
-  display: block;
-  margin-top: 7px;
-  font-size: 1.125rem;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-
-.income {
-  color: var(--color-finance-income);
-}
-
-.card-foot {
-  margin: 13px 0 0;
-  padding-top: 10px;
-  border-top: 1px solid var(--color-border-subtle);
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-  line-height: 1.7;
-}
-
-.hint {
-  margin: 12px 0 0;
-  padding-top: 11px;
-  border-top: 1px solid var(--color-border-subtle);
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-  line-height: 1.7;
-}
-
-.month-card .hint {
-  border-top: 0;
-  padding-top: 0;
 }
 
 .plan-box {
   overflow: hidden;
-  border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-card);
   background: var(--color-bg-surface);
+  box-shadow: var(--shadow-card);
 }
 
 .plan-row {
@@ -776,7 +1019,7 @@ onMounted(loadLedger)
   align-items: center;
   gap: 12px;
   box-sizing: border-box;
-  padding: 13px;
+  padding: 16px;
   color: inherit;
   text-decoration: none;
 }
@@ -793,9 +1036,9 @@ onMounted(loadLedger)
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 40px;
-  padding: 7px 8px;
-  border-radius: var(--radius-tag);
+  min-width: 44px;
+  padding: 8px;
+  border-radius: var(--radius-control);
   background: var(--color-brand-soft);
   color: var(--color-brand);
   font-size: var(--text-caption);
@@ -804,7 +1047,7 @@ onMounted(loadLedger)
 .date-box b {
   margin-top: 3px;
   font-size: 0.9375rem;
-  font-weight: 500;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
@@ -816,35 +1059,49 @@ onMounted(loadLedger)
   min-width: 0;
 }
 
-.plan-main b {
-  font-size: 0.75rem;
-  font-weight: 500;
+.plan-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
-.plan-main small {
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-  line-height: 1.6;
+.plan-main b {
+  overflow: hidden;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-cycle {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--color-brand-soft);
+  color: var(--color-brand);
+  font-size: 0.6875rem;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 
 .plan-amount {
   color: var(--color-text-primary);
-  font-size: 0.75rem;
-  font-weight: 500;
+  font-size: 0.875rem;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.plan-note {
-  margin: 8px 0 0;
+.hint {
+  margin: 12px 0 0;
+  padding-top: 11px;
+  border-top: 1px solid var(--color-border-subtle);
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
   line-height: 1.7;
-}
-
-.tiny {
-  color: var(--color-text-secondary);
-  font-size: var(--text-footnote);
 }
 
 .breakdown {
@@ -859,20 +1116,20 @@ onMounted(loadLedger)
   align-items: baseline;
   gap: 12px;
   color: var(--color-text-secondary);
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
 }
 
 .breakdown-row b,
 .breakdown-total b {
   color: var(--color-text-primary);
-  font-size: 0.8125rem;
-  font-weight: 500;
+  font-size: 0.875rem;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
 .breakdown-total {
   margin-top: 2px;
-  padding-top: 10px;
+  padding-top: 12px;
   border-top: 1px solid var(--color-border-subtle);
   color: var(--color-text-primary);
 }

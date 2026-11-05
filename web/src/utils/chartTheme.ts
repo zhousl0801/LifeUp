@@ -5,34 +5,54 @@ import { resolvedTheme } from './theme'
  * 浅色 / 深色图表的色值与 docs/design/ui-color-tokens.css 的语义值对应。
  */
 const light = {
-  brand: '#002FA7',
-  gain: '#B93838',
-  loss: '#18734E',
-  text: '#626C80',
-  axis: '#E2E6EE',
-  grid: '#EEF0F6',
-  pointer: '#9AA1B4',
-  marker: '#5C6272',
-  areaStrong: 'rgba(0, 47, 167, 0.16)',
-  areaSoft: 'rgba(0, 47, 167, 0.01)',
-  pointerShadow: 'rgba(24, 32, 51, 0.05)'
+  brand: '#5B5BD7',
+  gain: '#D94A4A',
+  loss: '#2E9E75',
+  text: '#6F6A7D',
+  axis: '#E4E1EB',
+  grid: '#EFECF5',
+  pointer: '#B8B3C6',
+  marker: '#6F6A7D',
+  areaStrong: 'rgba(91, 91, 215, 0.18)',
+  areaSoft: 'rgba(91, 91, 215, 0.01)',
+  pointerShadow: 'rgba(30, 27, 56, 0.06)'
 } as const
 
 const dark = {
-  brand: '#8FAAFF',
-  gain: '#FF6B6B',
-  loss: '#4CD97B',
-  text: '#A1A1A6',
-  axis: 'rgba(84, 84, 88, 0.55)',
+  brand: '#8B86FF',
+  gain: '#FF7A7A',
+  loss: '#4ED39B',
+  text: '#A9A6C5',
+  axis: 'rgba(169, 166, 197, 0.16)',
   grid: 'rgba(255, 255, 255, 0.08)',
-  pointer: '#8E8E93',
-  marker: '#A1A1A6',
-  areaStrong: 'rgba(143, 170, 255, 0.24)',
-  areaSoft: 'rgba(143, 170, 255, 0.02)',
+  pointer: '#8F8BAC',
+  marker: '#A9A6C5',
+  areaStrong: 'rgba(139, 134, 255, 0.24)',
+  areaSoft: 'rgba(139, 134, 255, 0.02)',
   pointerShadow: 'rgba(255, 255, 255, 0.04)'
 } as const
 
-export function chartTheme() {
+const hero = {
+  brand: '#7CE7B1',
+  gain: '#FF8A8A',
+  loss: '#4ED39B',
+  text: '#A9A6C5',
+  axis: 'transparent',
+  grid: 'transparent',
+  pointer: '#A9A6C5',
+  marker: '#F7F5FF',
+  areaStrong: 'rgba(124, 231, 177, 0.30)',
+  areaSoft: 'rgba(124, 231, 177, 0.01)',
+  pointerShadow: 'rgba(0, 0, 0, 0.22)'
+} as const
+
+export type ChartThemeVariant = 'default' | 'hero'
+
+export function chartTheme(variant: ChartThemeVariant = 'default') {
+  if (variant === 'hero') {
+    return hero
+  }
+
   return resolvedTheme.value === 'dark' ? dark : light
 }
 

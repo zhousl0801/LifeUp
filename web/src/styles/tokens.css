@@ -1,6 +1,6 @@
 /* 资产管家 · 基础设计 token
- * 颜色 token 仍由 docs/design/ui-color-tokens.css 提供；本文件负责排版、间距、圆角与动效。
- * 目标：减少组件内裸值，统一 iOS 风格的文本层级、点击尺寸和节奏。
+ * 颜色 token 由 docs/design/ui-color-tokens.css 提供；本文件负责排版、间距、圆角、阴影与动效。
+ * Midnight Mint：大圆角、无描边卡片、数字优先。
  */
 :root {
   /* 文本层级：正文不小于 15px，说明文字不小于 12px。 */
@@ -12,10 +12,10 @@
   --text-title3: 1.25rem;
   --text-title2: 1.375rem;
   --text-title1: 1.75rem;
-  --text-large-title: 2.125rem;
-  --text-display: 2.5rem;
+  --text-large-title: 2.25rem;
+  --text-display: 2.75rem;
 
-  --leading-tight: 1.2;
+  --leading-tight: 1.15;
   --leading-normal: 1.45;
   --leading-relaxed: 1.65;
 
@@ -29,16 +29,21 @@
 
   /* 页面与组件尺寸。 */
   --page-gutter: 20px;
-  --card-padding: 16px;
-  --nav-height: 68px;
+  --card-padding: 20px;
+  --nav-height: 72px;
   --touch-target: 44px;
 
-  /* 圆角只保留四档，避免 7/8/9/10/12/13/14/16 混用。 */
-  --radius-control: 10px;
-  --radius-card: 14px;
-  --radius-sheet: 24px;
-  --radius-tag: 6px;
+  /* 圆角：控件 14、卡片 24、浮层 30，标签 10。 */
+  --radius-control: 14px;
+  --radius-card: 24px;
+  --radius-sheet: 30px;
+  --radius-tag: 10px;
   --radius-pill: 999px;
+
+  /* 阴影：卡片轻、浮层中、Hero 重。 */
+  --shadow-card: 0 12px 32px var(--color-shadow);
+  --shadow-float: 0 18px 40px var(--color-shadow-strong);
+  --shadow-hero: 0 24px 48px var(--color-shadow-hero);
 
   /* 动效：快、准、少。 */
   --motion-fast: 150ms;

@@ -34,11 +34,6 @@ const router = createRouter({
       component: () => import('../views/MineView.vue')
     },
     {
-      path: '/categories',
-      name: 'categories',
-      component: () => import('../views/CategoriesView.vue')
-    },
-    {
       path: '/security',
       name: 'security',
       component: () => import('../views/SecurityView.vue')
@@ -47,11 +42,6 @@ const router = createRouter({
       path: '/backup',
       name: 'backup',
       component: () => import('../views/BackupView.vue')
-    },
-    {
-      path: '/quotes',
-      name: 'quotes',
-      component: () => import('../views/QuoteStatusView.vue')
     },
     {
       path: '/cash',

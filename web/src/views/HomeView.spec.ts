@@ -10,7 +10,8 @@ const mocks = vi.hoisted(() => ({
   ledger: vi.fn(),
   trend: vi.fn(),
   change: vi.fn(),
-  plans: vi.fn()
+  plans: vi.fn(),
+  quotes: vi.fn()
 }))
 
 vi.mock('../api/ledger', () => ({
@@ -21,6 +22,7 @@ vi.mock('../api/ledger', () => ({
   initializeLedger: vi.fn()
 }))
 vi.mock('../api/plans', () => ({ fetchPlanOverview: mocks.plans }))
+vi.mock('../api/quotes', () => ({ refreshQuotes: mocks.quotes }))
 vi.mock('vue-router', () => ({
   RouterLink: { props: ['to'], template: '<a><slot /></a>' },
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() })
@@ -133,8 +135,8 @@ test('shows recorded assets, no comparable month change and the seven-day trend 
 
   expect(view.find('.hero-label').text()).toContain('已记录资产')
   expect(view.find('.hero-change').text()).toContain('暂无可比数据')
-  expect(view.find('.added-note').text()).toContain('111,166.75')
-  expect(view.find('.hero-meta').text()).toContain('已记录 3 类')
+  expect(view.find('.added-note').exists()).toBe(false)
+  expect(view.find('.hero-meta').exists()).toBe(false)
   expect(view.find('.trend-panel h2').text()).toBe('资产趋势')
   expect(view.find('.trend-wait').text()).toContain('记录满 7 天后显示趋势')
   expect(view.find('.trend-wait').text()).toContain('已记录 1/7 天')
@@ -177,5 +179,31 @@ test('shows the same-scope change and percentage when a comparable baseline exis
 
   expect(view.find('.hero-change').text()).toContain('+1,000.00')
   expect(view.find('.hero-change').text()).toContain('+5.00%')
+  view.unmount()
+})
+
+test('syncs market quotes from the home header and reloads the overview', async () => {
+  const start = shift(today, -30)
+  mocks.ledger.mockResolvedValue(overview(start))
+  mocks.trend.mockResolvedValue(trend(start))
+  mocks.quotes.mockResolvedValue({
+    updated: 3,
+    fundSucceeded: 2,
+    fundFailed: 0,
+    goldSucceeded: 1,
+    goldFailed: 0,
+    stockSucceeded: 0,
+    stockFailed: 0
+  })
+
+  const view = mount(HomeView, { global: { plugins: [createPinia()] } })
+  await flushPromises()
+
+  await view.find('.sync-button').trigger('click')
+  await flushPromises()
+
+  expect(mocks.quotes).toHaveBeenCalledWith('all')
+  expect(view.find('.sync-note').text()).toContain('更新 3 项')
+  expect(mocks.ledger).toHaveBeenCalledTimes(2)
   view.unmount()
 })

@@ -1928,10 +1928,6 @@ function goBack(): void {
           </span>
         </div>
 
-        <div v-if="sortedFunds.length" class="fund-columns" aria-hidden="true">
-          <span>资产（元）</span>
-          <span v-for="metric in metricDisplay(sortedFunds[0]!)" :key="metric.key">{{ metric.label }}</span>
-        </div>
         <section v-if="sortedFunds.length" class="fund-list">
           <article v-for="fund in sortedFunds" :key="fund.key" class="fund-card">
             <header
@@ -1960,6 +1956,7 @@ function goBack(): void {
                   </small>
                 </div>
                 <div v-for="metric in metricDisplay(fund)" :key="metric.key" class="fund-metric">
+                  <span class="fund-metric-label">{{ metric.label }}</span>
                   <b :class="metric.tone">{{ metric.value }}</b>
                   <small v-if="metric.sub" :class="metric.tone">{{ metric.sub }}</small>
                 </div>
@@ -2584,7 +2581,7 @@ function goBack(): void {
 .funds-header h1 {
   margin: 0;
   font-size: var(--text-title3);
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: -0.3px;
 }
 
@@ -2613,47 +2610,54 @@ function goBack(): void {
 }
 
 .funds-hero {
-  padding: 0 3px 22px;
-  background: transparent;
+  margin-bottom: 16px;
+  padding: var(--card-padding);
+  border-radius: var(--radius-card);
+  background: linear-gradient(180deg, var(--color-hero-bg) 0%, var(--color-hero-bg-end) 100%);
+  box-shadow: var(--shadow-hero);
+  color: var(--color-hero-text);
 }
 
 .hero-label {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 7px;
   margin: 0;
-  color: var(--color-text-secondary);
+  color: var(--color-hero-text-secondary);
   font-size: var(--text-footnote);
 }
 
 .hero-tag {
-  padding: 2px 5px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-tag);
-  background: var(--color-bg-surface);
-  color: var(--color-brand);
+  padding: 3px 9px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-hero-surface);
+  color: var(--color-hero-text-secondary);
   font-size: var(--text-caption);
 }
 
 .hero-balance {
-  margin: 8px 0 7px;
+  margin: 10px 0 8px;
+  color: var(--color-hero-text);
   font-size: 2.5rem;
-  font-weight: 600;
-  letter-spacing: -1.1px;
-  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.15;
   font-variant-numeric: tabular-nums;
 }
 
 .hero-balance span {
   margin-right: 5px;
-  font-size: 1.1875rem;
-  font-weight: 400;
+  color: var(--color-hero-text-secondary);
+  font-size: 1.25rem;
+  font-weight: 500;
   letter-spacing: 0;
 }
 
 .hero-meta {
   margin: 0;
-  color: var(--color-text-secondary);
+  color: var(--color-hero-text-secondary);
   font-size: var(--text-caption);
   line-height: 1.6;
 }
@@ -2662,22 +2666,29 @@ function goBack(): void {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
-  margin-top: 22px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-hero-border);
 }
 
+.hero-metrics > div + div {
+  padding-left: 12px;
+  border-left: 1px solid var(--color-hero-border);
+}
 
 .hero-metrics span {
   display: block;
-  color: var(--color-text-secondary);
-  font-size: var(--text-footnote);
+  color: var(--color-hero-text-secondary);
+  font-size: var(--text-caption);
 }
 
 .hero-metrics b {
   display: block;
   margin-top: 7px;
+  color: var(--color-hero-text);
   font-size: 0.9375rem;
-  font-weight: 500;
-  letter-spacing: -0.3px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
 
@@ -2718,17 +2729,19 @@ function goBack(): void {
   gap: 6px;
   width: 180px;
   padding: 10px;
-  border: 1px solid var(--color-border-subtle);
+  border: 0;
   border-radius: var(--radius-card);
   background: var(--color-bg-surface);
-  box-shadow: 0 8px 24px var(--color-shadow);
+  box-shadow: var(--shadow-float);
 }
 .funds-actions button {
-  min-height: 42px;
-  padding: 0 12px;
-  border-radius: var(--radius-tag);
-  font-size: 0.8125rem;
-  text-align: left;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: center;
 }
 .pending-shortcut {
   display: flex;
@@ -2737,9 +2750,9 @@ function goBack(): void {
   gap: 12px;
   width: 100%;
   margin: 0 0 18px;
-  padding: 12px 14px;
-  border: 1px solid var(--color-brand);
-  border-radius: var(--radius-control);
+  padding: 14px 16px;
+  border: 0;
+  border-radius: var(--radius-card);
   background: var(--color-brand-soft);
   color: var(--color-text-primary);
   text-align: left;
@@ -2770,28 +2783,28 @@ function goBack(): void {
   font-weight: 500;
 }
 .action-primary {
-  border: 1px solid var(--color-brand);
+  border: 0;
+  border-radius: var(--radius-pill);
   background: var(--color-brand);
   color: var(--color-on-brand);
 }
 
 .action-primary:hover:not(:disabled) {
   background: var(--color-brand-hover);
-  border-color: var(--color-brand-hover);
 }
 
 .action-secondary {
-  border: 1px solid var(--color-border-control);
-  background: var(--color-bg-surface);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-brand-soft);
   color: var(--color-brand);
 }
 
 .action-secondary:hover:not(:disabled) {
-  background: var(--color-brand-soft);
+  background: var(--color-brand-soft-hover);
 }
 
 .funds-actions button:disabled {
-  border-color: var(--color-border-disabled);
   background: var(--color-bg-disabled);
   color: var(--color-text-disabled);
 }
@@ -2800,7 +2813,7 @@ function goBack(): void {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .group-pills {
@@ -2818,20 +2831,20 @@ function goBack(): void {
 
 .group-pill {
   flex: 0 0 auto;
-  min-height: 36px;
-  padding: 0 13px;
-  border: 1px solid var(--color-border-subtle);
+  min-height: 38px;
+  padding: 0 15px;
+  border: 0;
   border-radius: var(--radius-pill);
   background: var(--color-bg-surface);
   color: var(--color-text-secondary);
   font-size: var(--text-footnote);
+  font-weight: 500;
   white-space: nowrap;
 }
 
 .group-pill.active {
-  border-color: var(--color-brand);
-  background: var(--color-brand-soft);
-  color: var(--color-brand);
+  background: var(--color-brand);
+  color: var(--color-on-brand);
   font-weight: 600;
 }
 
@@ -2857,12 +2870,17 @@ function goBack(): void {
 .portfolio-toolbar input {
   width: 100%;
   min-height: var(--touch-target);
-  padding: 0 11px;
-  border: 1px solid var(--color-border-control);
+  padding: 0 14px;
+  border: 1px solid transparent;
   border-radius: var(--radius-control);
-  background: var(--color-bg-surface);
+  background: var(--color-bg-subtle);
   color: var(--color-text-primary);
-  font-size: var(--text-footnote);
+  font-size: var(--text-body);
+}
+
+.portfolio-toolbar input:focus-visible {
+  border-color: var(--color-border-focus);
+  background: var(--color-bg-surface);
 }
 
 .metric-picker {
@@ -2879,39 +2897,70 @@ function goBack(): void {
 }
 
 .metric-picker button {
-  min-height: var(--touch-target);
-  padding: 0 9px;
-  border: 1px solid var(--color-border-subtle);
+  min-height: 40px;
+  padding: 0 14px;
+  border: 0;
   border-radius: var(--radius-pill);
-  background: transparent;
+  background: var(--color-bg-subtle);
   color: var(--color-text-secondary);
-  font-size: var(--text-caption);
+  font-size: var(--text-footnote);
+  font-weight: 500;
 }
 
 .metric-picker button.active {
-  border-color: var(--color-brand);
-  background: var(--color-brand-soft);
-  color: var(--color-brand);
+  background: var(--color-brand);
+  color: var(--color-on-brand);
+  font-weight: 600;
 }
 
 .view-tabs {
-  margin-bottom: 8px;
+  display: flex;
+  gap: 2px;
+  margin-bottom: 10px;
+  padding: 4px;
+  border-bottom: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-surface);
 }
+
+.view-tabs button {
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  color: var(--color-text-secondary);
+  font-size: var(--text-footnote);
+  font-weight: 500;
+}
+
+.view-tabs button.active {
+  background: var(--color-brand-soft);
+  color: var(--color-brand);
+  font-weight: 600;
+}
+
+.view-tabs button:hover:not(.active) {
+  color: var(--color-text-primary);
+}
+
+.view-tabs button.active::after {
+  content: none;
+}
+
 .fund-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.fund-card {
   overflow: hidden;
   border-radius: var(--radius-card);
   background: var(--color-bg-surface);
-}
-.fund-card {
-  border-bottom: 1px solid var(--color-border-subtle);
-}
-.fund-card:last-child {
-  border-bottom: 0;
+  box-shadow: var(--shadow-card);
 }
 .fund-card > header {
   display: grid;
-  gap: 8px;
-  padding: 14px 12px 12px;
+  gap: 12px;
+  padding: 18px;
   cursor: pointer;
 }
 .fund-card > header:hover {
@@ -2929,72 +2978,79 @@ function goBack(): void {
 .fund-title strong {
   display: block;
   color: var(--color-text-primary);
-  font-size: 0.9375rem;
-  font-weight: 600;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
 .fund-title small {
   display: block;
-  margin-top: 3px;
+  margin-top: 4px;
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
   line-height: 1.6;
 }
 .fund-values {
   display: grid;
-  grid-template-columns: 1.25fr repeat(3, minmax(0, 1fr));
-  align-items: end;
-  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px 10px;
 }
-.fund-asset,
-.fund-metric {
-  min-width: 0;
-  text-align: right;
-}
+
 .fund-asset {
+  grid-column: 1 / -1;
+  min-width: 0;
   text-align: left;
 }
+
+.fund-metric {
+  min-width: 0;
+  text-align: left;
+}
+
 .fund-asset b {
   display: block;
-  font-size: 1.0625rem;
-  font-weight: 600;
-  letter-spacing: -0.3px;
-  line-height: 1.3;
+  color: var(--color-text-primary);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.15;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
 .fund-asset small {
   display: block;
-  margin-top: 3px;
+  margin-top: 6px;
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
+  line-height: 1.5;
 }
+
+.fund-metric-label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+  line-height: 1.35;
+}
+
 .fund-metric b {
   display: block;
   font-size: 0.8125rem;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.4;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
 .fund-metric small {
   display: block;
   margin-top: 2px;
   font-size: var(--text-caption);
   line-height: 1.4;
 }
-.fund-columns {
-  display: grid;
-  grid-template-columns: 1.25fr repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  padding: 0 12px 8px;
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-}
-.fund-columns > span:not(:first-child) {
-  text-align: right;
-}
+
 .expand-mark {
   flex: 0 0 auto;
   width: 13px;
@@ -3007,34 +3063,33 @@ function goBack(): void {
 }
 
 @media (max-width: 360px) {
-  .fund-columns {
-    display: none;
-  }
   .fund-card > header {
-    padding: 14px 10px 12px;
+    padding: 16px 14px;
   }
+
   .fund-values {
-    grid-template-columns: 1.1fr repeat(3, minmax(0, 1fr));
-    gap: 5px;
+    gap: 12px 6px;
   }
+
   .fund-asset b {
-    font-size: 0.9375rem;
+    font-size: 1.25rem;
   }
+
   .fund-metric b {
     font-size: 0.75rem;
   }
 }
 
 .fund-detail {
-  padding: 0 14px 14px;
+  padding: 4px 18px 18px;
   border-top: 1px solid var(--color-border-subtle);
 }
 
 .fund-class {
   margin-top: 12px;
-  padding: 12px;
+  padding: 14px;
   border-radius: var(--radius-control);
-  background: var(--color-brand-soft);
+  background: var(--color-bg-subtle);
 }
 
 .fund-class-head {
@@ -3145,18 +3200,19 @@ function goBack(): void {
 }
 
 .holding-action-row button {
-  min-height: 38px;
-  padding: 0 10px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-tag);
-  background: var(--color-bg-surface);
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-brand-soft);
   color: var(--color-brand);
-  font-size: var(--text-footnote);
+  font-size: var(--text-caption);
+  font-weight: 600;
   white-space: nowrap;
 }
 
 .holding-action-row button:active {
-  background: var(--color-brand-soft);
+  background: var(--color-brand-soft-hover);
 }
 
 @media (max-width: 340px) {
@@ -3211,10 +3267,11 @@ function goBack(): void {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 13px 14px;
-  border: 1px solid var(--color-border-subtle);
+  padding: 16px;
+  border: 0;
   border-radius: var(--radius-card);
   background: var(--color-bg-surface);
+  box-shadow: var(--shadow-card);
 }
 
 .fund-plan-row > div {
@@ -3254,10 +3311,10 @@ function goBack(): void {
   justify-content: space-between;
   gap: 10px;
   min-height: var(--touch-target);
-  padding: 8px 10px;
-  border: 1px solid var(--color-border-control);
+  padding: 10px 12px;
+  border: 0;
   border-radius: var(--radius-control);
-  background: var(--color-bg-surface);
+  background: var(--color-bg-subtle);
 }
 
 .fund-selected strong {
@@ -3281,9 +3338,10 @@ function goBack(): void {
   max-height: 240px;
   margin-top: 6px;
   overflow-y: auto;
-  border: 1px solid var(--color-border-subtle);
+  border: 0;
   border-radius: var(--radius-control);
   background: var(--color-bg-surface);
+  box-shadow: var(--shadow-float);
 }
 
 .fund-search-result {
@@ -3354,9 +3412,9 @@ function goBack(): void {
 
 .group-create-row button {
   flex: 0 0 auto;
-  min-height: var(--touch-target);
-  padding: 0 14px;
-  border-radius: var(--radius-control);
+  min-height: 48px;
+  padding: 0 18px;
+  border-radius: var(--radius-pill);
   font-size: var(--text-footnote);
 }
 
@@ -3416,9 +3474,9 @@ function goBack(): void {
   flex: 1;
   min-width: 0;
   min-height: var(--touch-target);
-  padding: 0 9px;
-  border: 1px solid var(--color-border-control);
-  border-radius: var(--radius-tag);
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
   background: var(--color-bg-surface);
   color: var(--color-text-primary);
   font-size: var(--text-footnote);
@@ -3468,16 +3526,15 @@ function goBack(): void {
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 12px;
-  border: 1px solid var(--color-border-subtle);
+  padding: 14px;
+  border: 0;
   border-radius: var(--radius-control);
-  background: var(--color-bg-surface);
+  background: var(--color-bg-subtle);
   color: var(--color-text-primary);
   text-align: left;
 }
 
 .group-asset-row.selected {
-  border-color: var(--color-brand);
   background: var(--color-brand-soft);
 }
 
@@ -3539,10 +3596,10 @@ function goBack(): void {
   gap: 8px;
   width: 100%;
   min-height: 52px;
-  padding: 10px 12px;
-  border: 1px solid var(--color-border-subtle);
+  padding: 12px 14px;
+  border: 0;
   border-radius: var(--radius-control);
-  background: var(--color-bg-surface);
+  background: var(--color-bg-subtle);
   color: var(--color-text-primary);
   text-align: left;
 }
@@ -3604,14 +3661,14 @@ function goBack(): void {
   justify-content: space-between;
   align-items: baseline;
   gap: 12px;
-  margin: 22px 0 10px;
+  margin: 24px 0 12px;
 }
 
 .section-head h2 {
   margin: 0;
-  font-size: 0.875rem;
-  font-weight: 600;
-  letter-spacing: -0.2px;
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.3px;
 }
 
 .meta {
@@ -3620,14 +3677,14 @@ function goBack(): void {
 }
 
 .confirm-button {
-  min-height: var(--touch-target);
-  padding: 0 10px;
-  border: 1px solid var(--color-brand);
-  border-radius: var(--radius-tag);
-  background: var(--color-bg-surface);
-  color: var(--color-brand);
-  font-size: var(--text-caption);
-  font-weight: 500;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-brand);
+  color: var(--color-on-brand);
+  font-size: var(--text-footnote);
+  font-weight: 600;
 }
 
 .position-list {
@@ -3762,6 +3819,10 @@ function goBack(): void {
 .activity-list {
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--radius-card);
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-card);
 }
 
 .activity-row {
@@ -3769,7 +3830,7 @@ function goBack(): void {
   align-items: flex-start;
   gap: 12px;
   width: 100%;
-  padding: 14px 2px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--color-border-subtle);
   text-align: left;
 }
@@ -3883,8 +3944,8 @@ function goBack(): void {
 }
 
 .duplicate-actions button {
-  min-height: 44px;
-  border-radius: var(--radius-control);
-  font-size: 0.875rem;
+  min-height: 48px;
+  border-radius: var(--radius-pill);
+  font-size: 0.9375rem;
 }
 </style>

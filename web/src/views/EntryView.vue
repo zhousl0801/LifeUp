@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { createEntry, fetchEntry, reverseEntry, updateEntry } from '../api/entries'
-import { createCategory, deleteCategory, fetchCategories } from '../api/categories'
+import { createCategory, deleteCategory, fetchCategories, reorderCategories } from '../api/categories'
 import { ApiError, getApiErrorMessage } from '../api/client'
 import AmountKeypad from '../components/AmountKeypad.vue'
 import AppIcon from '../components/AppIcon.vue'
@@ -53,6 +53,8 @@ const newCategoryName = ref('')
 const categorySheetError = ref('')
 const isCategorySaving = ref(false)
 const categoriesLoaded = ref(false)
+const categoryError = ref('')
+const draggingCategoryId = ref('')
 
 const categoryItems = ref<EntryCategory[]>([])
 const categoryOptions = computed<CategoryOption[]>(() => {
@@ -96,9 +98,16 @@ const dateLabel = computed(() => {
 })
 
 let longPressTimer: ReturnType<typeof setTimeout> | undefined
+let dragArmTimer: ReturnType<typeof setTimeout> | undefined
 let suppressClickTimer: ReturnType<typeof setTimeout> | undefined
 let longPressTriggered = false
 let suppressNextCategoryClick = false
+let dragActive = false
+let dragArmed = false
+let dragMoved = false
+let dragStartX = 0
+let dragStartY = 0
+let dragCategoryId = ''
 
 onMounted(async () => {
   document.addEventListener('keydown', handleKeydown)
@@ -139,6 +148,7 @@ function categoryExists(kind: EntryKind, name: string): boolean {
 
 onBeforeUnmount(() => {
   clearLongPressTimer()
+  clearDragArmTimer()
 
   if (suppressClickTimer !== undefined) {
     clearTimeout(suppressClickTimer)
@@ -197,6 +207,12 @@ function setKind(kind: EntryKind): void {
   categoryEditMode.value = false
   categorySheet.value = null
   pendingDeleteCategory.value = null
+  categoryError.value = ''
+  draggingCategoryId.value = ''
+  dragActive = false
+  dragArmed = false
+  dragMoved = false
+  clearDragArmTimer()
 
   if (!categoryExists(kind, form.category)) {
     form.category = defaultCategory(kind)
@@ -218,18 +234,50 @@ function clearLongPressTimer(): void {
   }
 }
 
-function startCategoryPress(option: CategoryOption): void {
+function clearDragArmTimer(): void {
+  if (dragArmTimer !== undefined) {
+    clearTimeout(dragArmTimer)
+    dragArmTimer = undefined
+  }
+}
+
+function startCategoryPress(event: PointerEvent, option: CategoryOption): void {
   clearLongPressTimer()
+  clearDragArmTimer()
+  dragActive = false
+  dragArmed = false
+  dragMoved = false
+  dragCategoryId = ''
+  draggingCategoryId.value = ''
+  longPressTriggered = false
 
   if (!canManageCategories.value || option.id.startsWith('fallback:') || option.id.startsWith('missing:')) {
     return
   }
 
-  longPressTriggered = false
+  dragActive = true
+  dragCategoryId = option.id
+  dragStartX = event.clientX
+  dragStartY = event.clientY
+  ;(event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId)
+
+  if (categoryEditMode.value) {
+    dragArmTimer = setTimeout(() => {
+      dragArmTimer = undefined
+      dragArmed = true
+
+      if (typeof navigator.vibrate === 'function') {
+        navigator.vibrate(10)
+      }
+    }, 220)
+    return
+  }
+
   longPressTimer = setTimeout(() => {
     longPressTimer = undefined
     longPressTriggered = true
     categoryEditMode.value = true
+    dragArmed = true
 
     if (typeof navigator.vibrate === 'function') {
       navigator.vibrate(10)
@@ -237,14 +285,66 @@ function startCategoryPress(option: CategoryOption): void {
   }, 450)
 }
 
-function cancelCategoryPress(): void {
-  clearLongPressTimer()
-
-  if (!longPressTriggered) {
+function moveCategoryPress(event: PointerEvent): void {
+  if (!dragActive) {
     return
   }
 
+  if (!dragArmed) {
+    if (Math.hypot(event.clientX - dragStartX, event.clientY - dragStartY) > 8) {
+      clearLongPressTimer()
+      clearDragArmTimer()
+      dragActive = false
+    }
+
+    return
+  }
+
+  if (!dragMoved) {
+    dragMoved = true
+    draggingCategoryId.value = dragCategoryId
+  }
+
+  const targetId = categoryTileAt(event.clientX, event.clientY)
+
+  if (targetId && targetId !== dragCategoryId) {
+    reorderCategoryPreview(dragCategoryId, targetId)
+  }
+}
+
+function handleCategoryTouchMove(event: TouchEvent): void {
+  if (dragArmed) {
+    event.preventDefault()
+  }
+}
+
+function endCategoryPress(event: PointerEvent): void {
+  const moved = dragMoved
+  const armed = dragArmed
+  const longPressed = longPressTriggered
+
+  clearLongPressTimer()
+  clearDragArmTimer()
+  dragActive = false
+  dragArmed = false
+  dragMoved = false
   longPressTriggered = false
+  draggingCategoryId.value = ''
+  dragCategoryId = ''
+  ;(event.currentTarget as HTMLElement | null)?.releasePointerCapture?.(event.pointerId)
+
+  if (moved) {
+    suppressCategoryClick()
+    void persistCategoryOrder()
+    return
+  }
+
+  if (longPressed || armed) {
+    suppressCategoryClick()
+  }
+}
+
+function suppressCategoryClick(): void {
   suppressNextCategoryClick = true
 
   if (suppressClickTimer !== undefined) {
@@ -255,6 +355,67 @@ function cancelCategoryPress(): void {
     suppressClickTimer = undefined
     suppressNextCategoryClick = false
   }, 600)
+}
+
+function categoryTileAt(x: number, y: number): string | null {
+  const element = document.elementFromPoint?.(x, y) as HTMLElement | null
+  return element?.closest<HTMLElement>('[data-category-id]')?.dataset.categoryId ?? null
+}
+
+function isRealCategory(option: CategoryOption): boolean {
+  return !option.id.startsWith('fallback:') && !option.id.startsWith('missing:')
+}
+
+function reorderCategoryPreview(sourceId: string, targetId: string): void {
+  const order = categoryOptions.value
+    .filter(isRealCategory)
+    .map((option) => option.id)
+  const from = order.indexOf(sourceId)
+  const to = order.indexOf(targetId)
+
+  if (from < 0 || to < 0 || from === to) {
+    return
+  }
+
+  const [moved] = order.splice(from, 1)
+  order.splice(to, 0, moved!)
+  applyCategoryOrder(order)
+}
+
+function applyCategoryOrder(ids: string[]): void {
+  const positions = new Map(ids.map((id, index) => [id, index]))
+  categoryItems.value = categoryItems.value.map((category) => {
+    const position = positions.get(category.id)
+
+    return position === undefined ? category : { ...category, sortOrder: position }
+  })
+}
+
+function categoryOrderIds(): string[] {
+  const activeIds = categoryOptions.value.filter(isRealCategory).map((option) => option.id)
+  const inactiveIds = categoryItems.value
+    .filter((category) => category.kind === form.kind && !category.isActive)
+    .sort((first, second) => first.sortOrder - second.sortOrder || first.name.localeCompare(second.name))
+    .map((category) => category.id)
+
+  return [...activeIds, ...inactiveIds]
+}
+
+async function persistCategoryOrder(): Promise<void> {
+  const ids = categoryOrderIds()
+
+  if (ids.length < 2) {
+    return
+  }
+
+  categoryError.value = ''
+
+  try {
+    await reorderCategories(form.kind, ids)
+  } catch (error) {
+    categoryError.value = getApiErrorMessage(error, '调整分类顺序失败，请重试。')
+    await loadCategories()
+  }
 }
 
 function handleCategoryClick(option: CategoryOption): void {
@@ -304,7 +465,14 @@ function closeCategorySheet(): void {
 }
 
 function exitCategoryEdit(): void {
+  clearLongPressTimer()
+  clearDragArmTimer()
   categoryEditMode.value = false
+  draggingCategoryId.value = ''
+  categoryError.value = ''
+  dragActive = false
+  dragArmed = false
+  dragMoved = false
 }
 
 async function saveCategory(): Promise<void> {
@@ -574,7 +742,7 @@ function handleKeydown(event: KeyboardEvent): void {
             该记录已撤销，不能修改。
           </div>
 
-          <div class="category-grid" role="group" aria-label="选择分类">
+          <div class="category-grid" role="group" aria-label="选择分类" @touchmove="handleCategoryTouchMove">
             <button
               v-for="option in categoryOptions"
               :key="option.id"
@@ -582,14 +750,16 @@ function handleKeydown(event: KeyboardEvent): void {
               class="category-tile"
               :class="{
                 active: !categoryEditMode && form.category === option.name,
-                editing: categoryEditMode
+                editing: categoryEditMode,
+                dragging: draggingCategoryId === option.id
               }"
+              :data-category-id="option.id"
               :disabled="!canEdit"
               :aria-pressed="form.category === option.name"
-              @pointerdown="startCategoryPress(option)"
-              @pointerup="cancelCategoryPress"
-              @pointerleave="cancelCategoryPress"
-              @pointercancel="cancelCategoryPress"
+              @pointerdown="startCategoryPress($event, option)"
+              @pointermove="moveCategoryPress"
+              @pointerup="endCategoryPress"
+              @pointercancel="endCategoryPress"
               @click="handleCategoryClick(option)"
               @contextmenu.prevent
             >
@@ -616,8 +786,9 @@ function handleKeydown(event: KeyboardEvent): void {
             </button>
           </div>
           <p v-if="categoryEditMode && canManageCategories" class="category-hint">
-            点分类可删除
+            长按拖动分类可调整顺序，点分类可删除
           </p>
+          <p v-if="categoryError" class="form-error category-error" role="alert">{{ categoryError }}</p>
 
           <div v-if="hasEntryExtras" class="category-extras">
             <button
@@ -759,8 +930,8 @@ function handleKeydown(event: KeyboardEvent): void {
   flex-shrink: 0;
   min-height: calc(56px + env(safe-area-inset-top));
   padding: env(safe-area-inset-top) 72px 0;
-  background: var(--color-brand);
-  color: var(--color-on-brand);
+  background: linear-gradient(180deg, var(--color-hero-bg) 0%, var(--color-hero-bg-end) 100%);
+  color: var(--color-hero-text);
 }
 
 .kind-tabs {
@@ -776,14 +947,14 @@ function handleKeydown(event: KeyboardEvent): void {
   padding: 0 6px;
   border: 0;
   background: transparent;
-  color: var(--color-on-brand);
+  color: var(--color-hero-text);
   font-size: 1.0625rem;
   font-weight: 500;
-  opacity: 0.66;
+  opacity: 0.62;
 }
 
 .kind-tabs button.active {
-  font-weight: 600;
+  font-weight: 700;
   opacity: 1;
 }
 
@@ -804,15 +975,24 @@ function handleKeydown(event: KeyboardEvent): void {
 
 .header-cancel {
   position: absolute;
-  right: 16px;
-  bottom: 0;
-  min-height: 56px;
-  padding: 0 4px;
+  right: 14px;
+  bottom: 10px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 14px;
   border: 0;
-  background: transparent;
-  color: var(--color-on-brand);
-  font-size: var(--text-body);
-  font-weight: 500;
+  border-radius: var(--radius-pill);
+  background: var(--color-hero-surface);
+  color: var(--color-hero-text);
+  font-size: var(--text-subhead);
+  font-weight: 600;
+}
+
+.header-cancel:hover {
+  background: var(--color-hero-surface-strong);
 }
 
 .category-area {
@@ -870,6 +1050,15 @@ function handleKeydown(event: KeyboardEvent): void {
   touch-action: manipulation;
 }
 
+.category-grid.editing .category-tile {
+  touch-action: pan-y;
+}
+
+.category-tile.dragging {
+  opacity: 0.55;
+  transform: scale(.96);
+}
+
 .category-mark-wrap {
   position: relative;
   display: inline-flex;
@@ -883,8 +1072,8 @@ function handleKeydown(event: KeyboardEvent): void {
   width: 58px;
   height: 58px;
   border-radius: 50%;
-  background: var(--color-bg-subtle);
-  color: var(--color-icon-default);
+  background: var(--color-brand-soft);
+  color: var(--color-brand);
   transition: background var(--motion-fast) ease, color var(--motion-fast) ease;
 }
 
@@ -895,7 +1084,7 @@ function handleKeydown(event: KeyboardEvent): void {
 
 @media (hover: hover) and (pointer: fine) {
   .category-tile:hover:not(:disabled) .category-mark {
-    background: var(--color-brand-soft);
+    background: var(--color-brand-soft-hover);
     color: var(--color-brand);
   }
 }
@@ -905,11 +1094,13 @@ function handleKeydown(event: KeyboardEvent): void {
 .category-tile.active:active .category-mark {
   background: var(--color-brand);
   color: var(--color-on-brand);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--color-brand) 28%, transparent);
 }
 
 .category-name {
   max-width: 100%;
   overflow: hidden;
+  font-weight: 500;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -917,7 +1108,7 @@ function handleKeydown(event: KeyboardEvent): void {
 
 .category-tile.active .category-name {
   color: var(--color-brand);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .category-tile:disabled {
@@ -943,13 +1134,13 @@ function handleKeydown(event: KeyboardEvent): void {
 }
 
 .category-add .category-mark {
-  border: 1px dashed var(--color-border-control);
-  background: transparent;
+  background: var(--color-brand-soft);
   color: var(--color-brand);
 }
 
 .category-add .category-name {
   color: var(--color-brand);
+  font-weight: 600;
 }
 
 .category-hint {
@@ -957,6 +1148,10 @@ function handleKeydown(event: KeyboardEvent): void {
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
   text-align: center;
+}
+
+.category-error {
+  margin: 12px 0 0;
 }
 
 .category-extras {
@@ -985,8 +1180,8 @@ function handleKeydown(event: KeyboardEvent): void {
   overflow: hidden;
   color: var(--color-text-primary);
   font-size: clamp(2.75rem, 12vw, 3.25rem);
-  font-weight: 500;
-  letter-spacing: -1.4px;
+  font-weight: 700;
+  letter-spacing: -0.05em;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
@@ -996,19 +1191,19 @@ function handleKeydown(event: KeyboardEvent): void {
 .note-bar {
   display: block;
   flex-shrink: 0;
-  margin: 4px 16px 12px;
+  margin: 6px 16px 14px;
 }
 
 .note-bar input {
   box-sizing: border-box;
   width: 100%;
-  min-height: 44px;
-  padding: 0 14px;
+  min-height: 48px;
+  padding: 0 18px;
   border: 0;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-pill);
   background: var(--color-bg-subtle);
   color: var(--color-text-primary);
-  font-size: 1rem;
+  font-size: var(--text-body);
 }
 
 .note-bar input::placeholder {
@@ -1017,7 +1212,7 @@ function handleKeydown(event: KeyboardEvent): void {
 
 .note-bar input:focus-visible {
   outline: 2px solid var(--color-focus-ring);
-  outline-offset: 1px;
+  outline-offset: 2px;
 }
 
 .date-proxy {
@@ -1075,11 +1270,11 @@ function handleKeydown(event: KeyboardEvent): void {
 }
 
 .reverse-panel {
-  margin-top: 12px;
-  padding: 14px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-control);
-  background: var(--color-bg-surface);
+  margin-top: 14px;
+  padding: 16px 18px;
+  border: 0;
+  border-radius: var(--radius-card);
+  background: var(--color-bg-subtle);
 }
 
 .reverse-panel p {
@@ -1097,13 +1292,14 @@ function handleKeydown(event: KeyboardEvent): void {
 }
 
 .danger-button {
-  min-height: var(--touch-target);
-  padding: 0 16px;
+  min-height: 48px;
+  padding: 0 20px;
   border: 0;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-pill);
   background: var(--color-danger);
-  color: var(--color-on-brand);
-  font-size: 0.8125rem;
+  color: var(--color-on-danger);
+  font-size: var(--text-subhead);
+  font-weight: 700;
 }
 
 .danger-button:hover:not(:disabled) {
@@ -1121,11 +1317,11 @@ function handleKeydown(event: KeyboardEvent): void {
 
 .form-error {
   margin: 14px 0 0;
-  padding: 10px 12px;
-  border-radius: var(--radius-tag);
+  padding: 12px 14px;
+  border-radius: var(--radius-control);
   background: var(--color-error-bg);
   color: var(--color-error);
-  font-size: 0.75rem;
+  font-size: var(--text-footnote);
   line-height: 1.7;
 }
 

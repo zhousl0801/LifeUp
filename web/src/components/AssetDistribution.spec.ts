@@ -43,7 +43,6 @@ test('shows recorded categories, percentages, new records and missing assets', (
   })
   const text = view.text()
 
-  expect(text).toContain('已记录 3 类')
   expect(text).toContain('现金')
   expect(text).toContain('57.1%')
   expect(text).toContain('公积金')
