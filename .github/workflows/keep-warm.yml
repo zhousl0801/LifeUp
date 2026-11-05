@@ -1,15 +1,14 @@
 name: 保活
 
 # Render 免费 web service 空闲 15 分钟会休眠，冷启动约 1 分钟。
-# 这个工作流每 10 分钟打一次健康检查，让实例保持唤醒，打开 APP 时不用等冷启动。
+# 这个工作流每 30 分钟请求一次健康检查，无法保证实例始终保持唤醒。
 #
-# 注意：私有仓库每月 2000 Actions 分钟，这个频率约 4300 分钟/月，会超额；
-# 所以默认关闭。仓库是公开的、或愿意用外部定时服务时再打开：
+# 默认关闭；需要启用时设置仓库变量：
 #   Settings → Secrets and variables → Actions → Variables
 #   新建变量 KEEP_WARM_ENABLED = true
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '7,37 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -35,6 +34,12 @@ jobs:
             echo "::error::缺少仓库密钥 APP_BASE_URL"
             exit 1
           fi
-          # 冷启动时请求可能超时，但请求已经到达 Render，足以阻止休眠，所以不判定失败。
-          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 120 "${BASE_URL%/}/api/health" || true)
-          echo "健康检查：HTTP ${code:-超时或未响应}"
+          if ! code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 120 "${BASE_URL%/}/api/health"); then
+            echo "::error::健康检查请求失败或超时"
+            exit 1
+          fi
+          echo "健康检查：HTTP ${code}"
+          if [[ ! "$code" =~ ^2[0-9][0-9]$ ]]; then
+            echo "::error::健康检查返回非成功状态码"
+            exit 1
+          fi
