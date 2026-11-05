@@ -5,7 +5,7 @@ services:
     dockerfilePath: ./api/Dockerfile
     dockerContext: .
     plan: free
-    region: oregon
+    region: singapore
     envVars:
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
