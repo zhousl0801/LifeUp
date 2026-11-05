@@ -1,6 +1,11 @@
 *
 !api/
 !web/
+!docs/
+docs/*
+!docs/design/
+docs/design/*
+!docs/design/ui-color-tokens.css
 **/node_modules
 **/dist
 **/bin

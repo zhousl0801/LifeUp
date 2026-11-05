@@ -3,6 +3,7 @@ WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web/ ./
+COPY docs/design/ui-color-tokens.css /docs/design/ui-color-tokens.css
 RUN npm run build
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
