@@ -16,7 +16,7 @@ import { useLedgerStore } from '../stores/ledger'
 import { amountTone, formatBusinessDate, formatMoney, formatSignedMoney, sumAmounts, todayInBusinessTimeZone } from '../utils/format'
 import { buildScopedTrend } from '../utils/trend'
 import type { MonthChange } from '../types/ledger'
-import type { AutoPlan, PlanCycle, PlanOccurrence, PlanOverview } from '../types/plan'
+import type { PlanCycle, PlanOverview, PlanType } from '../types/plan'
 import type { AssetTrend, AssetTrendPoint, TrendRange } from '../types/trend'
 
 interface PlanPreviewRow {
@@ -24,7 +24,16 @@ interface PlanPreviewRow {
   date: string
   title: string
   cycleLabel: string
-  amount: number | null
+  amount: number
+  pending: boolean
+}
+
+const planTypeOrder: PlanType[] = ['fundSip', 'providentDeposit', 'providentWithdrawal', 'salaryIncome']
+const planTypeLabels: Record<PlanType, string> = {
+  fundSip: '基金定投',
+  providentDeposit: '公积金缴存',
+  providentWithdrawal: '公积金提取',
+  salaryIncome: '定期收入'
 }
 
 const rangeOptions: { value: TrendRange; label: string }[] = [
@@ -39,7 +48,7 @@ const ledgerStore = useLedgerStore()
 const { overview, isLoading, errorMessage } = storeToRefs(ledgerStore)
 const today = todayInBusinessTimeZone()
 const trend = ref<AssetTrend | null>(null)
-const trendRange = ref<TrendRange>('month')
+const trendRange = ref<TrendRange>('week')
 const trendSelection = ref<AssetTrendPoint | null>(null)
 const trendLoading = ref(false)
 const trendError = ref('')
@@ -98,48 +107,46 @@ const planPreview = computed<PlanPreviewRow[]>(() => {
   }
 
   const rows: PlanPreviewRow[] = []
-  const cycleByPlanId = new Map(data.plans.map((plan) => [plan.id, plan.cycle]))
-  const pendingByDate = new Map<string, PlanOccurrence[]>()
 
-  for (const occurrence of data.pendingOccurrences) {
-    const items = pendingByDate.get(occurrence.dueDate) ?? []
-    items.push(occurrence)
-    pendingByDate.set(occurrence.dueDate, items)
-  }
+  for (const type of planTypeOrder) {
+    const pending = data.pendingOccurrences
+      .filter((occurrence) => occurrence.type === type)
+      .sort((first, second) => first.dueDate.localeCompare(second.dueDate))
 
-  for (const [date, items] of [...pendingByDate.entries()].sort(([first], [second]) => first.localeCompare(second))) {
-    rows.push({
-      key: `pending-${date}`,
-      date,
-      title: items.length > 1 ? `${items.length} 项待处理记账` : items[0]!.planName,
-      cycleLabel: cycleSummary(items.map((item) => cycleByPlanId.get(item.planId))),
-      amount: sumAmounts(items.map(item => item.amount))
-    })
-  }
-
-  const upcomingByDate = new Map<string, AutoPlan[]>()
-
-  for (const plan of data.plans) {
-    if (!plan.isActive || !plan.nextDueDate || pendingByDate.has(plan.nextDueDate)) {
+    if (pending.length) {
+      rows.push({
+        key: `pending-${type}`,
+        date: pending[0]!.dueDate,
+        title: planTypeLabels[type],
+        cycleLabel: pending.length > 1 ? `${pending.length} 项待处理` : '待处理',
+        amount: sumAmounts(pending.map(occurrence => occurrence.amount)),
+        pending: true
+      })
       continue
     }
 
-    const items = upcomingByDate.get(plan.nextDueDate) ?? []
-    items.push(plan)
-    upcomingByDate.set(plan.nextDueDate, items)
-  }
+    const plans = data.plans.filter((plan) => plan.type === type && plan.isActive)
+    const dates = plans
+      .map((plan) => plan.nextDueDate)
+      .filter((date): date is string => date !== null)
+      .sort()
 
-  for (const [date, plans] of [...upcomingByDate.entries()].sort(([first], [second]) => first.localeCompare(second))) {
+    if (!dates.length) {
+      continue
+    }
+
+    const cycle = cycleSummary(plans.map((plan) => plan.cycle))
     rows.push({
-      key: `plan-${date}`,
-      date,
-      title: plans.length > 1 ? `${plans.length} 项自动记账` : plans[0]!.name,
-      cycleLabel: cycleSummary(plans.map((plan) => plan.cycle)),
-      amount: sumAmounts(plans.map(plan => plan.amount))
+      key: `plan-${type}`,
+      date: dates[0]!,
+      title: planTypeLabels[type],
+      cycleLabel: plans.length > 1 ? `${plans.length} 项 · ${cycle}` : cycle,
+      amount: sumAmounts(plans.map(plan => plan.amount)),
+      pending: false
     })
   }
 
-  return rows.sort((first, second) => first.date.localeCompare(second.date)).slice(0, 2)
+  return rows.sort((first, second) => first.date.localeCompare(second.date))
 })
 
 function cycleSummary(cycles: (PlanCycle | undefined)[]): string {
@@ -468,10 +475,10 @@ onBeforeUnmount(() => {
           <span class="plan-main">
             <span class="plan-title-row">
               <b>{{ row.title }}</b>
-              <em v-if="row.cycleLabel" class="plan-cycle">{{ row.cycleLabel }}</em>
+              <em v-if="row.cycleLabel" class="plan-cycle" :class="{ pending: row.pending }">{{ row.cycleLabel }}</em>
             </span>
           </span>
-          <span class="plan-amount">{{ row.amount === null ? '›' : `¥${formatMoney(row.amount)}` }}</span>
+          <span class="plan-amount">¥{{ formatMoney(row.amount) }}</span>
         </RouterLink>
         <EmptyState v-if="!planPreview.length" compact icon="clock" title="让固定收支自动记录" description="工资、缴存和定投，到期后按计划记账。" action-label="设置自动记账" @action="router.push('/plans')" />
       </div>
@@ -1085,6 +1092,11 @@ onBeforeUnmount(() => {
   font-weight: 600;
   line-height: 1.4;
   white-space: nowrap;
+}
+
+.plan-cycle.pending {
+  background: var(--color-error-bg);
+  color: var(--color-error);
 }
 
 .plan-amount {

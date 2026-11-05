@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   save: vi.fn(),
   pause: vi.fn(),
   resume: vi.fn(),
+  remove: vi.fn(),
   run: vi.fn(),
   retry: vi.fn(),
   skip: vi.fn()
@@ -25,6 +26,7 @@ vi.mock('../api/plans', () => ({
   savePlan: mocks.save,
   pausePlan: mocks.pause,
   resumePlan: mocks.resume,
+  deletePlan: mocks.remove,
   runPlans: mocks.run,
   retryOccurrence: mocks.retry,
   skipOccurrence: mocks.skip
@@ -415,5 +417,28 @@ test('provident plan form only offers deposit and withdrawal', async () => {
     .querySelector('select')!
 
   expect([...typeSelect.options].map(option => option.text)).toEqual(['缴存', '提取'])
+  view.unmount()
+})
+
+test('deleting a plan requires confirmation and sends the plan id', async () => {
+  mocks.remove.mockResolvedValue({})
+  const view = mount(PlanView, { attachTo: document.body })
+  await flushPromises()
+  await view.find('.group-income .group-toggle').trigger('click')
+  await flushPromises()
+
+  await view.findAll('button').find(button => button.text() === '删除')!.trigger('click')
+  await flushPromises()
+
+  expect(document.querySelector('.sheet')!.textContent).toContain('删除计划「工资到账」')
+  expect(mocks.remove).not.toHaveBeenCalled()
+
+  document.querySelector<HTMLButtonElement>('.sheet .confirm-button')!.click()
+  await flushPromises()
+
+  expect(mocks.remove).toHaveBeenCalledTimes(1)
+  expect(mocks.remove.mock.calls[0]![0]).toBe('plan-1')
+  expect(mocks.remove.mock.calls[0]![1]).toBeTruthy()
+  expect(document.querySelector('.sheet')).toBeNull()
   view.unmount()
 })

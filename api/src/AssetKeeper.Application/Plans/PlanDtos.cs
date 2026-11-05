@@ -77,6 +77,8 @@ public sealed record SavePlanRequest(
 
 public sealed record PlanActionRequest(Guid RequestId);
 
+public sealed record PlanDeleteResultDto(Guid PlanId);
+
 public sealed record RecordOccurrenceResultDto(
     PlanOccurrenceDto Occurrence,
     bool Recorded,

@@ -10,6 +10,12 @@ public interface IPlanRepository
 
     Task AddPlanAsync(AutoPlan plan, CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<PlanOccurrence>> GetOccurrencesByPlanAsync(Guid planId, CancellationToken cancellationToken);
+
+    void RemovePlan(AutoPlan plan);
+
+    void RemoveOccurrences(IEnumerable<PlanOccurrence> occurrences);
+
     Task<IReadOnlyList<PlanOccurrence>> GetOccurrencesAsync(
         Guid ledgerId,
         DateOnly? from,

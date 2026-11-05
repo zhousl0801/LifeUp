@@ -3829,6 +3829,7 @@ function goBack(): void {
   display: flex;
   align-items: flex-start;
   gap: 12px;
+  box-sizing: border-box;
   width: 100%;
   padding: 14px 16px;
   border-bottom: 1px solid var(--color-border-subtle);

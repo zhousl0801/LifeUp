@@ -62,7 +62,7 @@ public sealed class TradingCalendar
         return date;
     }
 
-    private bool IsTradingDay(DateOnly date, AutoPlanTradingScope scope)
+    public bool IsTradingDay(DateOnly date, AutoPlanTradingScope scope)
     {
         var day = GetDay(date);
 

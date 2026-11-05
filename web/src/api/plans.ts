@@ -41,6 +41,13 @@ export function resumePlan(planId: string, requestId: string): Promise<unknown> 
   })
 }
 
+export function deletePlan(planId: string, requestId: string): Promise<unknown> {
+  return apiRequest(`/api/ledger/plans/${encodeURIComponent(planId)}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ requestId })
+  })
+}
+
 export function skipOccurrence(occurrenceId: string, requestId: string): Promise<unknown> {
   return apiRequest(`/api/ledger/plans/occurrences/${encodeURIComponent(occurrenceId)}/skip`, {
     method: 'POST',

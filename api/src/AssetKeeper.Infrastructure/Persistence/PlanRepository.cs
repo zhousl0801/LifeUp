@@ -34,6 +34,23 @@ public sealed class PlanRepository : IPlanRepository
         await _dbContext.AutoPlans.AddAsync(plan, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<PlanOccurrence>> GetOccurrencesByPlanAsync(Guid planId, CancellationToken cancellationToken)
+    {
+        return await _dbContext.PlanOccurrences
+            .Where(occurrence => occurrence.PlanId == planId)
+            .ToListAsync(cancellationToken);
+    }
+
+    public void RemovePlan(AutoPlan plan)
+    {
+        _dbContext.AutoPlans.Remove(plan);
+    }
+
+    public void RemoveOccurrences(IEnumerable<PlanOccurrence> occurrences)
+    {
+        _dbContext.PlanOccurrences.RemoveRange(occurrences);
+    }
+
     public async Task<IReadOnlyList<PlanOccurrence>> GetOccurrencesAsync(
         Guid ledgerId,
         DateOnly? from,

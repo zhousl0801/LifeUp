@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
+  deletePlan,
   fetchPlanCalendar,
   fetchPlanOccurrences,
   fetchPlanOverview,
@@ -19,6 +20,7 @@ import AppIcon from '../components/AppIcon.vue'
 import AppNav from '../components/AppNav.vue'
 import BackButton from '../components/BackButton.vue'
 import BottomSheet from '../components/BottomSheet.vue'
+import ConfirmSheet from '../components/ConfirmSheet.vue'
 import PlanCalendar from '../components/PlanCalendar.vue'
 import { createRequestId } from '../utils/request'
 import {
@@ -56,6 +58,8 @@ const editingPlan = ref<AutoPlan | null>(null)
 const isSaving = ref(false)
 const formError = ref('')
 const busyAction = ref('')
+const pendingPlanRemoval = ref<AutoPlan | null>(null)
+const isDeletingPlan = ref(false)
 const calendarYear = ref(Number(today.slice(0, 4)))
 const calendarMonth = ref(Number(today.slice(5, 7)))
 const calendarDays = ref<TradingDay[]>([])
@@ -693,6 +697,31 @@ async function togglePlan(plan: AutoPlan): Promise<void> {
   }
 }
 
+function requestPlanRemoval(plan: AutoPlan): void {
+  pendingPlanRemoval.value = plan
+}
+
+async function confirmPlanRemoval(): Promise<void> {
+  const plan = pendingPlanRemoval.value
+
+  if (!plan || isDeletingPlan.value) {
+    return
+  }
+
+  isDeletingPlan.value = true
+
+  try {
+    await deletePlan(plan.id, createRequestId())
+    pendingPlanRemoval.value = null
+    notice.value = '计划已删除；已记账的收支记录会保留。'
+    await load()
+  } catch (error) {
+    notice.value = getApiErrorMessage(error, '删除计划失败，请重试。')
+  } finally {
+    isDeletingPlan.value = false
+  }
+}
+
 async function handleOccurrence(occurrenceId: string, action: 'retry' | 'skip'): Promise<void> {
   busyAction.value = occurrenceId
 
@@ -1035,6 +1064,13 @@ function goBack(): void {
                               :disabled="busyAction === plan.id"
                               @click="togglePlan(plan)"
                             >{{ plan.isActive ? '暂停' : '恢复' }}</button>
+                            <span class="action-sep" aria-hidden="true" />
+                            <button
+                              type="button"
+                              class="link-button danger-text"
+                              :disabled="busyAction === plan.id"
+                              @click="requestPlanRemoval(plan)"
+                            >删除</button>
                           </span>
                         </div>
                         <small>
@@ -1070,6 +1106,13 @@ function goBack(): void {
                         :disabled="busyAction === fund.single.id"
                         @click="togglePlan(fund.single)"
                       >{{ fund.single.isActive ? '暂停' : '恢复' }}</button>
+                      <span class="action-sep" aria-hidden="true" />
+                      <button
+                        type="button"
+                        class="link-button danger-text"
+                        :disabled="busyAction === fund.single.id"
+                        @click="requestPlanRemoval(fund.single)"
+                      >删除</button>
                     </span>
                   </footer>
                 </template>
@@ -1101,6 +1144,13 @@ function goBack(): void {
                     :disabled="busyAction === plan.id"
                     @click="togglePlan(plan)"
                   >{{ plan.isActive ? '暂停' : '恢复' }}</button>
+                  <span class="action-sep" aria-hidden="true" />
+                  <button
+                    type="button"
+                    class="link-button danger-text"
+                    :disabled="busyAction === plan.id"
+                    @click="requestPlanRemoval(plan)"
+                  >删除</button>
                 </span>
               </footer>
             </article>
@@ -1346,7 +1396,7 @@ function goBack(): void {
         </label>
 
         <p v-if="form.type === 'fundSip' && form.cycle === 'tradingDay'" class="form-note">
-          新计划最早从创建后的下一个合格交易日开始，不补做创建当天；所选开始日期休市时顺延。
+          北京时间 15:00 前创建且当天开市时从今天开始；15:00 后或今天休市时从下一个合格交易日开始，所选开始日期休市时顺延。
         </p>
         <div class="form-row">
           <label class="form-field">
@@ -1371,6 +1421,16 @@ function goBack(): void {
         </div>
       </form>
     </BottomSheet>
+    <ConfirmSheet
+      :open="pendingPlanRemoval !== null"
+      title="删除计划"
+      :message="pendingPlanRemoval ? `删除计划「${pendingPlanRemoval.name}」？该计划的待处理期次会一并删除，已记账的收支记录会保留。` : ''"
+      confirm-label="删除"
+      danger
+      :busy="isDeletingPlan"
+      @confirm="confirmPlanRemoval"
+      @cancel="pendingPlanRemoval = null"
+    />
     <AppNav />
   </main>
 </template>
@@ -1726,6 +1786,10 @@ function goBack(): void {
 
 .link-button:disabled {
   color: var(--color-text-disabled);
+}
+
+.link-button.danger-text {
+  color: var(--color-danger);
 }
 
 .small-button {
