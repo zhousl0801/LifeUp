@@ -51,7 +51,7 @@ public sealed class GoldService
             ? decimal.Round(holding.Cost / holding.Grams, 2)
             : (decimal?)null;
 
-        var replayData = await _ledgerRepository.GetReplayDataAsync(ledger.Id, cancellationToken);
+        var replayData = await _ledgerRepository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
         var replay = new LedgerReplayCalculator().Calculate(replayData, BusinessFact.From(replayData), _businessDateProvider.Today, currentDate: _businessDateProvider.Today);
         var arrivedPendingIds = replayData.Transactions
             .Where(transaction => !transaction.IsReversed && transaction.Kind == AssetTransactionKind.GoldSellArrival

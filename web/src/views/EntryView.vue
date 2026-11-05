@@ -6,6 +6,7 @@ import { createCategory, deleteCategory, fetchCategories, reorderCategories } fr
 import { ApiError, getApiErrorMessage } from '../api/client'
 import AmountKeypad from '../components/AmountKeypad.vue'
 import AppIcon from '../components/AppIcon.vue'
+import LoadingState from '../components/LoadingState.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import { categoriesFor } from '../constants/categories'
 import type { EntryCategory } from '../types/category'
@@ -728,7 +729,9 @@ function handleKeydown(event: KeyboardEvent): void {
       </button>
     </header>
 
-    <p v-if="isLoading" class="state entry-state">正在读取记录…</p>
+    <div v-if="isLoading" class="state entry-state">
+      <LoadingState variant="list" :rows="4" label="正在读取记录" />
+    </div>
 
     <section v-else-if="loadError" class="state entry-state">
       <p>{{ loadError }}</p>

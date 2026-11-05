@@ -24,7 +24,7 @@ public sealed class TrendService
             return null;
         }
 
-        var data = await _ledgerRepository.GetReplayDataAsync(ledger.Id, cancellationToken);
+        var data = await _ledgerRepository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
         var facts = BusinessFact.From(data);
         var calculator = new LedgerReplayCalculator();
         var today = _dates.Today;

@@ -41,21 +41,20 @@ public sealed class FundService
             return null;
         }
 
-        var positions = await _ledgerRepository.GetFundPositionsAsync(ledger.Id, cancellationToken);
         var groups = await _ledgerRepository.GetFundGroupsAsync(ledger.Id, cancellationToken);
-        var transactions = await _ledgerRepository.GetAssetTransactionsAsync(
-            ledger.Id,
-            AssetType.Fund,
-            null,
-            null,
-            200,
-            cancellationToken);
+        var replayData = await _ledgerRepository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
+        var positions = replayData.Positions;
+        var transactions = replayData.Transactions
+            .Where(transaction => !transaction.IsReversed && transaction.AssetType == AssetType.Fund)
+            .OrderByDescending(transaction => transaction.BusinessDate)
+            .ThenByDescending(transaction => transaction.CreatedAt)
+            .Take(200)
+            .ToList();
         var positionNames = positions.ToDictionary(position => position.Id, position => position.DisplayName);
         var activities = transactions
             .Select(transaction => Map(transaction, positionNames))
             .ToList();
 
-        var replayData = await _ledgerRepository.GetReplayDataAsync(ledger.Id, cancellationToken);
         var activeTransactionIds = replayData.Transactions
             .Where(transaction => !transaction.IsReversed)
             .Select(transaction => transaction.Id)

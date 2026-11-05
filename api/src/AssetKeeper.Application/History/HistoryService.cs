@@ -39,7 +39,7 @@ public sealed class HistoryService
             throw new HistoryValidationException("查看日期须在账本起始日期与今天之间。");
         }
 
-        var data = await _repository.GetReplayDataAsync(ledger.Id, cancellationToken);
+        var data = await _repository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
         var facts = BusinessFact.From(data);
         var cash = ledger.CashAccount;
         var opening = new BusinessFact

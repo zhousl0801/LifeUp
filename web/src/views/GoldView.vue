@@ -5,7 +5,9 @@ import { useRouter } from 'vue-router'
 import { arriveGoldSell, buyGold, fetchGoldOverview, refreshGoldQuote, saveGoldHolding, sellGold } from '../api/gold'
 import { ApiError, getApiErrorMessage } from '../api/client'
 import AppNav from '../components/AppNav.vue'
+import AnimatedMoney from '../components/AnimatedMoney.vue'
 import BackButton from '../components/BackButton.vue'
+import LoadingState from '../components/LoadingState.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import {
   amountTone,
@@ -444,7 +446,8 @@ function goBack(): void {
       <BackButton @back="goBack" />
     </header>
 
-    <p v-if="isLoading && !overview" class="state">正在读取积存金…</p>
+    <LoadingState v-if="isLoading && !overview" variant="hero" label="正在读取积存金" />
+    <LoadingState v-if="isLoading && !overview" variant="list" :rows="3" label="正在读取积存金明细" />
 
     <section v-else-if="errorMessage" class="state">
       <p>{{ errorMessage }}</p>
@@ -457,7 +460,10 @@ function goBack(): void {
           积存金资产
           <span class="hero-tag">人民币</span>
         </p>
-        <h2 class="hero-balance"><span>¥</span>{{ overview.hasEffectiveQuote ? formatMoney(overview.value) : '行情待补' }}</h2>
+        <h2 class="hero-balance">
+          <template v-if="overview.hasEffectiveQuote"><span>¥</span><AnimatedMoney :value="overview.value" prefix="" /></template>
+          <template v-else>行情待补</template>
+        </h2>
         <p class="hero-meta">
           持仓估值 {{ formatQuantity(overview.grams) }} 克 ×
           {{ overview.hasEffectiveQuote ? formatMoney(overview.quote) : '行情待补' }} 元/克

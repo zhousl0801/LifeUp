@@ -636,7 +636,7 @@ test('fund recurring view reads plans and filters them to the active group', asy
   await view.findAll('.group-pill').find((pill) => pill.text() === '纳斯达克指数')!.trigger('click')
   await flushPromises()
   expect(view.findAll('.fund-plan-row')).toHaveLength(1)
-  expect(view.find('.fund-plan-row').text()).toContain('纳指定投')
+  expect(view.find('.fund-plan-row').text()).toContain('纳指基金')
 
   view.unmount()
 })

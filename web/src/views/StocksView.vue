@@ -6,7 +6,9 @@ import { ApiError, getApiErrorMessage } from '../api/client'
 import { buyStock, fetchStockOverview, fetchStockQuote, refreshStockQuote, refreshStockQuotes, saveStockHolding, searchStocks, sellStock } from '../api/stocks'
 import { fetchLedger, updateAssetCoverage } from '../api/ledger'
 import AppNav from '../components/AppNav.vue'
+import AnimatedMoney from '../components/AnimatedMoney.vue'
 import BackButton from '../components/BackButton.vue'
+import LoadingState from '../components/LoadingState.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import {
   amountTone,
@@ -705,7 +707,8 @@ function goBack(): void {
       </div>
     </header>
 
-    <p v-if="isLoading && !overview" class="state">正在读取股票持仓…</p>
+    <LoadingState v-if="isLoading && !overview" variant="hero" label="正在读取股票持仓" />
+    <LoadingState v-if="isLoading && !overview" variant="list" :rows="3" label="正在读取股票列表" />
 
     <section v-else-if="errorMessage && !overview" class="state">
       <p>{{ errorMessage }}</p>
@@ -718,7 +721,7 @@ function goBack(): void {
           股票资产
           <span class="hero-tag">沪深北 · 含 ETF / LOF</span>
         </p>
-        <h2 class="hero-balance"><span>¥</span>{{ formatMoney(overview.totalValue) }}</h2>
+        <h2 class="hero-balance"><span>¥</span><AnimatedMoney :value="overview.totalValue" prefix="" /></h2>
         <p class="hero-meta">
           持有 {{ activePositions.length }} 只
           <template v-if="overview.todayProfitDate"> · 行情 {{ formatBusinessDate(overview.todayProfitDate) }}</template>

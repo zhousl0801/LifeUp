@@ -18,11 +18,14 @@ import { createFundPosition, fetchFundOverview, searchFunds } from '../api/funds
 import { ApiError, getApiErrorMessage } from '../api/client'
 import AppIcon from '../components/AppIcon.vue'
 import AppNav from '../components/AppNav.vue'
+import AnimatedMoney from '../components/AnimatedMoney.vue'
 import BackButton from '../components/BackButton.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import ConfirmSheet from '../components/ConfirmSheet.vue'
+import LoadingState from '../components/LoadingState.vue'
 import PlanCalendar from '../components/PlanCalendar.vue'
 import { createRequestId } from '../utils/request'
+import { fundPlanDisplayName as fundDisplayName } from '../utils/plan'
 import {
   formatBusinessDate,
   formatMoney,
@@ -867,14 +870,19 @@ function fundGroupKey(plan: AutoPlan): string {
   return fundDisplayName(plan).normalize('NFKC').replace(/\s/g, '').toUpperCase()
 }
 
-function fundDisplayName(plan: AutoPlan): string {
-  const name = plan.fundTarget?.name ?? plan.fundPositionName ?? plan.name
-  return name.replace(/\s*[·•]\s*(交易日定投|定投)$/, '').trim()
-}
-
 function fundCode(plan: AutoPlan): string | null {
   const code = plan.fundTarget?.code?.trim()
   return code ? code : null
+}
+
+function planDisplayName(planId: string, fallback: string): string {
+  const plan = overview.value?.plans.find(item => item.id === planId)
+
+  if (!plan) {
+    return fallback
+  }
+
+  return plan.type === 'fundSip' ? fundDisplayName(plan) : fallback
 }
 
 function fundMetaLine(plan: AutoPlan): string {
@@ -975,7 +983,8 @@ function goBack(): void {
       </button>
     </header>
 
-    <p v-if="isLoading && !overview" class="state">正在读取自动计划…</p>
+    <LoadingState v-if="isLoading && !overview" variant="card" label="正在读取自动计划" />
+    <LoadingState v-if="isLoading && !overview" variant="list" :rows="3" label="正在读取计划列表" />
 
     <section v-else-if="errorMessage" class="state">
       <p>{{ errorMessage }}</p>
@@ -1022,10 +1031,11 @@ function goBack(): void {
           <template v-if="group.key === 'fund'">
             <div v-if="fundPlanGroups.length" class="fund-plan-list">
               <article
-                v-for="fund in fundPlanGroups"
+                v-for="(fund, index) in fundPlanGroups"
                 :key="fund.key"
-                class="plan-card fund-plan-card"
+                class="plan-card fund-plan-card stagger-item"
                 :class="{ 'is-paused': fund.activeCount === 0 }"
+                :style="{ '--stagger': Math.min(index, 8) }"
               >
                 <details v-if="fund.plans.length > 1" class="fund-details">
                   <summary>
@@ -1089,7 +1099,7 @@ function goBack(): void {
                       <strong>{{ fund.name }}</strong>
                       <small>{{ fundMetaLine(fund.single) }}</small>
                     </div>
-                    <span class="plan-amount">¥{{ formatMoney(fund.single.amount) }}</span>
+                    <span class="plan-amount"><AnimatedMoney :value="fund.single.amount" /></span>
                   </header>
                   <p class="plan-meta">
                     开始 {{ formatBusinessDate(fund.single.startDate) }}
@@ -1121,13 +1131,18 @@ function goBack(): void {
           </template>
 
           <template v-else>
-            <article v-for="plan in group.plans" :key="plan.id" class="plan-card">
+            <article
+              v-for="(plan, index) in group.plans"
+              :key="plan.id"
+              class="plan-card stagger-item"
+              :style="{ '--stagger': Math.min(index, 8) }"
+            >
               <header>
                 <div>
                   <strong>{{ plan.name }}</strong>
                   <small>{{ typeLabel(plan.type) }} · {{ scheduleText(plan) }}</small>
                 </div>
-                <span class="plan-amount">¥{{ formatMoney(plan.amount) }}</span>
+                <span class="plan-amount"><AnimatedMoney :value="plan.amount" /></span>
               </header>
               <p class="plan-meta">
                 开始 {{ formatBusinessDate(plan.startDate) }}
@@ -1166,7 +1181,7 @@ function goBack(): void {
         <section class="occurrence-list">
           <article v-for="occurrence in actionable" :key="occurrence.id" class="occurrence-card">
             <div>
-              <strong>{{ occurrence.planName }}</strong>
+              <strong>{{ planDisplayName(occurrence.planId, occurrence.planName) }}</strong>
               <small>
                 {{ occurrence.dueDate }} · ¥{{ formatMoney(occurrence.amount) }} ·
                 <span :class="statusClass(occurrence.status)">{{ statusLabel(occurrence.status) }}</span>
@@ -1240,7 +1255,7 @@ function goBack(): void {
           >
             <article v-for="occurrence in occurrenceItems" :key="occurrence.id" class="occurrence-card">
               <div>
-                <strong>{{ occurrence.planName }}</strong>
+                <strong>{{ planDisplayName(occurrence.planId, occurrence.planName) }}</strong>
                 <small>
                   {{ occurrence.dueDate }} {{ occurrence.dueTime.slice(0, 5) }} · ¥{{ formatMoney(occurrence.amount) }} ·
                   <span :class="statusClass(occurrence.status)">{{ statusLabel(occurrence.status) }}</span>
@@ -1249,7 +1264,7 @@ function goBack(): void {
               </div>
             </article>
           </section>
-          <p v-else-if="occurrenceLoading" class="occurrence-state">正在读取执行记录…</p>
+          <LoadingState v-else-if="occurrenceLoading" variant="list" :rows="3" compact label="正在读取执行记录" />
           <p v-else class="summary-note">还没有执行记录。</p>
           <nav v-if="occurrenceTotal > occurrencePageSize" class="occurrence-pagination" aria-label="执行记录分页">
             <button

@@ -5,6 +5,7 @@ import { logout, passkeyEnabled } from '../api/access'
 import { deletePasskey, fetchPasskeys, passkeySupported, registerPasskey, type PasskeySummary } from '../api/passkeys'
 import ConfirmSheet from '../components/ConfirmSheet.vue'
 import PageHeader from '../components/PageHeader.vue'
+import LoadingState from '../components/LoadingState.vue'
 
 const router = useRouter()
 const credentials = ref<PasskeySummary[]>([])
@@ -128,7 +129,7 @@ onMounted(load)
 
     <section v-if="passkeyEnabled" class="security-card">
       <h2>已注册的 Passkey</h2>
-      <p v-if="loading" class="security-note">正在读取…</p>
+      <LoadingState v-if="loading" variant="inline" compact label="正在读取 Passkey" />
       <p v-else-if="!credentials.length" class="security-note">还没有注册 Passkey，启用后即可免口令登录。</p>
       <ul v-else class="passkey-list">
         <li v-for="credential in credentials" :key="credential.id">

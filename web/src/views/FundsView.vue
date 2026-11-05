@@ -21,7 +21,9 @@ import { fetchPlanOverview } from '../api/plans'
 import { ApiError, getApiErrorMessage } from '../api/client'
 import AppNav from '../components/AppNav.vue'
 import AppIcon from '../components/AppIcon.vue'
+import AnimatedMoney from '../components/AnimatedMoney.vue'
 import EmptyState from '../components/EmptyState.vue'
+import LoadingState from '../components/LoadingState.vue'
 import BackButton from '../components/BackButton.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import ConfirmSheet from '../components/ConfirmSheet.vue'
@@ -43,6 +45,7 @@ import {
   todayInBusinessTimeZone
 } from '../utils/format'
 import { createRequestId } from '../utils/request'
+import { fundPlanDisplayName } from '../utils/plan'
 import type {
   FundActivity,
   FundOverview,
@@ -1813,12 +1816,10 @@ function goBack(): void {
       </div>
     </header>
 
-    <div v-if="isLoading && !overview" class="skeleton-stack" role="status" aria-label="正在读取基金">
-      <div class="skeleton skeleton-hero" />
-      <div class="skeleton skeleton-card" />
-      <div class="skeleton skeleton-row" />
-      <div class="skeleton skeleton-row" />
-    </div>
+    <template v-if="isLoading && !overview">
+      <LoadingState variant="hero" label="正在读取基金" />
+      <LoadingState variant="list" :rows="4" label="正在读取基金列表" />
+    </template>
 
     <section v-else-if="errorMessage" class="state">
       <p>{{ errorMessage }}</p>
@@ -1832,11 +1833,14 @@ function goBack(): void {
           <span v-if="searchText.trim()" class="hero-search" :title="searchText">· 搜索「{{ searchText.trim() }}」</span>
           <span class="hero-tag">{{ scope.historyConfirmed ? '已确认持仓' : '持仓日期待确认' }}</span>
         </p>
-        <h2 class="hero-balance"><span v-if="scope.hasEffectiveQuotes">¥</span>{{ scope.hasEffectiveQuotes ? formatMoney(scope.assetValue) : '行情待补' }}</h2>
+        <h2 class="hero-balance">
+          <template v-if="scope.hasEffectiveQuotes"><span>¥</span><AnimatedMoney :value="scope.assetValue" prefix="" /></template>
+          <template v-else>行情待补</template>
+        </h2>
         <p class="hero-meta">
-          {{ scopedFunds.length }} 只基金 · 持仓成本 {{ formatMoney(scope.cost) }}
-          <template v-if="scope.pendingBuyAmount > 0"> · 含待确认 ¥{{ formatMoney(scope.pendingBuyAmount) }}</template>
-          <template v-if="scope.pendingArrivalAmount > 0"> · 含待到账 ¥{{ formatMoney(scope.pendingArrivalAmount) }}</template>
+          {{ scopedFunds.length }} 只基金 · 持仓成本 <AnimatedMoney :value="scope.cost" />
+          <template v-if="scope.pendingBuyAmount > 0"> · 含待确认 <AnimatedMoney :value="scope.pendingBuyAmount" /></template>
+          <template v-if="scope.pendingArrivalAmount > 0"> · 含待到账 <AnimatedMoney :value="scope.pendingArrivalAmount" /></template>
         </p>
         <div class="hero-metrics">
           <div>
@@ -1929,7 +1933,12 @@ function goBack(): void {
         </div>
 
         <section v-if="sortedFunds.length" class="fund-list">
-          <article v-for="fund in sortedFunds" :key="fund.key" class="fund-card">
+          <article
+            v-for="(fund, index) in sortedFunds"
+            :key="fund.key"
+            class="fund-card stagger-item"
+            :style="{ '--stagger': Math.min(index, 8) }"
+          >
             <header
               role="button"
               tabindex="0"
@@ -1949,10 +1958,10 @@ function goBack(): void {
               </div>
               <div class="fund-values">
                 <div class="fund-asset">
-                  <b>¥{{ formatMoney(fund.assetValue) }}</b>
+                  <b><AnimatedMoney :value="fund.assetValue" /></b>
                   <small>
                     占比 {{ weightOf(fund) }}
-                    <template v-if="pendingOf(fund) > 0"> · 含待确认 ¥{{ formatMoney(pendingOf(fund)) }}</template>
+                    <template v-if="pendingOf(fund) > 0"> · 含待确认 <AnimatedMoney :value="pendingOf(fund)" /></template>
                   </small>
                 </div>
                 <div v-for="metric in metricDisplay(fund)" :key="metric.key" class="fund-metric">
@@ -2053,10 +2062,11 @@ function goBack(): void {
 
         <section v-if="filteredActivityRows.length" ref="activityListRef" class="activity-list">
           <div
-            v-for="row in filteredActivityRows"
+            v-for="(row, index) in filteredActivityRows"
             :key="row.key"
-            class="activity-row"
+            class="activity-row stagger-item"
             :class="{ 'is-pending': row.isPending, 'is-clickable': row.pendingAction }"
+            :style="{ '--stagger': Math.min(index, 8) }"
             :role="row.pendingAction ? 'button' : undefined"
             :tabindex="row.pendingAction ? 0 : undefined"
             @click="openActivityRow(row)"
@@ -2089,7 +2099,7 @@ function goBack(): void {
           <span class="meta">与自动记账共用同一计划</span>
         </div>
 
-        <p v-if="plansLoading" class="state">正在读取定投计划…</p>
+        <LoadingState v-if="plansLoading" variant="list" :rows="3" compact label="正在读取定投计划" />
         <section v-else-if="plansError" class="state">
           <p>{{ plansError }}</p>
           <button type="button" class="secondary-button" @click="plansLoaded = false; plansError = ''; loadPlans()">重新加载</button>
@@ -2097,7 +2107,7 @@ function goBack(): void {
         <section v-else-if="scopedPlans.length" class="fund-plan-list">
           <article v-for="plan in scopedPlans" :key="plan.id" class="fund-plan-row">
             <div>
-              <strong>{{ plan.name }}</strong>
+              <strong>{{ fundPlanDisplayName(plan) }}</strong>
               <small>
                 {{ planCycleLabel(plan) }} · {{ plan.isActive ? '启用' : '已暂停' }}
                 · 下期 {{ plan.nextDueDate ? formatBusinessDate(plan.nextDueDate) : '待定' }}

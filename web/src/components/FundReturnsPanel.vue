@@ -3,7 +3,9 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { fetchFundReturnDay, fetchFundReturns } from '../api/funds'
 import { getApiErrorMessage } from '../api/client'
 import BottomSheet from './BottomSheet.vue'
+import AnimatedMoney from './AnimatedMoney.vue'
 import FundReturnChart from './FundReturnChart.vue'
+import LoadingState from './LoadingState.vue'
 import { amountTone, formatBusinessDate, formatMoney, formatSignedMoney, todayInBusinessTimeZone } from '../utils/format'
 import type { TrendRange } from '../types/trend'
 import type { FundReturn, FundReturnDay, FundReturnPoint } from '../types/fundReturn'
@@ -201,7 +203,7 @@ function rowTitle(shareClass: string | null, platform: string | null): string {
       </div>
     </div>
 
-    <p v-if="isLoading && !data" class="state">正在读取投资收益…</p>
+    <LoadingState v-if="isLoading && !data" variant="chart" compact label="正在读取投资收益" />
     <section v-else-if="errorMessage" class="state">
       <p>{{ errorMessage }}</p>
       <button type="button" class="secondary-button" @click="load">重新加载</button>
@@ -212,14 +214,16 @@ function rowTitle(shareClass: string | null, platform: string | null): string {
         <div>
           <span>区间盈亏</span>
           <b :class="amountTone(data.intervalProfit)">
-            {{ data.intervalProfit === null ? '—' : formatSignedMoney(data.intervalProfit) }}
+            <AnimatedMoney v-if="data.intervalProfit !== null" :value="data.intervalProfit" signed />
+            <template v-else>—</template>
           </b>
           <small>自 {{ formatBusinessDate(data.intervalFrom) }} 起，含在途</small>
         </div>
         <div>
           <span>持有收益</span>
           <b :class="amountTone(data.holdingProfit)">
-            {{ data.holdingProfit === null ? '—' : formatSignedMoney(data.holdingProfit) }}
+            <AnimatedMoney v-if="data.holdingProfit !== null" :value="data.holdingProfit" signed />
+            <template v-else>—</template>
           </b>
           <small>当前已确认持仓估值 − 成本</small>
         </div>
@@ -282,7 +286,7 @@ function rowTitle(shareClass: string | null, platform: string | null): string {
       subtitle="按净值披露日归属"
       @close="daySheetOpen = false"
     >
-      <p v-if="dayLoading" class="state">正在读取当日收益…</p>
+      <LoadingState v-if="dayLoading" variant="list" :rows="3" compact label="正在读取当日收益" />
       <section v-else-if="dayError" class="state">
         <p>{{ dayError }}</p>
       </section>

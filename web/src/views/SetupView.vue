@@ -3,6 +3,7 @@ import { storeToRefs } from 'pinia'
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getApiErrorMessage } from '../api/client'
+import LoadingState from '../components/LoadingState.vue'
 import { useLedgerStore } from '../stores/ledger'
 import { MaximumAmount, parseAmount, todayInBusinessTimeZone } from '../utils/format'
 
@@ -106,7 +107,7 @@ function clearErrors(): void {
       <span class="currency-tag">CNY</span>
     </header>
 
-    <p v-if="isChecking" class="state">正在检查账本…</p>
+    <LoadingState v-if="isChecking" variant="card" label="正在检查账本" />
 
     <section v-else-if="loadError" class="state">
       <p>{{ loadError }}</p>

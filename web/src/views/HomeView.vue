@@ -8,12 +8,15 @@ import { refreshQuotes } from '../api/quotes'
 import { getApiErrorMessage } from '../api/client'
 import AppIcon from '../components/AppIcon.vue'
 import AppNav from '../components/AppNav.vue'
+import AnimatedMoney from '../components/AnimatedMoney.vue'
 import AssetDistribution from '../components/AssetDistribution.vue'
 import AssetTrendChart from '../components/AssetTrendChart.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import EmptyState from '../components/EmptyState.vue'
+import LoadingState from '../components/LoadingState.vue'
 import { useLedgerStore } from '../stores/ledger'
 import { amountTone, formatBusinessDate, formatMoney, formatSignedMoney, sumAmounts, todayInBusinessTimeZone } from '../utils/format'
+import { useCountUp } from '../utils/countUp'
 import { buildScopedTrend } from '../utils/trend'
 import type { MonthChange } from '../types/ledger'
 import type { PlanCycle, PlanOverview, PlanType } from '../types/plan'
@@ -26,6 +29,7 @@ interface PlanPreviewRow {
   cycleLabel: string
   amount: number
   pending: boolean
+  hint?: string
 }
 
 const planTypeOrder: PlanType[] = ['fundSip', 'providentDeposit', 'providentWithdrawal', 'salaryIncome']
@@ -56,6 +60,7 @@ const monthChange = ref<MonthChange | null>(null)
 const monthChangeError = ref('')
 const planOverview = ref<PlanOverview | null>(null)
 const planError = ref('')
+const planLoading = ref(false)
 const changeSheetOpen = ref(false)
 const quoteRefreshing = ref(false)
 const quoteNotice = ref('')
@@ -72,8 +77,9 @@ const daysRecorded = computed(() => {
 const trendReady = computed(() => daysRecorded.value >= 7)
 const trendProgress = computed(() => Math.min(100, Math.round(daysRecorded.value / 7 * 100)))
 const updateDate = computed(() => trend.value?.to ?? today)
+const animatedTotal = useCountUp(computed(() => overview.value?.totalAssets ?? null))
 const totalAmountParts = computed(() => {
-  const [integer, fraction = '00'] = formatMoney(overview.value?.totalAssets ?? 0).split('.')
+  const [integer, fraction = '00'] = formatMoney(animatedTotal.value ?? 0).split('.')
   return { integer: integer ?? '0', fraction }
 })
 const scopedTrend = computed(() => trend.value ? buildScopedTrend(trend.value) : null)
@@ -112,37 +118,38 @@ const planPreview = computed<PlanPreviewRow[]>(() => {
     const pending = data.pendingOccurrences
       .filter((occurrence) => occurrence.type === type)
       .sort((first, second) => first.dueDate.localeCompare(second.dueDate))
+    const plans = data.plans.filter((plan) => plan.type === type && plan.isActive)
+    const pendingPlanIds = new Set(pending.map((occurrence) => occurrence.planId))
+    const remainingPlans = plans.filter((plan) => !pendingPlanIds.has(plan.id))
+    const dates = [
+      ...pending.map((occurrence) => occurrence.dueDate),
+      ...remainingPlans
+        .map((plan) => plan.nextDueDate)
+        .filter((date): date is string => date !== null)
+    ].sort()
+
+    if (!dates.length && !pending.length) {
+      continue
+    }
+
+    const cycle = cycleSummary(remainingPlans.map((plan) => plan.cycle))
+    let cycleLabel: string
 
     if (pending.length) {
-      rows.push({
-        key: `pending-${type}`,
-        date: pending[0]!.dueDate,
-        title: planTypeLabels[type],
-        cycleLabel: pending.length > 1 ? `${pending.length} 项待处理` : '待处理',
-        amount: sumAmounts(pending.map(occurrence => occurrence.amount)),
-        pending: true
-      })
-      continue
+      cycleLabel = pending.length > 1 ? `${pending.length} 项待处理` : '待处理'
+    } else {
+      cycleLabel = plans.length > 1 ? `${plans.length} 项 · ${cycle}` : cycle
     }
 
-    const plans = data.plans.filter((plan) => plan.type === type && plan.isActive)
-    const dates = plans
-      .map((plan) => plan.nextDueDate)
-      .filter((date): date is string => date !== null)
-      .sort()
-
-    if (!dates.length) {
-      continue
-    }
-
-    const cycle = cycleSummary(plans.map((plan) => plan.cycle))
     rows.push({
-      key: `plan-${type}`,
+      key: pending.length ? `pending-${type}` : `plan-${type}`,
       date: dates[0]!,
       title: planTypeLabels[type],
-      cycleLabel: plans.length > 1 ? `${plans.length} 项 · ${cycle}` : cycle,
-      amount: sumAmounts(plans.map(plan => plan.amount)),
-      pending: false
+      cycleLabel,
+      amount: sumAmounts(pending.map((occurrence) => occurrence.amount))
+        + sumAmounts(remainingPlans.map((plan) => plan.amount)),
+      pending: pending.length > 0,
+      hint: pending.length && remainingPlans.length ? `另有 ${remainingPlans.length} 项待执行` : undefined
     })
   }
 
@@ -204,7 +211,9 @@ function selectPoint(point: AssetTrendPoint): void {
 }
 
 async function loadLedger(): Promise<void> {
-  const status = await ledgerStore.load()
+  const statusPromise = ledgerStore.load()
+  const detailPromise = Promise.all([loadTrend(trendRange.value), loadMonthChange(), loadPlans()])
+  const status = await statusPromise
 
   if (status === 'missing') {
     await router.replace({ name: 'setup' })
@@ -212,7 +221,7 @@ async function loadLedger(): Promise<void> {
   }
 
   if (status === 'ready') {
-    await Promise.all([loadTrend(trendRange.value), loadMonthChange(), loadPlans()])
+    await detailPromise
   }
 }
 
@@ -246,12 +255,15 @@ async function loadMonthChange(): Promise<void> {
 
 async function loadPlans(): Promise<void> {
   planError.value = ''
+  planLoading.value = true
 
   try {
     planOverview.value = await fetchPlanOverview()
   } catch {
     planOverview.value = null
     planError.value = '自动记账计划暂时无法读取，请稍后重试。'
+  } finally {
+    planLoading.value = false
   }
 }
 
@@ -328,11 +340,16 @@ onBeforeUnmount(() => {
       <p v-if="quoteNotice" class="sync-note" role="status">{{ quoteNotice }}</p>
       <p v-else-if="quoteError" class="sync-note error" role="alert">{{ quoteError }}</p>
 
-      <div v-if="isLoading" class="hero-loading" role="status" aria-label="正在读取账本">
-        <div class="hero-skeleton-line short" />
-        <div class="hero-skeleton-line amount" />
-        <div class="hero-skeleton-chart" />
-      </div>
+      <LoadingState v-if="isLoading" variant="hero" label="正在读取账本" />
+
+      <template v-if="isLoading">
+        <section class="metric-grid">
+          <article class="metric-card"><LoadingState variant="text" compact label="正在读取本月收入" /></article>
+          <article class="metric-card"><LoadingState variant="text" compact label="正在读取本月支出" /></article>
+        </section>
+        <LoadingState variant="list" :rows="3" compact label="正在读取资产分布" />
+        <LoadingState variant="list" :rows="3" compact label="正在读取自动记账" />
+      </template>
 
       <section v-else-if="errorMessage" class="hero-error">
         <p>{{ errorMessage }}</p>
@@ -391,7 +408,7 @@ onBeforeUnmount(() => {
                 {{ selectedPoint?.value == null ? '依据不足' : `¥${formatMoney(selectedPoint.value)}` }}
               </b>
             </div>
-            <p v-if="trendLoading && !trend" class="hero-hint">正在读取趋势…</p>
+            <LoadingState v-if="trendLoading && !trend" variant="chart" compact label="正在读取趋势" />
             <p v-else-if="trendError" class="hero-hint">{{ trendError }}</p>
             <AssetTrendChart
               v-else-if="trend && scopedTrend"
@@ -433,11 +450,11 @@ onBeforeUnmount(() => {
       <section class="metric-grid">
         <article class="metric-card">
           <span class="metric-label"><i class="metric-dot income" />本月收入</span>
-          <b class="metric-value">{{ formatMoney(overview.month.income) }}</b>
+          <b class="metric-value"><AnimatedMoney :value="overview.month.income" /></b>
         </article>
         <article class="metric-card">
           <span class="metric-label"><i class="metric-dot expense" />本月支出</span>
-          <b class="metric-value">{{ formatMoney(overview.month.expense) }}</b>
+          <b class="metric-value"><AnimatedMoney :value="overview.month.expense" /></b>
         </article>
       </section>
 
@@ -445,7 +462,7 @@ onBeforeUnmount(() => {
         <p class="month-surplus">
           <span>本月结余</span>
           <b :class="amountTone(overview.month.hasRecords ? overview.month.surplus : null)">
-            {{ formatSignedMoney(overview.month.surplus) }}
+            <AnimatedMoney :value="overview.month.surplus" signed tone />
           </b>
         </p>
         <RouterLink class="text-btn" :to="{ name: 'ledger' }">查看账本 ›</RouterLink>
@@ -467,7 +484,13 @@ onBeforeUnmount(() => {
         <RouterLink v-if="planPreview.length" class="text-btn" to="/plans">管理计划 ›</RouterLink>
       </div>
       <div v-if="planOverview" class="plan-box">
-        <RouterLink v-for="row in planPreview" :key="row.key" class="plan-row" to="/plans">
+        <RouterLink
+          v-for="(row, index) in planPreview"
+          :key="row.key"
+          class="plan-row stagger-item"
+          :style="{ '--stagger': Math.min(index, 8) }"
+          to="/plans"
+        >
           <span class="date-box">
             <small>{{ monthLabel(row.date) }}</small>
             <b>{{ dayLabel(row.date) }}</b>
@@ -477,11 +500,13 @@ onBeforeUnmount(() => {
               <b>{{ row.title }}</b>
               <em v-if="row.cycleLabel" class="plan-cycle" :class="{ pending: row.pending }">{{ row.cycleLabel }}</em>
             </span>
+            <small v-if="row.hint" class="plan-hint">{{ row.hint }}</small>
           </span>
-          <span class="plan-amount">¥{{ formatMoney(row.amount) }}</span>
+          <span class="plan-amount"><AnimatedMoney :value="row.amount" /></span>
         </RouterLink>
         <EmptyState v-if="!planPreview.length" compact icon="clock" title="让固定收支自动记录" description="工资、缴存和定投，到期后按计划记账。" action-label="设置自动记账" @action="router.push('/plans')" />
       </div>
+      <LoadingState v-else-if="planLoading" variant="list" :rows="3" compact label="正在读取自动记账" />
       <p v-else-if="planError" class="hint">{{ planError }}</p>
     </template>
 
@@ -619,38 +644,6 @@ onBeforeUnmount(() => {
 .sync-note.error {
   background: rgba(255, 122, 122, 0.12);
   color: #FF9B9B;
-}
-
-.hero-loading {
-  display: grid;
-  gap: 12px;
-  padding: 24px 0 8px;
-}
-
-.hero-skeleton-line,
-.hero-skeleton-chart {
-  border-radius: var(--radius-control);
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.hero-skeleton-line {
-  height: 14px;
-}
-
-.hero-skeleton-line.short {
-  width: 38%;
-}
-
-.hero-skeleton-line.amount {
-  width: 72%;
-  height: 48px;
-  border-radius: var(--radius-card);
-}
-
-.hero-skeleton-chart {
-  height: 150px;
-  margin-top: 10px;
-  border-radius: var(--radius-card);
 }
 
 .hero-error {
@@ -1097,6 +1090,15 @@ onBeforeUnmount(() => {
 .plan-cycle.pending {
   background: var(--color-error-bg);
   color: var(--color-error);
+}
+
+.plan-hint {
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .plan-amount {

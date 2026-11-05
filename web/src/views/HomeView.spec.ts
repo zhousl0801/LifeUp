@@ -245,6 +245,45 @@ test('keeps pending occurrences ahead of upcoming plans for the same type', asyn
   view.unmount()
 })
 
+test('adds the other active plans to a pending row so the type total stays visible', async () => {
+  const start = shift(today, -30)
+  mocks.ledger.mockResolvedValue(overview(start))
+  mocks.trend.mockResolvedValue(trend(start))
+  mocks.plans.mockResolvedValue({
+    plans: [
+      plan({ id: 'fund-a', type: 'fundSip', name: '基金 A', amount: 640, nextDueDate: shift(today, 1) }),
+      plan({ id: 'fund-b', type: 'fundSip', name: '基金 B', amount: 100, nextDueDate: shift(today, 1) })
+    ],
+    pendingOccurrences: [
+      {
+        id: 'occurrence-b',
+        planId: 'fund-b',
+        planName: '基金 B',
+        type: 'fundSip',
+        amount: 100,
+        fee: 0,
+        dueDate: today,
+        dueTime: '12:30:00',
+        status: 'waiting',
+        relatedRecordId: null,
+        errorMessage: null,
+        executedAt: null,
+        periodKey: `T${today}`,
+        planVersion: 0
+      }
+    ]
+  })
+
+  const view = mount(HomeView, { global: { plugins: [createPinia()] } })
+  await flushPromises()
+
+  const row = view.find('.plan-row')
+  expect(row.text()).toContain('待处理')
+  expect(row.text()).toContain('另有 1 项待执行')
+  expect(row.text()).toContain('740.00')
+  view.unmount()
+})
+
 test('shows the same-scope change and percentage when a comparable baseline exists', async () => {
   const start = shift(today, -30)
   mocks.ledger.mockResolvedValue(overview(start))

@@ -118,6 +118,18 @@ summary:focus-visible {
   line-height: 1.8;
 }
 
+.sr-only {
+  position: absolute;
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
 .secondary-button {
   min-height: var(--touch-target);
   padding: 0 18px;
@@ -455,6 +467,202 @@ summary:focus-visible {
 @keyframes skeleton-shimmer {
   from { transform: translateX(-80%); }
   to { transform: translateX(80%); }
+}
+
+/* 统一加载态：薄荷微光骨架 + 呼吸感，供各页面区域复用。 */
+.loading-state {
+  display: grid;
+  gap: 10px;
+  padding: 4px 0 20px;
+}
+
+.loading-state.is-compact {
+  gap: 6px;
+  padding: 0;
+}
+
+.loading-block {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: var(--radius-card);
+  background: var(--color-skeleton-base);
+  animation: loading-breathe 2.6s ease-in-out infinite;
+}
+
+.loading-block::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 18%,
+    color-mix(in srgb, var(--color-accent-mint) 28%, transparent) 46%,
+    color-mix(in srgb, var(--color-brand) 20%, transparent) 54%,
+    transparent 82%
+  );
+  background-size: 220% 100%;
+  content: '';
+  animation: loading-sweep 1.8s var(--ease-standard) infinite;
+}
+
+.loading-line {
+  height: 12px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-text-primary) 10%, var(--color-bg-subtle));
+}
+
+.loading-line.short {
+  width: 42%;
+}
+
+.loading-line.amount {
+  width: 68%;
+  height: 34px;
+  border-radius: 12px;
+}
+
+.loading-line.inline {
+  height: 10px;
+}
+
+.loading-amount {
+  width: 72%;
+  height: 58px;
+  border-radius: 18px;
+}
+
+.loading-chart {
+  height: 140px;
+}
+
+.loading-card {
+  display: grid;
+  gap: 10px;
+  align-content: center;
+  min-height: 112px;
+  padding: 18px;
+}
+
+.loading-card .loading-line {
+  background: color-mix(in srgb, var(--color-text-primary) 9%, transparent);
+}
+
+.loading-row {
+  height: 58px;
+}
+
+.loading-state.is-hero {
+  gap: 12px;
+}
+
+.loading-state.is-hero .loading-block {
+  background: color-mix(in srgb, #fff 9%, transparent);
+}
+
+.loading-state.is-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+}
+
+.loading-orbit {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: conic-gradient(from 90deg, transparent 0 42%, var(--color-accent-mint) 72%, var(--color-brand));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 0);
+  animation: loading-orbit .9s linear infinite;
+}
+
+@keyframes loading-sweep {
+  from { transform: translateX(-90%); }
+  to { transform: translateX(90%); }
+}
+
+@keyframes loading-orbit {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes loading-breathe {
+  0%, 100% { opacity: .86; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-block::after,
+  .loading-orbit {
+    animation: none;
+  }
+
+  .loading-block {
+    animation: none;
+  }
+}
+
+.loading-bar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 9999;
+  overflow: hidden;
+  height: 4px;
+  background: color-mix(in srgb, var(--color-brand) 28%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--color-accent-mint) 18%, transparent);
+  pointer-events: none;
+}
+
+.loading-bar-track {
+  display: block;
+  width: 38%;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, transparent, var(--color-accent-mint), var(--color-brand), transparent);
+  animation: loading-bar-slide 1.1s var(--ease-standard) infinite;
+}
+
+.loading-bar-enter-active,
+.loading-bar-leave-active {
+  transition: opacity .2s ease;
+}
+
+.loading-bar-enter-from,
+.loading-bar-leave-to {
+  opacity: 0;
+}
+
+@keyframes loading-bar-slide {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(320%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-bar-track {
+    width: 100%;
+    animation: none;
+  }
+}
+
+.stagger-item {
+  animation: stagger-reveal .36s var(--ease-standard) both;
+  animation-delay: calc(var(--stagger, 0) * 45ms);
+}
+
+.animated-money {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes stagger-reveal {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stagger-item {
+    animation: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

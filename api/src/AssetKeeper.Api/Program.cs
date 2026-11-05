@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using AssetKeeper.Application.Cash;
@@ -18,6 +19,7 @@ using AssetKeeper.Api.Security;
 using Fido2NetLib;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using System.Threading.RateLimiting;
@@ -35,6 +37,14 @@ builder.Services.AddControllers()
     {
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
     });
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+});
+builder.Services.Configure<BrotliCompressionProviderOptions>(options => options.Level = CompressionLevel.Optimal);
+builder.Services.Configure<GzipCompressionProviderOptions>(options => options.Level = CompressionLevel.Optimal);
 builder.Services.AddOpenApi();
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
     policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
@@ -108,6 +118,7 @@ if (string.IsNullOrWhiteSpace(connectionString))
 
 builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
 builder.Services.AddScoped<ILedgerRepository, LedgerRepository>();
+builder.Services.AddSingleton<ReplayDataCache>();
 builder.Services.AddScoped<LedgerService>();
 builder.Services.AddScoped<TrendService>();
 builder.Services.AddScoped<MonthChangeService>();
@@ -158,6 +169,8 @@ builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
 builder.Services.AddSingleton<BusinessDateProvider>();
 
 var app = builder.Build();
+
+app.UseResponseCompression();
 
 if (app.Environment.IsProduction() && !app.Services.GetRequiredService<AccessCredential>().IsConfigured)
 {

@@ -11,10 +11,12 @@ namespace AssetKeeper.Infrastructure.Persistence;
 public sealed class LedgerRepository : ILedgerRepository
 {
     private readonly AppDbContext _dbContext;
+    private readonly ReplayDataCache _replayCache;
 
-    public LedgerRepository(AppDbContext dbContext)
+    public LedgerRepository(AppDbContext dbContext, ReplayDataCache? replayCache = null)
     {
         _dbContext = dbContext;
+        _replayCache = replayCache ?? new ReplayDataCache();
     }
 
     public async Task<IReadOnlyList<HistoryAuditDto>> GetHistoryAuditAsync(Guid ledgerId, CancellationToken cancellationToken)
@@ -44,6 +46,54 @@ public sealed class LedgerRepository : ILedgerRepository
             _dbContext.StockPositions.Local.Where(position => position.LedgerId == ledgerId).ToList(),
             _dbContext.ProvidentFundAccounts.Local.SingleOrDefault(account => account.LedgerId == ledgerId),
             _dbContext.GoldHoldings.Local.SingleOrDefault(holding => holding.LedgerId == ledgerId));
+    }
+
+    public Task<LedgerReplayData> GetReplayDataReadOnlyAsync(Guid ledgerId, CancellationToken cancellationToken)
+    {
+        return _replayCache.GetOrCreateAsync(
+            ledgerId,
+            token => LoadReplayDataReadOnlyAsync(ledgerId, token),
+            cancellationToken);
+    }
+
+    private async Task<LedgerReplayData> LoadReplayDataReadOnlyAsync(Guid ledgerId, CancellationToken cancellationToken)
+    {
+        var ledger = await _dbContext.Ledgers
+            .AsNoTracking()
+            .Include(item => item.CashAccount)
+            .SingleAsync(item => item.Id == ledgerId, cancellationToken);
+        var entries = await _dbContext.LedgerEntries
+            .AsNoTracking()
+            .Where(entry => entry.LedgerId == ledgerId)
+            .ToListAsync(cancellationToken);
+        var adjustments = await _dbContext.CashAdjustments
+            .AsNoTracking()
+            .Where(adjustment => adjustment.LedgerId == ledgerId)
+            .ToListAsync(cancellationToken);
+        var transactions = await _dbContext.AssetTransactions
+            .AsNoTracking()
+            .Where(transaction => transaction.LedgerId == ledgerId)
+            .ToListAsync(cancellationToken);
+        var prices = await _dbContext.PriceObservations
+            .AsNoTracking()
+            .Where(price => price.LedgerId == ledgerId)
+            .ToListAsync(cancellationToken);
+        var positions = await _dbContext.FundPositions
+            .AsNoTracking()
+            .Where(position => position.LedgerId == ledgerId)
+            .ToListAsync(cancellationToken);
+        var stocks = await _dbContext.StockPositions
+            .AsNoTracking()
+            .Where(position => position.LedgerId == ledgerId)
+            .ToListAsync(cancellationToken);
+        var provident = await _dbContext.ProvidentFundAccounts
+            .AsNoTracking()
+            .SingleOrDefaultAsync(account => account.LedgerId == ledgerId, cancellationToken);
+        var gold = await _dbContext.GoldHoldings
+            .AsNoTracking()
+            .SingleOrDefaultAsync(holding => holding.LedgerId == ledgerId, cancellationToken);
+
+        return new LedgerReplayData(ledger, entries, adjustments, transactions, prices, positions, stocks, provident, gold);
     }
 
     public async Task AddPriceObservationAsync(PriceObservation price, CancellationToken cancellationToken)
@@ -534,6 +584,7 @@ public sealed class LedgerRepository : ILedgerRepository
         try
         {
             await _dbContext.SaveChangesAsync(cancellationToken);
+            _replayCache.InvalidateAll();
         }
         catch (DbUpdateConcurrencyException exception)
         {

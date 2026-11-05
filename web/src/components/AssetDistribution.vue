@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import AppIcon from './AppIcon.vue'
+import AnimatedMoney from './AnimatedMoney.vue'
 import { amountTone, formatMoney, formatSignedMoney, sumAmounts } from '../utils/format'
 import type { AssetChange, AssetKey, LedgerOverview } from '../types/ledger'
 
@@ -188,7 +189,13 @@ function changeTone(row: DistributionRow): string {
     </div>
 
     <ul class="asset-list">
-      <li v-for="row in rows" :key="row.key" class="asset-row" :class="{ muted: row.notHeld }">
+      <li
+        v-for="(row, index) in rows"
+        :key="row.key"
+        class="asset-row stagger-item"
+        :class="{ muted: row.notHeld }"
+        :style="{ '--stagger': Math.min(index, 8) }"
+      >
         <RouterLink v-if="row.configured && !row.notHeld" :to="row.to" class="asset-link">
           <span class="asset-main">
             <span class="asset-title">
@@ -200,7 +207,10 @@ function changeTone(row: DistributionRow): string {
             </small>
           </span>
           <span class="asset-side">
-            <b class="asset-amount">{{ amountLabel(row) }}</b>
+            <b class="asset-amount">
+              <AnimatedMoney v-if="row.amount !== null" :value="row.amount" />
+              <template v-else>{{ amountLabel(row) }}</template>
+            </b>
             <small><span :class="changeTone(row)">{{ changeLabel(row) }}</span></small>
           </span>
           <span class="asset-percent">

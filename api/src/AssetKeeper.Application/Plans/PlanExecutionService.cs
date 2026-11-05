@@ -202,7 +202,6 @@ public sealed class PlanExecutionService
     {
         try
         {
-            occurrence.BeginAttempt(_dates.UtcNow);
             var result = await ExecuteBusinessAsync(occurrence, cancellationToken);
             var current = await _planRepository.GetOccurrenceForUpdateAsync(ledgerId, occurrence.Id, cancellationToken);
 
@@ -210,6 +209,14 @@ public sealed class PlanExecutionService
             {
                 return PlanOccurrenceStatus.Pending;
             }
+
+            // 另一个执行者可能已经完成或跳过该期次，不能再被本次结果覆盖。
+            if (current.Status is PlanOccurrenceStatus.Completed or PlanOccurrenceStatus.Skipped)
+            {
+                return current.Status;
+            }
+
+            current.BeginAttempt(_dates.UtcNow);
 
             if (result.Succeeded)
             {
@@ -236,6 +243,12 @@ public sealed class PlanExecutionService
 
                 if (current is not null)
                 {
+                    if (current.Status is PlanOccurrenceStatus.Completed or PlanOccurrenceStatus.Skipped)
+                    {
+                        return current.Status;
+                    }
+
+                    current.BeginAttempt(_dates.UtcNow);
                     current.Fail(exception.Message, _dates.UtcNow);
                     await _planRepository.SaveChangesAsync(cancellationToken);
 

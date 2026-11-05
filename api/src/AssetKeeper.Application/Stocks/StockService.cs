@@ -53,7 +53,7 @@ public sealed class StockService
             .Where(transaction => transaction.Kind != AssetTransactionKind.StockQuote)
             .Select(transaction => MapActivity(transaction, positionNames))
             .ToList();
-        var replayData = await _ledgerRepository.GetReplayDataAsync(ledger.Id, cancellationToken);
+        var replayData = await _ledgerRepository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
         var replay = new LedgerReplayCalculator().Calculate(
             replayData,
             BusinessFact.From(replayData),

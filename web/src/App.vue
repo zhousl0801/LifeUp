@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, watch } from 'vue'
 import { accessReady, hasAccess, refreshAccess } from './api/access'
+import LoadingBar from './components/LoadingBar.vue'
 import PendingMutationNotice from './components/PendingMutationNotice.vue'
 import UpdateBanner from './components/UpdateBanner.vue'
 import AccessView from './views/AccessView.vue'
@@ -17,6 +18,7 @@ watch(hasAccess, (value) => {
   <p v-if="!accessReady" class="access-splash">正在验证访问权限…</p>
   <AccessView v-else-if="!hasAccess" />
   <template v-else>
+    <LoadingBar />
     <PendingMutationNotice />
     <UpdateBanner />
     <RouterView v-slot="{ Component }">

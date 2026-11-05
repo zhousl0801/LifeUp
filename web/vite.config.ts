@@ -44,6 +44,12 @@ export default defineConfig({
       }
     })
   ],
+  build: {
+    modulePreload: {
+      resolveDependencies: (_filename, dependencies) =>
+        dependencies.filter((dependency) => !dependency.includes('chartEcharts'))
+    }
+  },
   server: {
     proxy: {
       '/api': {

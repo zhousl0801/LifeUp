@@ -85,6 +85,8 @@ export async function logout(): Promise<void> {
   } catch {
     // 网络失败时仍然在本地锁定；服务端会话到期后自然失效。
   } finally {
+    const { clearReadCache } = await import('./client')
+    clearReadCache()
     markAccessLost()
   }
 }

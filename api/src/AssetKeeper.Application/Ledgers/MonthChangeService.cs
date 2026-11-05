@@ -28,7 +28,7 @@ public sealed class MonthChangeService
         var monthStart = new DateOnly(today.Year, today.Month, 1);
         var from = ledger.StartDate > monthStart ? ledger.StartDate : monthStart;
         var notes = new List<string>();
-        var data = await _ledgerRepository.GetReplayDataAsync(ledger.Id, cancellationToken);
+        var data = await _ledgerRepository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
         var facts = BusinessFact.From(data);
         var calculator = new LedgerReplayCalculator();
 

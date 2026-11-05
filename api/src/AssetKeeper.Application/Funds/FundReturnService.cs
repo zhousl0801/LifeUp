@@ -30,7 +30,7 @@ public sealed class FundReturnService
         }
 
         var today = _dates.Today;
-        var data = await _ledgerRepository.GetReplayDataAsync(ledger.Id, cancellationToken);
+        var data = await _ledgerRepository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
         var facts = BusinessFact.From(data);
         var active = facts.Where(fact => !fact.IsReversed).ToList();
         var activeIds = active.Select(fact => fact.Id).ToHashSet();
@@ -294,7 +294,7 @@ public sealed class FundReturnService
         }
 
         var today = _dates.Today;
-        var data = await _ledgerRepository.GetReplayDataAsync(ledger.Id, cancellationToken);
+        var data = await _ledgerRepository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
         var facts = BusinessFact.From(data);
         var active = facts.Where(fact => !fact.IsReversed).ToList();
         var activeIds = active.Select(fact => fact.Id).ToHashSet();

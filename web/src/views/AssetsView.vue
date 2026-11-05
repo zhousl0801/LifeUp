@@ -4,11 +4,13 @@ import { useRouter } from 'vue-router'
 import { fetchAssetTrend, fetchMonthChange, updateAssetCoverage } from '../api/ledger'
 import { getApiErrorMessage } from '../api/client'
 import AppNav from '../components/AppNav.vue'
+import AnimatedMoney from '../components/AnimatedMoney.vue'
 import AssetDistribution from '../components/AssetDistribution.vue'
 import BackButton from '../components/BackButton.vue'
 import BottomSheet from '../components/BottomSheet.vue'
+import LoadingState from '../components/LoadingState.vue'
 import { useLedgerStore } from '../stores/ledger'
-import { formatMoney, todayInBusinessTimeZone } from '../utils/format'
+import { todayInBusinessTimeZone } from '../utils/format'
 import type { AssetKey, LedgerOverview, MonthChange } from '../types/ledger'
 
 const router = useRouter()
@@ -167,7 +169,8 @@ function goHome(): void {
       </div>
     </header>
 
-    <p v-if="isLoading" class="state">正在读取资产…</p>
+    <LoadingState v-if="isLoading" variant="hero" label="正在读取资产" />
+    <LoadingState v-if="isLoading" variant="list" :rows="3" label="正在读取资产分布" />
 
     <section v-else-if="errorMessage && !overview" class="state">
       <p>{{ errorMessage }}</p>
@@ -180,7 +183,7 @@ function goHome(): void {
           {{ overview.coverageComplete ? '总资产' : '已记录资产' }}
           <span class="tag">{{ overview.currency }}</span>
         </p>
-        <h1 class="hero-value"><span class="currency">¥</span>{{ formatMoney(overview.totalAssets) }}</h1>
+        <h1 class="hero-value"><span class="currency">¥</span><AnimatedMoney :value="overview.totalAssets" prefix="" /></h1>
       </section>
 
       <p v-if="notice" class="notice">{{ notice }}</p>

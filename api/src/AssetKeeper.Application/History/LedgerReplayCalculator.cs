@@ -21,7 +21,7 @@ public sealed class LedgerReplayCalculator
         var active = facts.Where(fact => !fact.IsReversed).ToList();
         if (active.Where(fact => fact.Sequence > 0).GroupBy(fact => fact.Sequence).Any(group => group.Count() > 1))
         {
-            throw new HistoryValidationException("业务顺序重复，请核对同日业务顺序后重试。");
+            throw new DuplicateFactSequenceException("业务顺序重复，请核对同日业务顺序后重试。");
         }
 
         var allAnchors = facts.Where(fact => fact.Source == "adjustment").ToDictionary(fact => fact.Id);
