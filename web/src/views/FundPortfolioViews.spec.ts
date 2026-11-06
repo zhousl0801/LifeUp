@@ -274,7 +274,7 @@ test('confirmed buy no longer keeps showing as 交易进行中', async () => {
 
   const view = mount(FundsView, { attachTo: document.body })
   await flushPromises()
-  await view.findAll('.view-tabs button').find((button) => button.text() === '交易记录')!.trigger('click')
+  await view.findAll('.view-tabs button').find((button) => button.text().includes('交易记录'))!.trigger('click')
   await flushPromises()
 
   expect(view.findAll('.activity-row')).toHaveLength(1)
@@ -284,14 +284,16 @@ test('confirmed buy no longer keeps showing as 交易进行中', async () => {
   view.unmount()
 })
 
-test('pending shortcut opens the transaction tab and expands pending items', async () => {
+test('pending badge on the transaction tab opens pending items', async () => {
   const view = mount(FundsView, { attachTo: document.body })
   await flushPromises()
 
-  await view.get('.pending-shortcut').trigger('click')
+  const activitiesTab = view.findAll('.view-tabs button').find((button) => button.text().includes('交易记录'))!
+  expect(activitiesTab.find('.tab-badge').text()).toBe('1')
+  await activitiesTab.trigger('click')
   await flushPromises()
 
-  expect(view.find('.view-tabs button[aria-selected="true"]').text()).toBe('交易记录')
+  expect(view.find('.view-tabs button[aria-selected="true"]').text()).toContain('交易记录')
   expect(view.findAll('.activity-row.is-pending')).toHaveLength(1)
   expect(view.find('.activity-row.is-pending').text()).toContain('待确认 · 10月23日自动确认')
   view.unmount()
@@ -362,7 +364,7 @@ test('pending activities sort above settled ones', async () => {
 
   const view = mount(FundsView, { attachTo: document.body })
   await flushPromises()
-  await view.findAll('.view-tabs button').find((button) => button.text() === '交易记录')!.trigger('click')
+  await view.findAll('.view-tabs button').find((button) => button.text().includes('交易记录'))!.trigger('click')
   await flushPromises()
 
   const rows = view.findAll('.activity-row')
@@ -376,13 +378,13 @@ test('holding profit, holding rate and realized profit share one color conventio
   const view = mount(FundsView)
   await flushPromises()
 
-  const metrics = view.findAll('.hero-metrics > div')
-  expect(metrics[0]!.find('b').text()).toBe('+400.00')
-  expect(metrics[0]!.find('b').classes()).toContain('amount-gain')
-  expect(metrics[1]!.find('b').text()).toBe('+23.53%')
-  expect(metrics[1]!.find('b').classes()).toContain('amount-gain')
-  expect(metrics[2]!.find('b').text()).toBe('0.00')
-  expect(metrics[2]!.find('b').classes()).not.toContain('amount-gain')
+  const metrics = view.findAll('.funds-metrics .metric')
+  expect(metrics[0]!.find('.metric-value b').text()).toBe('+400.00')
+  expect(metrics[0]!.find('.metric-value b').classes()).toContain('amount-gain')
+  expect(metrics[0]!.find('.metric-rate').text()).toBe('+23.53%')
+  expect(metrics[0]!.find('.metric-rate').classes()).toContain('amount-gain')
+  expect(metrics[1]!.find('.metric-value b').text()).toBe('0.00')
+  expect(metrics[1]!.find('.metric-value b').classes()).not.toContain('amount-gain')
   expect(view.find('.hero-today').text()).toContain('今日收益')
   view.unmount()
 })
@@ -420,8 +422,9 @@ test('switching group filters total, funds, pending items and activities consist
 
   expect(view.find('.hero-balance').text()).toContain('2,400.00')
   expect(view.findAll('.fund-card')).toHaveLength(2)
-  expect(view.find('.pending-shortcut').exists()).toBe(true)
-  expect(view.find('.pending-shortcut').text()).toContain('1 笔待处理')
+  const activitiesTab = () =>
+    view.findAll('.view-tabs button').find((button) => button.text().includes('交易记录'))!
+  expect(activitiesTab().find('.tab-badge').text()).toBe('1')
 
   const groupPill = view.findAll('.group-pill').find((pill) => pill.text() === '纳斯达克指数')!
   await groupPill.trigger('click')
@@ -430,9 +433,9 @@ test('switching group filters total, funds, pending items and activities consist
   expect(view.find('.hero-balance').text()).toContain('1,800.00')
   expect(view.findAll('.fund-card')).toHaveLength(1)
   expect(view.findAll('.fund-card')[0]!.text()).toContain('纳指基金')
-  expect(view.find('.pending-shortcut').exists()).toBe(false)
+  expect(activitiesTab().find('.tab-badge').exists()).toBe(false)
 
-  await view.findAll('.view-tabs button').find((button) => button.text() === '交易记录')!.trigger('click')
+  await view.findAll('.view-tabs button').find((button) => button.text().includes('交易记录'))!.trigger('click')
   await flushPromises()
   expect(view.findAll('.activity-row.is-pending')).toHaveLength(0)
   expect(view.findAll('.activity-row')).toHaveLength(1)

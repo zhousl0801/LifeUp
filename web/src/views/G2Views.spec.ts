@@ -81,7 +81,7 @@ beforeEach(() => {
 })
 
 async function showActivities(view: ReturnType<typeof mount>): Promise<void> {
-  await view.findAll('.view-tabs button').find((button) => button.text() === '交易记录')!.trigger('click')
+  await view.findAll('.view-tabs button').find((button) => button.text().includes('交易记录'))!.trigger('click')
   await flushPromises()
 }
 
@@ -89,7 +89,7 @@ test('pending buy displays transaction details without editable fields or save a
   const view = mount(FundsView, { attachTo: document.body })
   await flushPromises()
   await showActivities(view)
-  expect(view.find('.hero-meta').text()).toContain('含待确认 ¥300.00')
+  expect(view.find('.metrics-note').text()).toContain('含待确认 ¥300.00')
   const row = view.find('.activity-row.is-pending')
   expect(row.text()).toContain('基金 | 纳指基金')
   expect(row.text()).toContain('待确认 · 10月23日自动确认')

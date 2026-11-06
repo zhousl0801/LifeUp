@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import Decimal from 'decimal.js'
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   arriveFundSell,
@@ -104,7 +104,6 @@ const duplicatePrompt = ref<{ position: FundPosition; shares: number; cost: numb
 const activeGroup = ref<GroupScope>('all')
 const activeView = ref<PortfolioView>(normalizeView(route.params.view))
 const expandedFund = ref<string | null>(null)
-const activityListRef = ref<HTMLElement | null>(null)
 const searchText = ref('')
 const metricKeys = ref<FundMetricKey[]>(loadMetricKeys())
 const metricNotice = ref('')
@@ -276,36 +275,6 @@ const scopedPendingArrivals = computed(() => {
 
 const pendingCount = computed(() =>
   scopedPendingBuys.value.length + scopedSellApplications.value.length + scopedPendingArrivals.value.length)
-
-const cancellablePendingCount = computed(() =>
-  scopedPendingBuys.value.filter((item) => item.canCancel).length
-  + scopedSellApplications.value.filter((item) => item.canCancel).length)
-
-const pendingSummary = computed(() => {
-  const parts: string[] = []
-
-  if (scopedPendingBuys.value.length) {
-    parts.push(`买入待确认 ${scopedPendingBuys.value.length}`)
-  }
-
-  if (scopedSellApplications.value.length) {
-    parts.push(`赎回申请 ${scopedSellApplications.value.length}`)
-  }
-
-  if (scopedPendingArrivals.value.length) {
-    parts.push(`待到账 ${scopedPendingArrivals.value.length}`)
-  }
-
-  if (scopedPendingBuys.value.length) {
-    parts.push('到期自动确认')
-  }
-
-  if (cancellablePendingCount.value) {
-    parts.push('15:00 前可撤销')
-  }
-
-  return parts.join(' · ')
-})
 
 const scopedActivities = computed(() => {
   const trades = (overview.value?.activities ?? []).filter((item) => item.type !== 'quote')
@@ -673,7 +642,6 @@ const scopedPlans = computed(() => {
   return plans.value.filter((plan) => plan.fundPositionId !== null && scopedPositionIds.value.has(plan.fundPositionId))
 })
 
-const activeGroupLabel = computed(() => groupChips.value.find((chip) => chip.key === activeGroup.value)?.label ?? '全部')
 const sheetTitle = computed(() => {
   switch (sheet.value) {
     case 'opening':
@@ -1085,18 +1053,6 @@ async function setView(view: PortfolioView): Promise<void> {
   if (view === 'plans') {
     await loadPlans()
   }
-}
-
-async function showPending(): Promise<void> {
-  activityTypeFilter.value = 'all'
-  activityStatusFilter.value = 'all'
-  await setView('activities')
-  await nextTick()
-  const target = activityListRef.value?.querySelector<HTMLElement>('.activity-row.is-pending')
-  target?.scrollIntoView?.({
-    block: 'center',
-    behavior: 'smooth'
-  })
 }
 
 async function loadPlans(): Promise<void> {
@@ -1875,7 +1831,7 @@ function goBack(): void {
     <template v-else-if="overview">
       <section class="funds-hero">
         <p class="hero-label">
-          {{ activeGroupLabel }}
+          总资产
           <span v-if="searchText.trim()" class="hero-search" :title="searchText">· 搜索「{{ searchText.trim() }}」</span>
           <span class="hero-tag">{{ scope.historyConfirmed ? '已确认持仓' : '持仓日期待确认' }}</span>
         </p>
@@ -1883,13 +1839,8 @@ function goBack(): void {
           <template v-if="scope.hasEffectiveQuotes"><span>¥</span><AnimatedMoney :value="scope.assetValue" prefix="" /></template>
           <template v-else>行情待补</template>
         </h2>
-        <p class="hero-meta">
-          {{ scopedFunds.length }} 只基金 · 持仓成本 <AnimatedMoney :value="scope.cost" />
-          <template v-if="scope.pendingBuyAmount > 0"> · 含待确认 <AnimatedMoney :value="scope.pendingBuyAmount" /></template>
-          <template v-if="scope.pendingArrivalAmount > 0"> · 含待到账 <AnimatedMoney :value="scope.pendingArrivalAmount" /></template>
-        </p>
         <div class="hero-today">
-          <span>今日收益</span>
+          <span class="hero-today-label">今日收益</span>
           <b :class="amountTone(todayProfit.hasValue ? todayProfit.value : null)">
             {{ todayProfit.hasValue ? formatSignedMoney(todayProfit.value) : '—' }}
           </b>
@@ -1901,28 +1852,55 @@ function goBack(): void {
             <template v-if="!todayProfit.complete"> · 部分持仓行情待补</template>
           </small>
         </div>
-        <div class="hero-metrics">
-          <div>
-            <span>持有收益</span>
-            <b :class="amountTone(scope.hasEffectiveQuotes ? scope.holdingProfit : null)">
-              {{ scope.hasEffectiveQuotes ? formatSignedMoney(scope.holdingProfit) : '行情待补' }}
-            </b>
+
+        <div class="funds-metrics" role="group" aria-label="收益概览">
+          <div class="metrics-row">
+            <div class="metric">
+              <span class="metric-label">持有收益</span>
+              <div class="metric-value">
+                <b :class="amountTone(scope.hasEffectiveQuotes ? scope.holdingProfit : null)">
+                  {{ scope.hasEffectiveQuotes ? formatSignedMoney(scope.holdingProfit) : '行情待补' }}
+                </b>
+                <small
+                  v-if="scope.hasEffectiveQuotes && scope.rate !== null"
+                  class="metric-rate"
+                  :class="amountTone(scope.rate)"
+                >{{ formatSignedMoney(scope.rate) }}%</small>
+              </div>
+            </div>
+            <div class="metric metric-end">
+              <span class="metric-label">已实现收益</span>
+              <div class="metric-value">
+                <b class="metric-secondary" :class="amountTone(scope.historyConfirmed ? scope.realizedProfit : null)">
+                  {{ scope.historyConfirmed ? formatSignedMoney(scope.realizedProfit) : '待核对' }}
+                </b>
+              </div>
+            </div>
           </div>
-          <div>
-            <span>持有收益率</span>
-            <b :class="amountTone(scope.hasEffectiveQuotes ? scope.rate : null)">
-              {{ scope.hasEffectiveQuotes && scope.rate !== null ? `${formatSignedMoney(scope.rate)}%` : '—' }}
-            </b>
-          </div>
-          <div>
-            <span>已实现收益</span>
-            <b :class="amountTone(scope.historyConfirmed ? scope.realizedProfit : null)">
-              {{ scope.historyConfirmed ? formatSignedMoney(scope.realizedProfit) : '待核对' }}
-            </b>
-          </div>
+          <p class="metrics-note">
+            {{ scopedFunds.length }} 只基金 · 持仓成本 <AnimatedMoney :value="scope.cost" />
+            <template v-if="scope.pendingBuyAmount > 0"> · 含待确认 <AnimatedMoney :value="scope.pendingBuyAmount" /></template>
+            <template v-if="scope.pendingArrivalAmount > 0"> · 含待到账 <AnimatedMoney :value="scope.pendingArrivalAmount" /></template>
+          </p>
         </div>
       </section>
 
+      <div class="view-tabs ui-segmented" role="tablist" aria-label="投资视图">
+        <button type="button" role="tab" :aria-selected="activeView === 'positions'" :class="{ active: activeView === 'positions' }" @click="setView('positions')">持仓明细</button>
+        <button type="button" role="tab" :aria-selected="activeView === 'returns'" :class="{ active: activeView === 'returns' }" @click="setView('returns')">收益日历</button>
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="activeView === 'activities'"
+          :aria-label="pendingCount ? `交易记录，${pendingCount} 笔待处理` : '交易记录'"
+          :class="{ active: activeView === 'activities' }"
+          @click="setView('activities')"
+        >
+          交易记录
+          <span v-if="pendingCount" class="tab-badge" aria-hidden="true">{{ pendingCount }}</span>
+        </button>
+        <button type="button" role="tab" :aria-selected="activeView === 'plans'" :class="{ active: activeView === 'plans' }" @click="setView('plans')">我的定投</button>
+      </div>
 
       <div class="group-filter">
         <div class="group-pills" role="tablist" aria-label="筛选投资分组">
@@ -1944,32 +1922,12 @@ function goBack(): void {
           <AppIcon name="chevron" />
         </button>
       </div>
-
-      <div class="view-tabs ui-segmented" role="tablist" aria-label="投资视图">
-        <button type="button" role="tab" :aria-selected="activeView === 'positions'" :class="{ active: activeView === 'positions' }" @click="setView('positions')">持仓明细</button>
-        <button type="button" role="tab" :aria-selected="activeView === 'returns'" :class="{ active: activeView === 'returns' }" @click="setView('returns')">收益日历</button>
-        <button type="button" role="tab" :aria-selected="activeView === 'activities'" :class="{ active: activeView === 'activities' }" @click="setView('activities')">交易记录</button>
-        <button type="button" role="tab" :aria-selected="activeView === 'plans'" :class="{ active: activeView === 'plans' }" @click="setView('plans')">我的定投</button>
-      </div>
       <div v-if="searchText.trim()" class="active-search">
         <span>当前仅显示搜索结果</span>
         <button type="button" class="back-link" @click="searchText = ''">清除搜索</button>
       </div>
 
       <p v-if="notice" class="notice" role="status">{{ notice }}</p>
-
-      <button
-        v-if="pendingCount && activeView !== 'activities' && activeView !== 'returns'"
-        type="button"
-        class="pending-shortcut"
-        @click="showPending"
-      >
-        <span class="pending-shortcut-copy">
-          <b>{{ pendingCount }} 笔待处理</b>
-          <small>{{ pendingSummary }}</small>
-        </span>
-        <span class="pending-shortcut-action">查看 ›</span>
-      </button>
 
       <template v-if="activeView === 'returns'">
         <FundReturnsPanel
@@ -2017,9 +1975,13 @@ function goBack(): void {
                   </small>
                 </div>
                 <div v-for="metric in metricDisplay(fund)" :key="metric.key" class="fund-metric">
-                  <span class="fund-metric-label">{{ metric.label }}</span>
-                  <b :class="metric.tone">{{ metric.value }}</b>
-                  <small v-if="metric.sub" :class="metric.tone">{{ metric.sub }}</small>
+                  <span class="fund-metric-label">
+                    {{ metric.label }}
+                    <small v-if="metric.sub" class="fund-metric-sub" :class="metric.tone">{{ metric.sub }}</small>
+                  </span>
+                  <div class="fund-metric-value">
+                    <b :class="metric.tone">{{ metric.value }}</b>
+                  </div>
                 </div>
               </div>
             </header>
@@ -2112,7 +2074,7 @@ function goBack(): void {
           </select>
         </div>
 
-        <section v-if="filteredActivityRows.length" ref="activityListRef" class="activity-list">
+        <section v-if="filteredActivityRows.length" class="activity-list">
           <div
             v-for="(row, index) in filteredActivityRows"
             :key="row.key"
@@ -2718,67 +2680,96 @@ function goBack(): void {
   letter-spacing: 0;
 }
 
-.hero-meta {
-  margin: 0;
-  color: var(--color-hero-text-secondary);
-  font-size: var(--text-caption);
-  line-height: 1.6;
-}
-
 .hero-today {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 8px;
-  margin-top: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 12px;
+  margin-top: 18px;
+  padding: 12px 14px;
+  border-radius: var(--radius-control);
+  background: var(--color-hero-surface);
 }
 
-.hero-today span {
+.hero-today-label {
   color: var(--color-hero-text-secondary);
   font-size: var(--text-caption);
 }
 
 .hero-today b {
   color: var(--color-hero-text);
-  font-size: 1rem;
+  font-size: 1.125rem;
   font-weight: 600;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
 
 .hero-today small {
-  color: var(--color-hero-text-secondary);
+  grid-column: 1 / -1;
+  color: var(--color-hero-text-muted);
   font-size: var(--text-caption);
+  line-height: 1.4;
 }
 
-.hero-metrics {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 20px;
+.funds-metrics {
+  margin-top: 18px;
   padding-top: 16px;
   border-top: 1px solid var(--color-hero-border);
 }
 
-.hero-metrics > div + div {
-  padding-left: 12px;
-  border-left: 1px solid var(--color-hero-border);
+.metrics-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 16px;
 }
 
-.hero-metrics span {
-  display: block;
+.metric-label {
   color: var(--color-hero-text-secondary);
   font-size: var(--text-caption);
 }
 
-.hero-metrics b {
-  display: block;
-  margin-top: 7px;
+.metric-value {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.metric-value b {
   color: var(--color-hero-text);
-  font-size: 0.9375rem;
+  font-size: 1.0625rem;
   font-weight: 600;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
+}
+
+.metric-value .metric-secondary {
+  font-size: var(--text-subhead);
+}
+
+.metric-rate {
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--color-hero-surface);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-end {
+  text-align: right;
+}
+
+.metric-end .metric-value {
+  justify-content: flex-end;
+}
+
+.metrics-note {
+  margin: 10px 0 0;
+  color: var(--color-hero-text-muted);
+  font-size: var(--text-caption);
+  line-height: 1.6;
 }
 
 .hero-search {
@@ -2831,45 +2822,6 @@ function goBack(): void {
   font-size: 0.875rem;
   font-weight: 600;
   text-align: center;
-}
-.pending-shortcut {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-  margin: 0 0 18px;
-  padding: 14px 16px;
-  border: 0;
-  border-radius: var(--radius-card);
-  background: var(--color-brand-soft);
-  color: var(--color-text-primary);
-  text-align: left;
-}
-
-.pending-shortcut-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.pending-shortcut-copy b {
-  font-size: 0.875rem;
-  font-weight: 600;
-}
-
-.pending-shortcut-copy small {
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-  line-height: 1.5;
-}
-
-.pending-shortcut-action {
-  flex: 0 0 auto;
-  color: var(--color-brand);
-  font-size: var(--text-footnote);
-  font-weight: 500;
 }
 .action-primary {
   border: 0;
@@ -3013,12 +2965,34 @@ function goBack(): void {
 }
 
 .view-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
   min-height: 40px;
-  padding: 0 12px;
+  padding: 0 4px;
   border-radius: var(--radius-pill);
   color: var(--color-text-secondary);
   font-size: var(--text-footnote);
   font-weight: 500;
+  white-space: nowrap;
+}
+
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: var(--radius-pill);
+  background: var(--color-brand);
+  color: var(--color-on-brand);
+  font-size: 0.625rem;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 .view-tabs button.active {
@@ -3038,18 +3012,18 @@ function goBack(): void {
 .fund-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 .fund-card {
   overflow: hidden;
-  border-radius: var(--radius-card);
+  border-radius: 20px;
   background: var(--color-bg-surface);
   box-shadow: var(--shadow-card);
 }
 .fund-card > header {
   display: grid;
-  gap: 12px;
-  padding: 18px;
+  gap: 10px;
+  padding: 16px;
   cursor: pointer;
 }
 .fund-card > header:hover {
@@ -3068,7 +3042,7 @@ function goBack(): void {
   display: block;
   color: var(--color-text-primary);
   font-size: 1rem;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.01em;
   line-height: 1.5;
   overflow-wrap: anywhere;
@@ -3083,7 +3057,7 @@ function goBack(): void {
 .fund-values {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px 10px;
+  gap: 10px;
 }
 
 .fund-asset {
@@ -3100,9 +3074,9 @@ function goBack(): void {
 .fund-asset b {
   display: block;
   color: var(--color-text-primary);
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: -0.04em;
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -3110,34 +3084,36 @@ function goBack(): void {
 
 .fund-asset small {
   display: block;
-  margin-top: 6px;
+  margin-top: 4px;
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
   line-height: 1.5;
 }
 
 .fund-metric-label {
-  display: block;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
   margin-bottom: 4px;
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
   line-height: 1.35;
 }
 
-.fund-metric b {
+.fund-metric-sub {
+  font-size: var(--text-caption);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.fund-metric-value b {
   display: block;
   font-size: 0.8125rem;
   font-weight: 600;
   line-height: 1.4;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-
-.fund-metric small {
-  display: block;
-  margin-top: 2px;
-  font-size: var(--text-caption);
-  line-height: 1.4;
 }
 
 .expand-mark {
@@ -3159,18 +3135,14 @@ function goBack(): void {
   }
 
   .fund-card > header {
-    padding: 16px 14px;
+    padding: 14px;
   }
 
   .fund-values {
-    gap: 12px 6px;
+    gap: 10px 6px;
   }
 
-  .fund-asset b {
-    font-size: 1.25rem;
-  }
-
-  .fund-metric b {
+  .fund-metric-value b {
     font-size: 0.75rem;
   }
 }

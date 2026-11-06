@@ -1649,6 +1649,10 @@ function goBack(): void {
   margin-top: 9px;
 }
 
+.plan-group-body > .plan-card + .plan-card {
+  margin-top: 9px;
+}
+
 .group-icon {
   display: grid;
   place-items: center;
