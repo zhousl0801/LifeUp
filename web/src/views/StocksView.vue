@@ -10,10 +10,12 @@ import AnimatedMoney from '../components/AnimatedMoney.vue'
 import BackButton from '../components/BackButton.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import LoadingState from '../components/LoadingState.vue'
+import InvestmentActivityList, { type InvestmentActivityRow } from '../components/InvestmentActivityList.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import {
   amountTone,
   formatBusinessDate,
+  formatBusinessTime,
   formatMoney,
   formatQuantity,
   formatSignedMoney,
@@ -662,46 +664,110 @@ function positionTodayLabel(position: StockPosition): string {
   return position.todayProfit === null ? `${prefix} —` : `${prefix} ${positionTodayText(position)}`
 }
 
-function activityTitle(activity: StockActivity): string {
+function activityLabel(activity: StockActivity): string {
   switch (activity.type) {
     case 'buy':
       return '买入'
     case 'sell':
       return '卖出'
     case 'opening':
-      return '录入持仓'
+      return '建仓'
     case 'correction':
-      return '核对持仓'
+      return '核对'
     default:
-      return '行情更新'
+      return '行情'
   }
+}
+
+function activityStatus(activity: StockActivity): string {
+  switch (activity.type) {
+    case 'buy':
+    case 'sell':
+      return '已成交'
+    case 'opening':
+      return '已录入'
+    case 'correction':
+      return '已核对'
+    default:
+      return '仅更新估值'
+  }
+}
+
+function activityTime(activity: StockActivity): string {
+  return [formatBusinessDate(activity.businessDate), formatBusinessTime(activity.createdAt)]
+    .filter(Boolean)
+    .join(' ')
+}
+
+function activityCostPerShare(activity: StockActivity): number | null {
+  if (activity.shares === null || activity.shares <= 0) {
+    return null
+  }
+
+  return new Decimal(activity.amount)
+    .div(activity.shares)
+    .toDecimalPlaces(3, Decimal.ROUND_HALF_UP)
+    .toNumber()
 }
 
 function activityMeta(activity: StockActivity): string {
   const quantity = activity.shares === null ? '' : `${formatShares(activity.shares)} 股`
 
   if (activity.type === 'buy' || activity.type === 'sell') {
-    return [quantity, `成交 ${formatMoney(activity.price ?? 0)}`, formatBusinessDate(activity.businessDate)].filter(Boolean).join(' · ')
+    const price = activity.price === null
+      ? ''
+      : `${activity.type === 'buy' ? '成本' : '成交价'} ${formatUnitPrice(activity.price)}/股`
+    return [quantity, price, activityTime(activity)].filter(Boolean).join(' · ')
   }
 
   if (activity.type === 'correction' || activity.type === 'opening') {
-    return [quantity, `成本 ${formatMoney(activity.amount)}`, formatBusinessDate(activity.businessDate)].filter(Boolean).join(' · ')
+    const cost = activityCostPerShare(activity)
+    return [
+      quantity,
+      cost === null ? `成本 ${formatMoney(activity.amount)}` : `成本 ${formatUnitPrice(cost)}/股`,
+      activityTime(activity)
+    ].filter(Boolean).join(' · ')
   }
 
-  return `${formatBusinessDate(activity.businessDate)} · 仅更新估值`
+  return `${activityTime(activity)} · 仅更新估值`
 }
 
 function activityAmount(activity: StockActivity): string {
   if (activity.type === 'buy' || activity.type === 'sell') {
-    return formatSignedMoney(activity.cashEffect)
+    return `${formatSignedMoney(activity.cashEffect)}元`
   }
 
   if (activity.type === 'correction' || activity.type === 'opening') {
-    return `¥${formatMoney(activity.amount)}`
+    return `${formatMoney(activity.amount)}元`
   }
 
-  return activity.price === null ? '—' : `¥${formatMoney(activity.price)}`
+  return activity.price === null ? '—' : `${formatUnitPrice(activity.price)}元/股`
 }
+
+function activityAmountTone(activity: StockActivity): string {
+  if (activity.type === 'buy') {
+    return 'transfer'
+  }
+
+  return activity.type === 'sell' ? 'income' : ''
+}
+
+function toActivityRow(activity: StockActivity): InvestmentActivityRow {
+  return {
+    key: activity.id,
+    label: activityLabel(activity),
+    labelTone: activity.type === 'buy' ? 'buy' : 'neutral',
+    title: `股票 | ${activity.positionName}`,
+    meta: activityMeta(activity),
+    amount: activityAmount(activity),
+    amountTone: activityAmountTone(activity),
+    status: activityStatus(activity),
+    statusTone: 'done'
+  }
+}
+
+const activityRows = computed(() => (overview.value?.activities ?? []).map(toActivityRow))
+const detailActivityRows = computed(() => detailActivities.value.map(toActivityRow))
 
 function goBack(): void {
   void router.push({ name: 'home' })
@@ -869,18 +935,7 @@ function goBack(): void {
           <span class="meta">按业务日期</span>
         </div>
 
-        <section class="activity-card">
-          <div v-for="activity in overview.activities" :key="activity.id" class="activity-row">
-            <span class="activity-mark">{{ activity.type === 'buy' ? '买' : activity.type === 'sell' ? '卖' : activity.type === 'opening' ? '建' : activity.type === 'correction' ? '校' : '价' }}</span>
-            <span class="activity-copy">
-              <strong>{{ activity.positionName }} · {{ activityTitle(activity) }}</strong>
-              <small>{{ activityMeta(activity) }}<template v-if="activity.note"> · {{ activity.note }}</template></small>
-            </span>
-            <b class="activity-value" :class="activity.type === 'buy' ? 'transfer' : activity.type === 'sell' ? 'income' : ''">
-              {{ activityAmount(activity) }}
-            </b>
-          </div>
-        </section>
+        <InvestmentActivityList :rows="activityRows" />
       </template>
 
       <p v-else-if="overview.positions.length > 0" class="hint">还没有股票交易记录，买入或核对持仓后会出现在这里。</p>
@@ -930,16 +985,7 @@ function goBack(): void {
           当日有建仓或持仓核对，或缺少昨收时，今日盈亏不计入；行情日期按最近交易日展示。
         </p>
         <div class="section-head"><h2>该股票记录</h2></div>
-        <section v-if="detailActivities.length" class="activity-card detail-activities">
-          <div v-for="activity in detailActivities" :key="activity.id" class="activity-row">
-            <span class="activity-mark">{{ activity.type === 'buy' ? '买' : activity.type === 'sell' ? '卖' : activity.type === 'opening' ? '建' : '校' }}</span>
-            <span class="activity-copy">
-              <strong>{{ activityTitle(activity) }}</strong>
-              <small>{{ activityMeta(activity) }}</small>
-            </span>
-            <b class="activity-value" :class="activity.type === 'sell' ? 'income' : ''">{{ activityAmount(activity) }}</b>
-          </div>
-        </section>
+        <InvestmentActivityList v-if="detailActivityRows.length" :rows="detailActivityRows" />
         <p v-else class="hint">这只股票还没有交易记录。</p>
       </template>
     </BottomSheet>
@@ -1573,80 +1619,6 @@ function goBack(): void {
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
   line-height: 1.7;
-}
-
-.activity-card {
-  overflow: hidden;
-  border: 0;
-  border-radius: var(--radius-card);
-  background: var(--color-bg-surface);
-  box-shadow: var(--shadow-card);
-}
-
-.activity-row {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--color-border-subtle);
-}
-
-.activity-row:last-child {
-  border-bottom: 0;
-}
-
-.activity-mark {
-  display: inline-flex;
-  justify-content: center;
-  align-items: center;
-  flex: 0 0 auto;
-  width: 33px;
-  height: 33px;
-  border-radius: 50%;
-  background: var(--color-brand-soft);
-  color: var(--color-brand);
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-.activity-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  flex: 1;
-  min-width: 0;
-}
-
-.activity-copy strong {
-  overflow: hidden;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.activity-copy small {
-  overflow: hidden;
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-  line-height: 1.5;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.activity-value {
-  flex: 0 0 auto;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-
-.income {
-  color: var(--color-finance-income);
-}
-
-.transfer {
-  color: var(--color-text-primary);
 }
 
 .empty-state {

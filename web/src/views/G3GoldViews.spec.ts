@@ -52,6 +52,35 @@ beforeEach(() => {
   document.body.innerHTML = ''
 })
 
+test('gold activity row shows action, cost per gram, time, amount and status', async () => {
+  mocks.overview.mockResolvedValue({
+    ...structuredClone(overview),
+    activities: [{
+      id: 'ga1',
+      type: 'buy',
+      grams: 1.2266,
+      amount: 1088,
+      cashEffect: -1088,
+      quote: 887.77,
+      businessDate: today,
+      note: null,
+      createdAt: new Date().toISOString()
+    }]
+  })
+  const view = mount(GoldView, { attachTo: document.body })
+  await flushPromises()
+
+  const row = view.find('.activity-row')
+  expect(row.text()).toContain('买入')
+  expect(row.text()).toContain('积存金')
+  expect(row.text()).toContain('1.2266 克')
+  expect(row.text()).toContain('成本 887.77/克')
+  expect(row.text()).toContain('−1,088.00元')
+  expect(row.text()).toContain('已成交')
+  expect(row.find('.activity-main small').text()).toMatch(/\d{2}:\d{2}:\d{2}/)
+  view.unmount()
+})
+
 test('gold sale uses grams and quote and records received cash by default', async () => {
   mocks.sell.mockResolvedValue({
     grams: 29,

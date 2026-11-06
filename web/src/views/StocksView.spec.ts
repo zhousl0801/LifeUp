@@ -123,6 +123,21 @@ beforeEach(() => {
   document.body.innerHTML = ''
 })
 
+test('stock activity row shows action, cost, time, amount and status', async () => {
+  const view = mount(StocksView, { attachTo: document.body })
+  await flushPromises()
+
+  const row = view.find('.activity-row')
+  expect(row.text()).toContain('买入')
+  expect(row.text()).toContain('股票 | 贵州茅台')
+  expect(row.text()).toContain('100 股')
+  expect(row.text()).toContain('成本 10.00/股')
+  expect(row.text()).toContain('已成交')
+  expect(row.text()).toContain('−1,000.00元')
+  expect(row.find('.activity-main small').text()).toMatch(/\d{2}:\d{2}:\d{2}/)
+  view.unmount()
+})
+
 test('shows stock positions and today profit', async () => {
   const view = mount(StocksView, { attachTo: document.body })
   await flushPromises()

@@ -2099,7 +2099,7 @@ function goBack(): void {
 
       <template v-else-if="activeView === 'activities'">
         <div class="activity-toolbar">
-          <h2>明细</h2>
+          <h2>交易记录</h2>
           <select v-model="activityStatusFilter" class="activity-status-filter" aria-label="交易状态">
             <option value="all">全部</option>
             <option value="pending">进行中</option>

@@ -9,13 +9,16 @@ import AnimatedMoney from '../components/AnimatedMoney.vue'
 import BackButton from '../components/BackButton.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import LoadingState from '../components/LoadingState.vue'
+import InvestmentActivityList, { type InvestmentActivityRow } from '../components/InvestmentActivityList.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import {
   amountTone,
   formatBusinessDate,
+  formatBusinessTime,
   formatMoney,
   formatQuantity,
   formatSignedMoney,
+  formatUnitPrice,
   parseAmount,
   parseNonNegativeQuantity,
   parsePrice,
@@ -364,77 +367,118 @@ async function submitHolding(): Promise<void> {
   await loadOverview()
 }
 
-function activityTitle(activity: GoldActivity): string {
+function activityLabel(activity: GoldActivity): string {
   switch (activity.type) {
     case 'buy':
-      return '积存金买入'
+      return '买入'
     case 'sell':
-      return '积存金卖出'
+      return '卖出'
     case 'sellPending':
-      return '积存金卖出待到账'
+      return '待到账'
     case 'sellArrival':
-      return '积存金卖到账'
-    case 'quote':
-      return '更新报价'
+      return '到账'
     case 'correction':
-      return '核对持仓'
+      return '核对'
     default:
-      return '积存金记录'
+      return '行情'
   }
 }
 
-function activityNote(activity: GoldActivity): string {
-  if (activity.note) {
-    return activity.note
-  }
-
+function activityStatus(activity: GoldActivity): string {
   switch (activity.type) {
-    case 'buy':
-      return '现金 → 积存金'
-    case 'sell':
-      return '积存金 → 现金'
     case 'sellPending':
-      return '积存金 → 待到账'
+      return '待到账'
     case 'sellArrival':
-      return '待到账 → 现金'
+      return '已到账'
+    case 'correction':
+      return '已核对'
     case 'quote':
       return '仅更新估值'
     default:
-      return '已有持仓更正'
+      return '已成交'
   }
 }
 
-function activityAmountText(activity: GoldActivity): string {
-  if (activity.type === 'buy' || activity.type === 'sell' || activity.type === 'sellArrival') {
-    return formatSignedMoney(activity.cashEffect)
+function activityTime(activity: GoldActivity): string {
+  return [formatBusinessDate(activity.businessDate), formatBusinessTime(activity.createdAt)]
+    .filter(Boolean)
+    .join(' ')
+}
+
+function activityCostPerGram(activity: GoldActivity): number | null {
+  if (activity.grams === null || activity.grams <= 0) {
+    return null
   }
 
-  if (activity.type === 'sellPending') {
-    return `待到账 ${formatMoney(activity.amount)}`
-  }
-
-  if (activity.type === 'quote') {
-    return `${formatMoney(activity.quote)} / 克`
-  }
-
-  return `成本 ${formatMoney(activity.amount)}`
+  return new Decimal(activity.amount)
+    .div(activity.grams)
+    .toDecimalPlaces(3, Decimal.ROUND_HALF_UP)
+    .toNumber()
 }
 
 function activityMeta(activity: GoldActivity): string {
   if (activity.type === 'sellArrival') {
-    return `到账 ${formatMoney(activity.amount)} · ${formatBusinessDate(activity.businessDate)}`
+    return `到账 ${formatMoney(activity.amount)} · ${activityTime(activity)}`
   }
 
-  if (activity.type === 'buy' || activity.type === 'sell' || activity.type === 'sellPending') {
-    return `${formatQuantity(activity.grams)} 克 · ${formatBusinessDate(activity.businessDate)}`
+  if (activity.type === 'buy' || activity.type === 'sell') {
+    const price = activity.quote === null
+      ? ''
+      : `${activity.type === 'buy' ? '成本' : '成交价'} ${formatUnitPrice(activity.quote)}/克`
+    return [`${formatQuantity(activity.grams)} 克`, price, activityTime(activity)].filter(Boolean).join(' · ')
+  }
+
+  if (activity.type === 'sellPending') {
+    return `${formatQuantity(activity.grams)} 克 · 待到账 ${formatMoney(activity.amount)} · ${activityTime(activity)}`
   }
 
   if (activity.type === 'quote') {
-    return `报价日 ${formatBusinessDate(activity.businessDate)}`
+    return `报价 ${formatUnitPrice(activity.quote)}/克 · ${activityTime(activity)}`
   }
 
-  return `${formatQuantity(activity.grams)} 克 · ${formatBusinessDate(activity.businessDate)}`
+  const cost = activityCostPerGram(activity)
+  return [
+    `${formatQuantity(activity.grams)} 克`,
+    cost === null ? `成本 ${formatMoney(activity.amount)}` : `成本 ${formatUnitPrice(cost)}/克`,
+    activityTime(activity)
+  ].filter(Boolean).join(' · ')
 }
+
+function activityAmount(activity: GoldActivity): string {
+  if (activity.type === 'buy' || activity.type === 'sell' || activity.type === 'sellArrival') {
+    return `${formatSignedMoney(activity.cashEffect)}元`
+  }
+
+  if (activity.type === 'quote') {
+    return `${formatUnitPrice(activity.quote)}元/克`
+  }
+
+  return `${formatMoney(activity.amount)}元`
+}
+
+function activityAmountTone(activity: GoldActivity): string {
+  if (activity.cashEffect > 0) {
+    return 'income'
+  }
+
+  return activity.cashEffect < 0 ? 'transfer' : ''
+}
+
+function toActivityRow(activity: GoldActivity): InvestmentActivityRow {
+  return {
+    key: activity.id,
+    label: activityLabel(activity),
+    labelTone: activity.type === 'buy' ? 'buy' : 'neutral',
+    title: '积存金',
+    meta: activityMeta(activity),
+    amount: activityAmount(activity),
+    amountTone: activityAmountTone(activity),
+    status: activityStatus(activity),
+    statusTone: activity.type === 'sellPending' ? 'pending' : 'done'
+  }
+}
+
+const activityRows = computed(() => (overview.value?.activities ?? []).map(toActivityRow))
 
 function goBack(): void {
   void router.push({ name: 'home' })
@@ -546,22 +590,11 @@ function goBack(): void {
 
       <p v-if="!overview.historyConfirmed || !overview.hasEffectiveQuote" class="hint">持仓日期或行情依据不足，当前估值可能不完整。</p>
       <div class="section-head">
-        <h2>交易与持仓记录</h2>
+        <h2>交易记录</h2>
         <span class="meta">按业务日期</span>
       </div>
 
-      <section v-if="overview.activities.length" class="activity-card">
-        <div v-for="activity in overview.activities" :key="activity.id" class="activity-row">
-          <span class="activity-mark">{{ activity.type === 'buy' ? '买' : activity.type === 'sell' ? '卖' : activity.type === 'sellPending' ? '待' : activity.type === 'sellArrival' ? '到' : activity.type === 'quote' ? '价' : '校' }}</span>
-          <span class="activity-copy">
-            <strong>{{ activityTitle(activity) }}</strong>
-            <small>{{ activityNote(activity) }} · {{ activityMeta(activity) }}</small>
-          </span>
-          <b class="activity-value" :class="{ income: activity.cashEffect > 0, transfer: activity.cashEffect < 0 }">
-            {{ activityAmountText(activity) }}
-          </b>
-        </div>
-      </section>
+      <InvestmentActivityList v-if="activityRows.length" :rows="activityRows" />
 
       <div v-else class="empty-state">
         <p>还没有积存金记录</p>
@@ -1005,77 +1038,6 @@ function goBack(): void {
   color: var(--color-on-brand);
   font-size: var(--text-footnote);
   font-weight: 600;
-}
-
-.activity-card {
-  overflow: hidden;
-  border: 0;
-  border-radius: var(--radius-card);
-  background: var(--color-bg-surface);
-  box-shadow: var(--shadow-card);
-}
-
-.activity-row {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--color-border-subtle);
-}
-
-.activity-row:last-child {
-  border-bottom: 0;
-}
-
-.activity-mark {
-  display: inline-flex;
-  justify-content: center;
-  align-items: center;
-  flex: 0 0 auto;
-  width: 33px;
-  height: 33px;
-  border-radius: 50%;
-  background: var(--color-brand-soft);
-  color: var(--color-brand);
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-.activity-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  flex: 1;
-  min-width: 0;
-}
-
-.activity-copy strong {
-  font-size: 0.8125rem;
-  font-weight: 500;
-}
-
-.activity-copy small {
-  overflow: hidden;
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-  line-height: 1.5;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.activity-value {
-  flex: 0 0 auto;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-
-.income {
-  color: var(--color-finance-income);
-}
-
-.transfer {
-  color: var(--color-text-primary);
 }
 
 .empty-state {
