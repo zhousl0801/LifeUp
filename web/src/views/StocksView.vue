@@ -717,19 +717,18 @@ function activityMeta(activity: StockActivity): string {
     const price = activity.price === null
       ? ''
       : `${activity.type === 'buy' ? '成本' : '成交价'} ${formatUnitPrice(activity.price)}/股`
-    return [quantity, price, activityTime(activity)].filter(Boolean).join(' · ')
+    return [quantity, price].filter(Boolean).join(' · ')
   }
 
   if (activity.type === 'correction' || activity.type === 'opening') {
     const cost = activityCostPerShare(activity)
     return [
       quantity,
-      cost === null ? `成本 ${formatMoney(activity.amount)}` : `成本 ${formatUnitPrice(cost)}/股`,
-      activityTime(activity)
+      cost === null ? `成本 ${formatMoney(activity.amount)}` : `成本 ${formatUnitPrice(cost)}/股`
     ].filter(Boolean).join(' · ')
   }
 
-  return `${activityTime(activity)} · 仅更新估值`
+  return ''
 }
 
 function activityAmount(activity: StockActivity): string {
@@ -759,6 +758,7 @@ function toActivityRow(activity: StockActivity): InvestmentActivityRow {
     labelTone: activity.type === 'buy' ? 'buy' : 'neutral',
     title: `股票 | ${activity.positionName}`,
     meta: activityMeta(activity),
+    time: activityTime(activity),
     amount: activityAmount(activity),
     amountTone: activityAmountTone(activity),
     status: activityStatus(activity),

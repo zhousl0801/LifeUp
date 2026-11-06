@@ -418,29 +418,28 @@ function activityCostPerGram(activity: GoldActivity): number | null {
 
 function activityMeta(activity: GoldActivity): string {
   if (activity.type === 'sellArrival') {
-    return `到账 ${formatMoney(activity.amount)} · ${activityTime(activity)}`
+    return `到账 ${formatMoney(activity.amount)}`
   }
 
   if (activity.type === 'buy' || activity.type === 'sell') {
     const price = activity.quote === null
       ? ''
       : `${activity.type === 'buy' ? '成本' : '成交价'} ${formatUnitPrice(activity.quote)}/克`
-    return [`${formatQuantity(activity.grams)} 克`, price, activityTime(activity)].filter(Boolean).join(' · ')
+    return [`${formatQuantity(activity.grams)} 克`, price].filter(Boolean).join(' · ')
   }
 
   if (activity.type === 'sellPending') {
-    return `${formatQuantity(activity.grams)} 克 · 待到账 ${formatMoney(activity.amount)} · ${activityTime(activity)}`
+    return `${formatQuantity(activity.grams)} 克 · 待到账 ${formatMoney(activity.amount)}`
   }
 
   if (activity.type === 'quote') {
-    return `报价 ${formatUnitPrice(activity.quote)}/克 · ${activityTime(activity)}`
+    return `报价 ${formatUnitPrice(activity.quote)}/克`
   }
 
   const cost = activityCostPerGram(activity)
   return [
     `${formatQuantity(activity.grams)} 克`,
-    cost === null ? `成本 ${formatMoney(activity.amount)}` : `成本 ${formatUnitPrice(cost)}/克`,
-    activityTime(activity)
+    cost === null ? `成本 ${formatMoney(activity.amount)}` : `成本 ${formatUnitPrice(cost)}/克`
   ].filter(Boolean).join(' · ')
 }
 
@@ -471,6 +470,7 @@ function toActivityRow(activity: GoldActivity): InvestmentActivityRow {
     labelTone: activity.type === 'buy' ? 'buy' : 'neutral',
     title: '积存金',
     meta: activityMeta(activity),
+    time: activityTime(activity),
     amount: activityAmount(activity),
     amountTone: activityAmountTone(activity),
     status: activityStatus(activity),

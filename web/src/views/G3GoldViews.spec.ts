@@ -77,7 +77,7 @@ test('gold activity row shows action, cost per gram, time, amount and status', a
   expect(row.text()).toContain('成本 887.77/克')
   expect(row.text()).toContain('−1,088.00元')
   expect(row.text()).toContain('已成交')
-  expect(row.find('.activity-main small').text()).toMatch(/\d{2}:\d{2}:\d{2}/)
+  expect(row.find('.activity-time').text()).toMatch(/\d{2}:\d{2}:\d{2}/)
   view.unmount()
 })
 

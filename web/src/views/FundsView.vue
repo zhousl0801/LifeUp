@@ -3995,6 +3995,7 @@ function goBack(): void {
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .activity-side {

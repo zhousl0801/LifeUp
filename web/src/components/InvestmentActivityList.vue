@@ -4,7 +4,8 @@ export interface InvestmentActivityRow {
   label: string
   labelTone?: 'buy' | 'neutral'
   title: string
-  meta: string
+  meta?: string
+  time?: string
   amount: string
   amountTone?: string
   status?: string
@@ -22,7 +23,8 @@ defineProps<{
       <span class="activity-type" :class="{ 'type-buy': row.labelTone === 'buy' }">{{ row.label }}</span>
       <span class="activity-main">
         <strong>{{ row.title }}</strong>
-        <small>{{ row.meta }}</small>
+        <small v-if="row.meta" class="activity-meta">{{ row.meta }}</small>
+        <small v-if="row.time" class="activity-time">{{ row.time }}</small>
       </span>
       <span class="activity-side">
         <b :class="row.amountTone">{{ row.amount }}</b>
@@ -88,6 +90,14 @@ defineProps<{
   font-size: var(--text-caption);
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
+}
+
+.activity-meta {
+  overflow-wrap: anywhere;
+}
+
+.activity-time {
+  white-space: nowrap;
 }
 
 .activity-side {
