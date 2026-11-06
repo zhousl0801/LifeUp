@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
+  deletePlan,
   fetchPlanCalendar,
   fetchPlanOccurrences,
   fetchPlanOverview,
@@ -17,10 +18,15 @@ import { createFundPosition, fetchFundOverview, searchFunds } from '../api/funds
 import { ApiError, getApiErrorMessage } from '../api/client'
 import AppIcon from '../components/AppIcon.vue'
 import AppNav from '../components/AppNav.vue'
+import AnimatedMoney from '../components/AnimatedMoney.vue'
 import BackButton from '../components/BackButton.vue'
+import LoadingButton from '../components/LoadingButton.vue'
 import BottomSheet from '../components/BottomSheet.vue'
+import ConfirmSheet from '../components/ConfirmSheet.vue'
+import LoadingState from '../components/LoadingState.vue'
 import PlanCalendar from '../components/PlanCalendar.vue'
 import { createRequestId } from '../utils/request'
+import { fundPlanDisplayName as fundDisplayName } from '../utils/plan'
 import {
   formatBusinessDate,
   formatMoney,
@@ -56,6 +62,9 @@ const editingPlan = ref<AutoPlan | null>(null)
 const isSaving = ref(false)
 const formError = ref('')
 const busyAction = ref('')
+const busyKind = ref('')
+const pendingPlanRemoval = ref<AutoPlan | null>(null)
+const isDeletingPlan = ref(false)
 const calendarYear = ref(Number(today.slice(0, 4)))
 const calendarMonth = ref(Number(today.slice(5, 7)))
 const calendarDays = ref<TradingDay[]>([])
@@ -392,6 +401,10 @@ async function load(): Promise<void> {
 }
 
 async function loadPositions(): Promise<void> {
+  if (positionsLoading.value) {
+    return
+  }
+
   positionsLoading.value = true
   positionsError.value = ''
   try {
@@ -675,6 +688,7 @@ async function ensurePositionForTarget(target: FundSearchResult): Promise<void> 
 
 async function togglePlan(plan: AutoPlan): Promise<void> {
   busyAction.value = plan.id
+  busyKind.value = 'toggle'
 
   try {
     if (plan.isActive) {
@@ -690,11 +704,38 @@ async function togglePlan(plan: AutoPlan): Promise<void> {
     notice.value = getApiErrorMessage(error, '操作失败，请重试。')
   } finally {
     busyAction.value = ''
+    busyKind.value = ''
+  }
+}
+
+function requestPlanRemoval(plan: AutoPlan): void {
+  pendingPlanRemoval.value = plan
+}
+
+async function confirmPlanRemoval(): Promise<void> {
+  const plan = pendingPlanRemoval.value
+
+  if (!plan || isDeletingPlan.value) {
+    return
+  }
+
+  isDeletingPlan.value = true
+
+  try {
+    await deletePlan(plan.id, createRequestId())
+    pendingPlanRemoval.value = null
+    notice.value = '计划已删除；已记账的收支记录会保留。'
+    await load()
+  } catch (error) {
+    notice.value = getApiErrorMessage(error, '删除计划失败，请重试。')
+  } finally {
+    isDeletingPlan.value = false
   }
 }
 
 async function handleOccurrence(occurrenceId: string, action: 'retry' | 'skip'): Promise<void> {
   busyAction.value = occurrenceId
+  busyKind.value = action
 
   try {
     if (action === 'retry') {
@@ -710,11 +751,13 @@ async function handleOccurrence(occurrenceId: string, action: 'retry' | 'skip'):
     notice.value = getApiErrorMessage(error, '操作失败，请重试。')
   } finally {
     busyAction.value = ''
+    busyKind.value = ''
   }
 }
 
 async function recordCurrentOccurrence(occurrenceId: string): Promise<void> {
   busyAction.value = occurrenceId
+  busyKind.value = 'record'
 
   try {
     const result = await recordOccurrence(occurrenceId, createRequestId())
@@ -726,11 +769,13 @@ async function recordCurrentOccurrence(occurrenceId: string): Promise<void> {
     notice.value = getApiErrorMessage(error, '补记本期失败，请重试。')
   } finally {
     busyAction.value = ''
+    busyKind.value = ''
   }
 }
 
 async function runNow(): Promise<void> {
   busyAction.value = 'run'
+  busyKind.value = 'run'
 
   try {
     const result = await runPlans()
@@ -740,6 +785,7 @@ async function runNow(): Promise<void> {
     notice.value = getApiErrorMessage(error, '立即执行失败，请重试。')
   } finally {
     busyAction.value = ''
+    busyKind.value = ''
   }
 }
 
@@ -838,14 +884,19 @@ function fundGroupKey(plan: AutoPlan): string {
   return fundDisplayName(plan).normalize('NFKC').replace(/\s/g, '').toUpperCase()
 }
 
-function fundDisplayName(plan: AutoPlan): string {
-  const name = plan.fundTarget?.name ?? plan.fundPositionName ?? plan.name
-  return name.replace(/\s*[·•]\s*(交易日定投|定投)$/, '').trim()
-}
-
 function fundCode(plan: AutoPlan): string | null {
   const code = plan.fundTarget?.code?.trim()
   return code ? code : null
+}
+
+function planDisplayName(planId: string, fallback: string): string {
+  const plan = overview.value?.plans.find(item => item.id === planId)
+
+  if (!plan) {
+    return fallback
+  }
+
+  return plan.type === 'fundSip' ? fundDisplayName(plan) : fallback
 }
 
 function fundMetaLine(plan: AutoPlan): string {
@@ -946,11 +997,12 @@ function goBack(): void {
       </button>
     </header>
 
-    <p v-if="isLoading && !overview" class="state">正在读取自动计划…</p>
+    <LoadingState v-if="isLoading && !overview" variant="card" label="正在读取自动计划" />
+    <LoadingState v-if="isLoading && !overview" variant="list" :rows="3" label="正在读取计划列表" />
 
     <section v-else-if="errorMessage" class="state">
       <p>{{ errorMessage }}</p>
-      <button type="button" class="secondary-button" @click="load">重新加载</button>
+      <LoadingButton class="secondary-button" :loading="isLoading" loading-label="加载中…" @click="load">重新加载</LoadingButton>
     </section>
 
     <template v-else-if="overview">
@@ -993,10 +1045,11 @@ function goBack(): void {
           <template v-if="group.key === 'fund'">
             <div v-if="fundPlanGroups.length" class="fund-plan-list">
               <article
-                v-for="fund in fundPlanGroups"
+                v-for="(fund, index) in fundPlanGroups"
                 :key="fund.key"
-                class="plan-card fund-plan-card"
+                class="plan-card fund-plan-card stagger-item"
                 :class="{ 'is-paused': fund.activeCount === 0 }"
+                :style="{ '--stagger': Math.min(index, 8) }"
               >
                 <details v-if="fund.plans.length > 1" class="fund-details">
                   <summary>
@@ -1029,12 +1082,19 @@ function goBack(): void {
                           <span class="fund-row-actions">
                             <button type="button" class="link-button" @click="openEdit(plan)">编辑</button>
                             <span class="action-sep" aria-hidden="true" />
+                            <LoadingButton
+                              class="link-button"
+                              :loading="busyAction === plan.id && busyKind === 'toggle'"
+                              loading-label="处理中…"
+                              @click="togglePlan(plan)"
+                            >{{ plan.isActive ? '暂停' : '恢复' }}</LoadingButton>
+                            <span class="action-sep" aria-hidden="true" />
                             <button
                               type="button"
-                              class="link-button"
+                              class="link-button danger-text"
                               :disabled="busyAction === plan.id"
-                              @click="togglePlan(plan)"
-                            >{{ plan.isActive ? '暂停' : '恢复' }}</button>
+                              @click="requestPlanRemoval(plan)"
+                            >删除</button>
                           </span>
                         </div>
                         <small>
@@ -1053,7 +1113,7 @@ function goBack(): void {
                       <strong>{{ fund.name }}</strong>
                       <small>{{ fundMetaLine(fund.single) }}</small>
                     </div>
-                    <span class="plan-amount">¥{{ formatMoney(fund.single.amount) }}</span>
+                    <span class="plan-amount"><AnimatedMoney :value="fund.single.amount" /></span>
                   </header>
                   <p class="plan-meta">
                     开始 {{ formatBusinessDate(fund.single.startDate) }}
@@ -1064,12 +1124,19 @@ function goBack(): void {
                     <span class="plan-foot-actions">
                       <button type="button" class="link-button" @click="openEdit(fund.single)">编辑</button>
                       <span class="action-sep" aria-hidden="true" />
+                      <LoadingButton
+                        class="link-button"
+                        :loading="busyAction === fund.single.id && busyKind === 'toggle'"
+                        loading-label="处理中…"
+                        @click="togglePlan(fund.single)"
+                      >{{ fund.single.isActive ? '暂停' : '恢复' }}</LoadingButton>
+                      <span class="action-sep" aria-hidden="true" />
                       <button
                         type="button"
-                        class="link-button"
+                        class="link-button danger-text"
                         :disabled="busyAction === fund.single.id"
-                        @click="togglePlan(fund.single)"
-                      >{{ fund.single.isActive ? '暂停' : '恢复' }}</button>
+                        @click="requestPlanRemoval(fund.single)"
+                      >删除</button>
                     </span>
                   </footer>
                 </template>
@@ -1078,13 +1145,18 @@ function goBack(): void {
           </template>
 
           <template v-else>
-            <article v-for="plan in group.plans" :key="plan.id" class="plan-card">
+            <article
+              v-for="(plan, index) in group.plans"
+              :key="plan.id"
+              class="plan-card stagger-item"
+              :style="{ '--stagger': Math.min(index, 8) }"
+            >
               <header>
                 <div>
                   <strong>{{ plan.name }}</strong>
                   <small>{{ typeLabel(plan.type) }} · {{ scheduleText(plan) }}</small>
                 </div>
-                <span class="plan-amount">¥{{ formatMoney(plan.amount) }}</span>
+                <span class="plan-amount"><AnimatedMoney :value="plan.amount" /></span>
               </header>
               <p class="plan-meta">
                 开始 {{ formatBusinessDate(plan.startDate) }}
@@ -1095,12 +1167,19 @@ function goBack(): void {
                 <span class="plan-foot-actions">
                   <button type="button" class="link-button" @click="openEdit(plan)">编辑</button>
                   <span class="action-sep" aria-hidden="true" />
+                  <LoadingButton
+                    class="link-button"
+                    :loading="busyAction === plan.id && busyKind === 'toggle'"
+                    loading-label="处理中…"
+                    @click="togglePlan(plan)"
+                  >{{ plan.isActive ? '暂停' : '恢复' }}</LoadingButton>
+                  <span class="action-sep" aria-hidden="true" />
                   <button
                     type="button"
-                    class="link-button"
+                    class="link-button danger-text"
                     :disabled="busyAction === plan.id"
-                    @click="togglePlan(plan)"
-                  >{{ plan.isActive ? '暂停' : '恢复' }}</button>
+                    @click="requestPlanRemoval(plan)"
+                  >删除</button>
                 </span>
               </footer>
             </article>
@@ -1116,7 +1195,7 @@ function goBack(): void {
         <section class="occurrence-list">
           <article v-for="occurrence in actionable" :key="occurrence.id" class="occurrence-card">
             <div>
-              <strong>{{ occurrence.planName }}</strong>
+              <strong>{{ planDisplayName(occurrence.planId, occurrence.planName) }}</strong>
               <small>
                 {{ occurrence.dueDate }} · ¥{{ formatMoney(occurrence.amount) }} ·
                 <span :class="statusClass(occurrence.status)">{{ statusLabel(occurrence.status) }}</span>
@@ -1124,30 +1203,30 @@ function goBack(): void {
               <small v-if="occurrence.errorMessage" class="occurrence-error">{{ occurrence.errorMessage }}</small>
             </div>
             <div class="occurrence-actions">
-              <button
-                type="button"
+              <LoadingButton
                 class="small-button"
-                :disabled="busyAction === occurrence.id"
+                :loading="busyAction === occurrence.id && busyKind === 'record'"
+                loading-label="补记中…"
                 @click="recordCurrentOccurrence(occurrence.id)"
               >
                 补记本期
-              </button>
-              <button
-                type="button"
+              </LoadingButton>
+              <LoadingButton
                 class="small-button"
-                :disabled="busyAction === occurrence.id"
+                :loading="busyAction === occurrence.id && busyKind === 'retry'"
+                loading-label="排队中…"
                 @click="handleOccurrence(occurrence.id, 'retry')"
               >
                 重新排队
-              </button>
-              <button
-                type="button"
+              </LoadingButton>
+              <LoadingButton
                 class="small-button"
-                :disabled="busyAction === occurrence.id"
+                :loading="busyAction === occurrence.id && busyKind === 'skip'"
+                loading-label="跳过中…"
                 @click="handleOccurrence(occurrence.id, 'skip')"
               >
                 跳过
-              </button>
+              </LoadingButton>
             </div>
           </article>
         </section>
@@ -1180,7 +1259,7 @@ function goBack(): void {
       <template v-if="occurrencesExpanded">
         <div v-if="occurrenceError" class="occurrence-state">
           <span>{{ occurrenceError }}</span>
-          <button type="button" class="text-button" @click="loadOccurrences()">重试</button>
+          <LoadingButton class="text-button" :loading="occurrenceLoading" loading-label="加载中…" @click="loadOccurrences()">重试</LoadingButton>
         </div>
         <template v-else>
           <section
@@ -1190,7 +1269,7 @@ function goBack(): void {
           >
             <article v-for="occurrence in occurrenceItems" :key="occurrence.id" class="occurrence-card">
               <div>
-                <strong>{{ occurrence.planName }}</strong>
+                <strong>{{ planDisplayName(occurrence.planId, occurrence.planName) }}</strong>
                 <small>
                   {{ occurrence.dueDate }} {{ occurrence.dueTime.slice(0, 5) }} · ¥{{ formatMoney(occurrence.amount) }} ·
                   <span :class="statusClass(occurrence.status)">{{ statusLabel(occurrence.status) }}</span>
@@ -1199,7 +1278,7 @@ function goBack(): void {
               </div>
             </article>
           </section>
-          <p v-else-if="occurrenceLoading" class="occurrence-state">正在读取执行记录…</p>
+          <LoadingState v-else-if="occurrenceLoading" variant="list" :rows="3" compact label="正在读取执行记录" />
           <p v-else class="summary-note">还没有执行记录。</p>
           <nav v-if="occurrenceTotal > occurrencePageSize" class="occurrence-pagination" aria-label="执行记录分页">
             <button
@@ -1312,7 +1391,7 @@ function goBack(): void {
         </label>
 
         <p v-if="form.type === 'fundSip' && positionsError" class="form-error" role="alert">
-          {{ positionsError }} <button type="button" class="small-button" @click="loadPositions">重新加载基金</button>
+          {{ positionsError }} <LoadingButton class="small-button" :loading="positionsLoading" loading-label="加载中…" @click="loadPositions">重新加载基金</LoadingButton>
         </p>
         <label v-if="form.type === 'fundSip'" class="form-field">
           <span>周期</span>
@@ -1346,7 +1425,7 @@ function goBack(): void {
         </label>
 
         <p v-if="form.type === 'fundSip' && form.cycle === 'tradingDay'" class="form-note">
-          新计划最早从创建后的下一个合格交易日开始，不补做创建当天；所选开始日期休市时顺延。
+          北京时间 15:00 前创建且当天开市时从今天开始；15:00 后或今天休市时从下一个合格交易日开始，所选开始日期休市时顺延。
         </p>
         <div class="form-row">
           <label class="form-field">
@@ -1365,12 +1444,22 @@ function goBack(): void {
         <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
         <div class="form-actions">
           <button type="button" class="secondary-button" :disabled="isSaving" @click="closeSheet">取消</button>
-          <button type="submit" class="primary-button" :disabled="!canSubmit">
-            {{ isSaving ? '保存中…' : '保存' }}
-          </button>
+          <LoadingButton class="primary-button" type="submit" :loading="isSaving" :disabled="!canSubmit" loading-label="保存中…">
+            保存
+          </LoadingButton>
         </div>
       </form>
     </BottomSheet>
+    <ConfirmSheet
+      :open="pendingPlanRemoval !== null"
+      title="删除计划"
+      :message="pendingPlanRemoval ? `删除计划「${pendingPlanRemoval.name}」？该计划的待处理期次会一并删除，已记账的收支记录会保留。` : ''"
+      confirm-label="删除"
+      danger
+      :busy="isDeletingPlan"
+      @confirm="confirmPlanRemoval"
+      @cancel="pendingPlanRemoval = null"
+    />
     <AppNav />
   </main>
 </template>
@@ -1560,6 +1649,10 @@ function goBack(): void {
   margin-top: 9px;
 }
 
+.plan-group-body > .plan-card + .plan-card {
+  margin-top: 9px;
+}
+
 .group-icon {
   display: grid;
   place-items: center;
@@ -1726,6 +1819,10 @@ function goBack(): void {
 
 .link-button:disabled {
   color: var(--color-text-disabled);
+}
+
+.link-button.danger-text {
+  color: var(--color-danger);
 }
 
 .small-button {

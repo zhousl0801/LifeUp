@@ -55,10 +55,19 @@ public sealed class PlanExecutionService
             var today = _dates.Today;
             var plans = await _planRepository.GetPlansAsync(ledger.Id, cancellationToken);
             var activePlans = plans.Where(plan => plan.IsActive).ToList();
+            var activeIds = activePlans.Select(plan => plan.Id).ToHashSet();
+            var existingKeys = new Dictionary<Guid, HashSet<string>>(
+                await _planRepository.GetOccurrenceKeysAsync(ledger.Id, activeIds, cancellationToken));
             var created = 0;
 
             foreach (var plan in activePlans)
             {
+                if (!existingKeys.TryGetValue(plan.Id, out var planKeys))
+                {
+                    planKeys = new HashSet<string>(StringComparer.Ordinal);
+                    existingKeys[plan.Id] = planKeys;
+                }
+
                 foreach (var period in PlanSchedule.GetDuePeriods(plan, plan.GenerateFrom, today))
                 {
                     if (_dates.ToBusinessInstant(period.DueDate, period.DueTime) > now)
@@ -66,7 +75,7 @@ public sealed class PlanExecutionService
                         continue;
                     }
 
-                    if (await _planRepository.FindOccurrenceAsync(plan.Id, period.PeriodKey, cancellationToken) is not null)
+                    if (!planKeys.Add(period.PeriodKey))
                     {
                         continue;
                     }
@@ -83,8 +92,7 @@ public sealed class PlanExecutionService
                 await _planRepository.SaveChangesAsync(cancellationToken);
             }
 
-            var activeIds = activePlans.Select(plan => plan.Id).ToHashSet();
-            var pending = (await _planRepository.GetPendingOccurrencesAsync(ledger.Id, cancellationToken))
+            var pending = (await _planRepository.GetPendingOccurrencesAsync(ledger.Id, today, cancellationToken))
                 .Where(occurrence => activeIds.Contains(occurrence.PlanId)
                     && (occurrence.Status == PlanOccurrenceStatus.Pending || occurrence.CanAutoRetry(today))
                     && _dates.ToBusinessInstant(occurrence.DueDate, occurrence.DueTime) <= now)
@@ -202,7 +210,6 @@ public sealed class PlanExecutionService
     {
         try
         {
-            occurrence.BeginAttempt(_dates.UtcNow);
             var result = await ExecuteBusinessAsync(occurrence, cancellationToken);
             var current = await _planRepository.GetOccurrenceForUpdateAsync(ledgerId, occurrence.Id, cancellationToken);
 
@@ -210,6 +217,14 @@ public sealed class PlanExecutionService
             {
                 return PlanOccurrenceStatus.Pending;
             }
+
+            // 另一个执行者可能已经完成或跳过该期次，不能再被本次结果覆盖。
+            if (current.Status is PlanOccurrenceStatus.Completed or PlanOccurrenceStatus.Skipped)
+            {
+                return current.Status;
+            }
+
+            current.BeginAttempt(_dates.UtcNow);
 
             if (result.Succeeded)
             {
@@ -236,6 +251,12 @@ public sealed class PlanExecutionService
 
                 if (current is not null)
                 {
+                    if (current.Status is PlanOccurrenceStatus.Completed or PlanOccurrenceStatus.Skipped)
+                    {
+                        return current.Status;
+                    }
+
+                    current.BeginAttempt(_dates.UtcNow);
                     current.Fail(exception.Message, _dates.UtcNow);
                     await _planRepository.SaveChangesAsync(cancellationToken);
 

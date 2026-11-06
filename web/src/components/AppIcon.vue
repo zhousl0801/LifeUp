@@ -14,6 +14,7 @@ const paths: Record<string, string[]> = {
   gold: ['M7 7h10l4 12H3zM8 11h8'],
   stock: ['M4 19V9M9 19V5M14 19v-7M19 19V3M3 19h18'],
   wallet: ['M3 7h18v12H3zM3 7l2-3h14l2 3M16 13h2'],
+  user: ['M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8', 'M4 21v-2a8 8 0 0 1 16 0v2'],
   chevron: ['M9 5l7 7-7 7'],
   'chevron-back': ['M15 5l-7 7 7 7'],
   check: ['M5 12l5 5L20 7'],

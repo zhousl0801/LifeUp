@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
 using AssetKeeper.Api.Controllers;
-using AssetKeeper.Api.Security;
 using AssetKeeper.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -79,7 +78,6 @@ public sealed class CronEndpointsTests
 public sealed class CronApiFactory : WebApplicationFactory<Program>
 {
     public const string Token = "cron-token-for-tests";
-    public const string Password = "correct horse battery staple";
 
     private readonly string? _token;
     private readonly string _databaseName = $"asset-keeper-cron-{Guid.NewGuid()}";
@@ -102,12 +100,7 @@ public sealed class CronApiFactory : WebApplicationFactory<Program>
             var settings = new Dictionary<string, string?>
             {
                 ["PlanScheduler:Enabled"] = "false",
-                ["QuoteRefreshScheduler:Enabled"] = "false",
-                // 生产环境必须配置访问口令，否则应用启动即失败。
-                [AccessCredential.PasswordHashKey] = AccessPasswordHasher.Hash(Password, 10_000),
-                [AccessCredential.PasswordKey] = Password,
-                ["Passkey:RpId"] = "localhost",
-                ["Passkey:Origins:0"] = "https://localhost"
+                ["QuoteRefreshScheduler:Enabled"] = "false"
             };
 
             if (_token is not null)

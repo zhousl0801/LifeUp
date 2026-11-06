@@ -10,6 +10,10 @@ export function fetchAssetTrend(range: TrendRange): Promise<AssetTrend> {
   return apiRequest<AssetTrend>(`/api/ledger/trend?range=${encodeURIComponent(range)}`)
 }
 
+export function fetchDayChange(): Promise<MonthChange> {
+  return apiRequest<MonthChange>('/api/ledger/day-change')
+}
+
 export function fetchMonthChange(): Promise<MonthChange> {
   return apiRequest<MonthChange>('/api/ledger/month-change')
 }

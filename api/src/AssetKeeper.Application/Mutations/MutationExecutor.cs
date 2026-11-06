@@ -70,14 +70,33 @@ public sealed class MutationExecutor
         var beforeJson = await CaptureBeforeAsync(operation, ledger.Id, request, cancellationToken);
         TResponse result;
 
-        try
+        // 两个并发写入可能从各自的账本快照里拿到同一个业务顺序号。冲突发生在落库之前，
+        // 因此丢弃本次内存改动、重新读取账本后再试一次，避免把瞬时冲突留给用户处理。
+        for (var attempt = 1; ; attempt++)
         {
-            result = await execute();
-        }
-        catch (HistoryValidationException exception)
-        {
-            _ledgerRepository.DiscardChanges();
-            return invalid(exception.Message);
+            try
+            {
+                result = await execute();
+                break;
+            }
+            catch (DuplicateFactSequenceException exception) when (attempt < 2)
+            {
+                _ledgerRepository.DiscardChanges();
+                var refreshed = await _ledgerRepository.GetForUpdateAsync(cancellationToken);
+
+                if (refreshed is null)
+                {
+                    return invalid(exception.Message);
+                }
+
+                ledger = refreshed;
+                beforeJson = await CaptureBeforeAsync(operation, ledger.Id, request, cancellationToken);
+            }
+            catch (HistoryValidationException exception)
+            {
+                _ledgerRepository.DiscardChanges();
+                return invalid(exception.Message);
+            }
         }
 
         if (!succeeded(result))

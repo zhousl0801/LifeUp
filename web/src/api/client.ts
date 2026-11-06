@@ -16,42 +16,118 @@ interface ProblemDetails {
   errors?: Record<string, string[]>
 }
 
+const baseUrl = import.meta.env.VITE_API_BASE_URL ?? ''
+
+const readCacheTtlMs = 15_000
+const readCacheLimit = 50
+const requestTimeoutMs = 15_000
+const readCache = new Map<string, { at: number; data: unknown }>()
+
+export const activeRequestCount = ref(0)
+
+export function clearReadCache(): void {
+  readCache.clear()
+}
+
+function isCacheableRead(init?: RequestInit): boolean {
+  return (init?.method?.toUpperCase() ?? 'GET') === 'GET' && !init?.body
+}
+
+function readCached<T>(key: string): T | undefined {
+  const entry = readCache.get(key)
+
+  if (!entry) {
+    return undefined
+  }
+
+  if (Date.now() - entry.at > readCacheTtlMs) {
+    readCache.delete(key)
+    return undefined
+  }
+
+  return structuredClone(entry.data) as T
+}
+
+function writeCached(key: string, data: unknown): void {
+  if (readCache.size >= readCacheLimit) {
+    const oldest = readCache.keys().next().value
+
+    if (oldest !== undefined) {
+      readCache.delete(oldest)
+    }
+  }
+
+  readCache.set(key, { at: Date.now(), data: structuredClone(data) })
+}
+
 export async function readOnlyRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const baseUrl = import.meta.env.VITE_API_BASE_URL ?? ''
+  const cacheable = isCacheableRead(init)
+  const cacheKey = `${baseUrl}${path}`
+
+  if (cacheable) {
+    const cached = readCached<T>(cacheKey)
+
+    if (cached !== undefined) {
+      return cached
+    }
+  }
+
   const headers = new Headers(init?.headers)
 
   if (!headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
 
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    credentials: 'include',
-    headers
-  })
+  activeRequestCount.value++
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), requestTimeoutMs)
 
-  if (!response.ok) {
-    if (response.status === 401) {
-      const { markAccessLost } = await import('./access')
-      markAccessLost()
+  try {
+    const response = await fetch(`${baseUrl}${path}`, {
+      ...init,
+      credentials: 'include',
+      headers,
+      signal: init?.signal ?? controller.signal
+    })
+
+    if (!response.ok) {
+      const problem = await readProblem(response)
+      const firstFieldError = problem?.errors
+        ? Object.values(problem.errors).flat()[0]
+        : undefined
+      const message = firstFieldError
+        ?? problem?.detail
+        ?? problem?.title
+        ?? `请求失败（HTTP ${response.status}）`
+
+      throw new ApiError(response.status, message)
     }
-    const problem = await readProblem(response)
-    const firstFieldError = problem?.errors
-      ? Object.values(problem.errors).flat()[0]
-      : undefined
-    const message = firstFieldError
-      ?? problem?.detail
-      ?? problem?.title
-      ?? `请求失败（HTTP ${response.status}）`
 
-    throw new ApiError(response.status, message)
+    if (!cacheable) {
+      clearReadCache()
+    }
+
+    if (response.status === 204) {
+      return undefined as T
+    }
+
+    const data = (await response.json()) as T
+
+    if (cacheable) {
+      writeCached(cacheKey, data)
+    }
+
+    return data
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new ApiError(0, '请求超时，请检查网络后重试。')
+    }
+
+    throw error
+  } finally {
+    window.clearTimeout(timeout)
+    activeRequestCount.value--
   }
-
-  if (response.status === 204) {
-    return undefined as T
-  }
-
-  return (await response.json()) as T
 }
 
 const PendingPrefix = 'asset-keeper.pending.'
@@ -104,10 +180,13 @@ export async function recoverMutation(request: PendingMutation, retry: boolean):
   try {
     const result = await lookupMutation(request.requestId)
     forget(request.requestId)
+    clearReadCache()
     return result
   } catch (error) {
     if (retry && error instanceof ApiError && error.status === 404) {
-      return apiRequest(request.path, { method: request.method, body: request.body })
+      const result = await apiRequest(request.path, { method: request.method, body: request.body })
+      clearReadCache()
+      return result
     }
 
     throw error

@@ -47,12 +47,12 @@ public sealed class TradingDayPostgresTests
             Assert.Single(results, result => result.Status == AssetOperationStatus.Conflict);
         }
 
-        var nextDates = new BusinessDateProvider(new FixedTimeProvider(new(2026, 10, 22, 2, 0, 0, TimeSpan.Zero)));
+        var dueDates = new BusinessDateProvider(new FixedTimeProvider(new(2026, 10, 21, 4, 0, 0, TimeSpan.Zero)));
         await using (var run = database.CreateContext())
         {
             var repository = new LedgerRepository(run);
-            var execution = new PlanExecutionService(repository, new PlanRepository(run), nextDates,
-                new LedgerEntryService(repository, nextDates), new ProvidentFundService(repository, nextDates), new FundService(repository, nextDates));
+            var execution = new PlanExecutionService(repository, new PlanRepository(run), dueDates,
+                new LedgerEntryService(repository, dueDates), new ProvidentFundService(repository, dueDates), new FundService(repository, dueDates));
             Assert.Equal(1, (await execution.RunDueAsync(CancellationToken.None)).Completed);
             Assert.Equal(0, (await execution.RunDueAsync(CancellationToken.None)).Completed);
         }
@@ -60,9 +60,9 @@ public sealed class TradingDayPostgresTests
         await using var readback = database.CreateContext();
         var plan = await readback.AutoPlans.SingleAsync();
         Assert.Equal(AutoPlanCycle.TradingDay, plan.Cycle);
-        Assert.Equal(Today.AddDays(1), plan.StartDate);
-        Assert.Equal("T2026-10-22", (await readback.PlanOccurrences.SingleAsync()).PeriodKey);
-        var overview = (await new FundService(new LedgerRepository(readback), nextDates).GetOverviewAsync(CancellationToken.None))!;
+        Assert.Equal(Today, plan.StartDate);
+        Assert.Equal("T2026-10-21", (await readback.PlanOccurrences.SingleAsync()).PeriodKey);
+        var overview = (await new FundService(new LedgerRepository(readback), dueDates).GetOverviewAsync(CancellationToken.None))!;
         Assert.Equal(2, overview.Positions.Count);
         Assert.Equal(15m, Assert.Single(Assert.Single(overview.Funds!).Classes).Shares);
         Assert.Equal(100m, overview.PendingAmount);

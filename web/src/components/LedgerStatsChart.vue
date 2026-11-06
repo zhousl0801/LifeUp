@@ -1,16 +1,12 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import * as echarts from 'echarts/core'
-import { BarChart } from 'echarts/charts'
-import { GridComponent, TooltipComponent } from 'echarts/components'
-import { CanvasRenderer } from 'echarts/renderers'
+import type { ECharts } from 'echarts/core'
 import type { EChartsOption } from 'echarts'
+import { loadChartRuntime } from '../utils/chartRuntime'
 import { formatMoney } from '../utils/format'
 import { chartFontSize, chartTheme } from '../utils/chartTheme'
 import { resolvedTheme } from '../utils/theme'
 import type { EntryKind, EntryPeriod, EntryStatsPoint } from '../types/entry'
-
-echarts.use([BarChart, GridComponent, TooltipComponent, CanvasRenderer])
 
 const props = defineProps<{
   points: EntryStatsPoint[]
@@ -20,7 +16,8 @@ const props = defineProps<{
 }>()
 
 const container = ref<HTMLElement | null>(null)
-let chart: echarts.ECharts | null = null
+let chart: ECharts | null = null
+let disposed = false
 
 function buildOption(): EChartsOption {
   const theme = chartTheme()
@@ -95,19 +92,23 @@ function resize(): void {
 }
 
 onMounted(() => {
-  if (!container.value) {
-    return
-  }
-
-  chart = echarts.init(container.value, undefined, { renderer: 'canvas' })
-  render()
   window.addEventListener('resize', resize)
+
+  void loadChartRuntime().then((echarts) => {
+    if (disposed || !container.value) {
+      return
+    }
+
+    chart = echarts.init(container.value, undefined, { renderer: 'canvas' })
+    render()
+  })
 })
 
 watch(() => [props.points, props.direction, props.period], render, { deep: true })
 watch(resolvedTheme, render)
 
 onBeforeUnmount(() => {
+  disposed = true
   window.removeEventListener('resize', resize)
   chart?.dispose()
   chart = null

@@ -69,19 +69,15 @@ public sealed class LedgerController : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetMonthChange(CancellationToken cancellationToken)
     {
-        var change = await _monthChangeService.GetAsync(cancellationToken);
+        return ChangeResult(await _monthChangeService.GetAsync(ChangeScope.Month, cancellationToken));
+    }
 
-        if (change is null)
-        {
-            return NotFound(new ProblemDetails
-            {
-                Title = "账本尚未初始化",
-                Detail = "请先设置账本起始日期和现金余额。",
-                Status = StatusCodes.Status404NotFound
-            });
-        }
-
-        return Ok(change);
+    [HttpGet("day-change")]
+    [ProducesResponseType<MonthChangeDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetDayChange(CancellationToken cancellationToken)
+    {
+        return ChangeResult(await _monthChangeService.GetAsync(ChangeScope.Day, cancellationToken));
     }
 
     [HttpPut("coverage")]
@@ -168,5 +164,20 @@ public sealed class LedgerController : ControllerBase
         }
 
         return CreatedAtAction(nameof(Get), result.Overview);
+    }
+
+    private IActionResult ChangeResult(MonthChangeDto? change)
+    {
+        if (change is null)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Title = "账本尚未初始化",
+                Detail = "请先设置账本起始日期和现金余额。",
+                Status = StatusCodes.Status404NotFound
+            });
+        }
+
+        return Ok(change);
     }
 }

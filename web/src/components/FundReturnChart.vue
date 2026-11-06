@@ -1,16 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import * as echarts from 'echarts/core'
-import { BarChart, LineChart } from 'echarts/charts'
-import { DataZoomComponent, GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
-import { CanvasRenderer } from 'echarts/renderers'
+import type { ECharts } from 'echarts/core'
 import type { EChartsOption } from 'echarts'
+import { loadChartRuntime } from '../utils/chartRuntime'
 import { formatSignedMoney } from '../utils/format'
 import { chartFontSize, chartTheme } from '../utils/chartTheme'
 import { resolvedTheme } from '../utils/theme'
 import type { FundReturnPoint } from '../types/fundReturn'
-
-echarts.use([BarChart, LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer])
 
 const props = defineProps<{
   points: FundReturnPoint[]
@@ -26,7 +22,8 @@ const chartLabel = computed(() => {
     ? `投资收益走势图，${props.range}；最新累计收益 ${formatSignedMoney(latest.cumulativeProfit!)} 元；红涨绿跌，柱子方向表示当日盈亏`
     : `投资收益走势图，${props.range}；暂无已披露收益`
 })
-let chart: echarts.ECharts | null = null
+let chart: ECharts | null = null
+let disposed = false
 
 function render(): void {
   chart?.setOption(buildOption(), { notMerge: true })
@@ -130,13 +127,16 @@ function resize(): void {
 }
 
 onMounted(() => {
-  if (!container.value) {
-    return
-  }
-
-  chart = echarts.init(container.value, undefined, { renderer: 'canvas' })
-  render()
   window.addEventListener('resize', resize)
+
+  void loadChartRuntime().then((echarts) => {
+    if (disposed || !container.value) {
+      return
+    }
+
+    chart = echarts.init(container.value, undefined, { renderer: 'canvas' })
+    render()
+  })
 })
 
 watch(
@@ -150,6 +150,7 @@ watch(
 watch(resolvedTheme, render)
 
 onBeforeUnmount(() => {
+  disposed = true
   window.removeEventListener('resize', resize)
   chart?.dispose()
   chart = null

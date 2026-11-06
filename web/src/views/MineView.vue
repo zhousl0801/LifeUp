@@ -1,13 +1,18 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { RouterLink } from 'vue-router'
-import { fetchPlanOverview } from '../api/plans'
+import { computed, ref } from 'vue'
 import AppIcon from '../components/AppIcon.vue'
 import AppNav from '../components/AppNav.vue'
 import BottomSheet from '../components/BottomSheet.vue'
+import { fileToAvatar, loadProfile, normalizeProfileName, saveProfile, type UserProfile } from '../utils/profile'
 import { useTheme, type ThemeMode } from '../utils/theme'
 
-const planCount = ref<number | null>(null)
+const profile = ref<UserProfile>(loadProfile())
+const profileSheetOpen = ref(false)
+const draftName = ref('')
+const draftAvatar = ref<string | null>(null)
+const profileError = ref('')
+const avatarBusy = ref(false)
+const avatarInput = ref<HTMLInputElement | null>(null)
 const themeSheetOpen = ref(false)
 const { mode, setThemeMode } = useTheme()
 const themeOptions: { value: ThemeMode; label: string; description: string }[] = [
@@ -17,19 +22,60 @@ const themeOptions: { value: ThemeMode; label: string; description: string }[] =
 ]
 const themeLabel = computed(() =>
   themeOptions.find((option) => option.value === mode.value)?.label ?? '跟随系统')
+const displayName = computed(() => profile.value.name || '未设置昵称')
+
+function openProfileSheet(): void {
+  draftName.value = profile.value.name
+  draftAvatar.value = profile.value.avatar
+  profileError.value = ''
+  profileSheetOpen.value = true
+}
+
+function chooseAvatar(): void {
+  if (!avatarBusy.value) {
+    avatarInput.value?.click()
+  }
+}
+
+async function onAvatarChange(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+
+  if (!file) {
+    return
+  }
+
+  avatarBusy.value = true
+  profileError.value = ''
+
+  try {
+    draftAvatar.value = await fileToAvatar(file)
+  } catch (error) {
+    profileError.value = error instanceof Error ? error.message : '头像处理失败，请重试。'
+  } finally {
+    avatarBusy.value = false
+  }
+}
+
+function saveProfileChanges(): void {
+  const next: UserProfile = {
+    name: normalizeProfileName(draftName.value),
+    avatar: draftAvatar.value
+  }
+
+  if (!saveProfile(next)) {
+    profileError.value = '保存失败，浏览器存储空间可能不足。'
+    return
+  }
+
+  profile.value = next
+  profileSheetOpen.value = false
+}
 
 function chooseTheme(value: ThemeMode): void {
   setThemeMode(value)
 }
-
-onMounted(async () => {
-  try {
-    const overview = await fetchPlanOverview()
-    planCount.value = overview.activeCount
-  } catch {
-    planCount.value = null
-  }
-})
 </script>
 
 <template>
@@ -38,36 +84,69 @@ onMounted(async () => {
       <h1>我的</h1>
     </header>
 
+    <h2 class="settings-title">个性化设置</h2>
+
     <div class="list-box">
-      <RouterLink class="list-row" to="/plans">
-        <span>自动记账计划</span>
-        <b>{{ planCount === null ? '查看 ›' : `${planCount} 项 ›` }}</b>
-      </RouterLink>
+      <button type="button" class="list-row" @click="openProfileSheet">
+        <span>头像与昵称</span>
+        <span class="list-value">
+          <span class="avatar avatar-row">
+            <img v-if="profile.avatar" :src="profile.avatar" alt="" />
+            <AppIcon v-else name="user" />
+          </span>
+          <b>{{ displayName }} ›</b>
+        </span>
+      </button>
       <button type="button" class="list-row" @click="themeSheetOpen = true">
-        <span>主题</span>
+        <span>主题配色</span>
         <b>{{ themeLabel }} ›</b>
       </button>
-      <RouterLink class="list-row" to="/security">
-        <span>登录与安全</span>
-        <b>管理 ›</b>
-      </RouterLink>
-      <RouterLink class="list-row" to="/backup">
-        <span>数据导出与备份</span>
-        <b>管理 ›</b>
-      </RouterLink>
-      <RouterLink class="list-row" to="/ledger">
-        <span>账本明细</span>
-        <b>查看 ›</b>
-      </RouterLink>
     </div>
 
     <BottomSheet
+      :open="profileSheetOpen"
+      title="头像与昵称"
+      subtitle="只保存在当前设备，不会同步到其他设备"
+      @close="profileSheetOpen = false"
+    >
+      <div class="profile-editor">
+        <div class="avatar-editor">
+          <span class="avatar avatar-large">
+            <img v-if="draftAvatar" :src="draftAvatar" alt="头像预览" />
+            <AppIcon v-else name="user" />
+          </span>
+          <span class="avatar-actions">
+            <button type="button" class="link-action" :disabled="avatarBusy" @click="chooseAvatar">
+              {{ draftAvatar ? '更换头像' : '上传头像' }}
+            </button>
+            <button v-if="draftAvatar" type="button" class="link-action muted" :disabled="avatarBusy" @click="draftAvatar = null">
+              移除头像
+            </button>
+          </span>
+          <input ref="avatarInput" class="file-input" type="file" accept="image/*" @change="onAvatarChange" />
+        </div>
+
+        <label class="profile-field">
+          <span>昵称</span>
+          <input v-model="draftName" type="text" maxlength="20" placeholder="输入昵称" />
+        </label>
+
+        <p v-if="profileError" class="profile-error" role="alert">{{ profileError }}</p>
+        <p class="profile-note">支持 JPG、PNG 等图片，头像会压缩后保存在本机。</p>
+
+        <button type="button" class="primary-button profile-save" :disabled="avatarBusy" @click="saveProfileChanges">
+          保存
+        </button>
+      </div>
+    </BottomSheet>
+
+    <BottomSheet
       :open="themeSheetOpen"
-      title="主题"
+      title="主题配色"
       subtitle="选择亮色、暗色，或跟随设备外观"
       @close="themeSheetOpen = false"
     >
-      <div class="theme-options" role="radiogroup" aria-label="主题">
+      <div class="theme-options" role="radiogroup" aria-label="主题配色">
         <button
           v-for="option in themeOptions"
           :key="option.value"
@@ -104,6 +183,13 @@ onMounted(async () => {
   font-size: var(--text-title1);
   font-weight: 700;
   letter-spacing: -0.6px;
+}
+
+.settings-title {
+  margin: 0 0 8px 4px;
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+  font-weight: 600;
 }
 
 .list-box {
@@ -143,6 +229,129 @@ onMounted(async () => {
   color: var(--color-text-secondary);
   font-size: var(--text-footnote);
   font-weight: 500;
+}
+
+.list-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.list-value b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.avatar {
+  display: inline-grid;
+  flex: 0 0 auto;
+  overflow: hidden;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-brand-soft);
+  color: var(--color-brand);
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-row {
+  width: 28px;
+  height: 28px;
+}
+
+.avatar-row .app-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.avatar-large {
+  width: 76px;
+  height: 76px;
+}
+
+.avatar-large .app-icon {
+  width: 34px;
+  height: 34px;
+}
+
+.profile-editor {
+  display: grid;
+  gap: 16px;
+}
+
+.avatar-editor {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.avatar-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.link-action {
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-brand);
+  font-size: var(--text-footnote);
+  font-weight: 600;
+}
+
+.link-action.muted {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.file-input {
+  display: none;
+}
+
+.profile-field {
+  display: grid;
+  gap: 8px;
+  color: var(--color-text-secondary);
+  font-size: var(--text-footnote);
+}
+
+.profile-field input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 13px;
+  border: 1px solid var(--color-border-control);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-page);
+  color: var(--color-text-primary);
+  font-size: var(--text-body);
+}
+
+.profile-error {
+  margin: 0;
+  color: var(--color-error);
+  font-size: var(--text-footnote);
+  line-height: 1.6;
+}
+
+.profile-note {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+  line-height: 1.6;
+}
+
+.profile-save {
+  width: 100%;
 }
 
 .theme-options {

@@ -53,7 +53,7 @@ public sealed class StockService
             .Where(transaction => transaction.Kind != AssetTransactionKind.StockQuote)
             .Select(transaction => MapActivity(transaction, positionNames))
             .ToList();
-        var replayData = await _ledgerRepository.GetReplayDataAsync(ledger.Id, cancellationToken);
+        var replayData = await _ledgerRepository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
         var replay = new LedgerReplayCalculator().Calculate(
             replayData,
             BusinessFact.From(replayData),
@@ -524,7 +524,8 @@ public sealed class StockService
 
     public async Task<AssetOperationResult<StockQuoteRefreshDto>> RefreshQuoteAsync(
         Guid positionId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ExternalStockQuote? prefetchedQuote = null)
     {
         var ledger = await _ledgerRepository.GetForUpdateAsync(cancellationToken);
 
@@ -552,7 +553,7 @@ public sealed class StockService
 
         try
         {
-            var quote = await _quoteProvider.GetLatestAsync(position.Market, position.Code, cancellationToken);
+            var quote = prefetchedQuote ?? await _quoteProvider.GetLatestAsync(position.Market, position.Code, cancellationToken);
             var dateErrors = AssetValidation.ValidateValueDate(quote.PriceDate, _businessDateProvider.Today);
 
             if (dateErrors.Count > 0 || quote.Price <= 0m)

@@ -19,9 +19,16 @@ public sealed class LedgerReplayCalculator
         var providentDate = data.Ledger.StartDate;
         var adjustments = new List<AdjustmentReplay>();
         var active = facts.Where(fact => !fact.IsReversed).ToList();
+        var activeIds = active.Select(fact => fact.Id).ToHashSet();
+        var openingKeys = facts
+            .Where(fact => fact.Kind is AssetTransactionKind.FundOpening or AssetTransactionKind.GoldOpening
+                or AssetTransactionKind.GoldCorrection or AssetTransactionKind.StockOpening)
+            .Select(fact => (fact.AssetType, fact.PositionId))
+            .ToHashSet();
+
         if (active.Where(fact => fact.Sequence > 0).GroupBy(fact => fact.Sequence).Any(group => group.Count() > 1))
         {
-            throw new HistoryValidationException("业务顺序重复，请核对同日业务顺序后重试。");
+            throw new DuplicateFactSequenceException("业务顺序重复，请核对同日业务顺序后重试。");
         }
 
         var allAnchors = facts.Where(fact => fact.Source == "adjustment").ToDictionary(fact => fact.Id);
@@ -88,22 +95,22 @@ public sealed class LedgerReplayCalculator
 
             if (fact.AssetType == AssetType.Fund && fact.PositionId is not null && !unknownFunds.Contains(fact.PositionId))
             {
-                ApplyHolding(fundStates[fact.PositionId.Value], fact, facts, pendingBuys, sellApplies, sellConfirms, goldSellPendings, false);
+                ApplyHolding(fundStates[fact.PositionId.Value], fact, openingKeys, pendingBuys, sellApplies, sellConfirms, goldSellPendings, false);
             }
 
             if (fact.AssetType == AssetType.Stock && fact.PositionId is not null && !unknownStocks.Contains(fact.PositionId))
             {
-                ApplyHolding(stockStates[fact.PositionId.Value], fact, facts, pendingBuys, sellApplies, sellConfirms, goldSellPendings, true);
+                ApplyHolding(stockStates[fact.PositionId.Value], fact, openingKeys, pendingBuys, sellApplies, sellConfirms, goldSellPendings, true);
             }
 
             if (fact.AssetType == AssetType.Gold && goldState is not null && !unknownGold)
             {
-                ApplyHolding(goldState, fact, facts, pendingBuys, sellApplies, sellConfirms, goldSellPendings, true);
+                ApplyHolding(goldState, fact, openingKeys, pendingBuys, sellApplies, sellConfirms, goldSellPendings, true);
             }
         }
 
         var observations = (priceOverride ?? data.Prices).Where(price => !price.IsSuperseded && price.EffectiveDate <= asOfDate
-            && (price.SourceTransactionId is null || active.Any(fact => fact.Id == price.SourceTransactionId))).ToList();
+            && (price.SourceTransactionId is null || activeIds.Contains(price.SourceTransactionId.Value))).ToList();
         var funds = data.Positions.Select(position =>
         {
             var state = fundStates[position.Id];
@@ -167,7 +174,8 @@ public sealed class LedgerReplayCalculator
             providentStart is null ? null : provident, providentStart, providentDate, funds, stocks, gold, adjustments, issues);
     }
 
-    private static void ApplyHolding(MutableHolding state, BusinessFact fact, IReadOnlyList<BusinessFact> allFacts,
+    private static void ApplyHolding(MutableHolding state, BusinessFact fact,
+        IReadOnlySet<(AssetType? AssetType, Guid? PositionId)> openingKeys,
         IReadOnlyDictionary<Guid, BusinessFact> pendingBuys, IReadOnlyDictionary<Guid, BusinessFact> sellApplies,
         IReadOnlyDictionary<Guid, BusinessFact> sellConfirms, IReadOnlyDictionary<Guid, BusinessFact> goldSellPendings,
         bool canStartWithBuy)
@@ -181,7 +189,7 @@ public sealed class LedgerReplayCalculator
         {
             state.PendingAmount += fact.Amount;
             Ensure(state.PendingAmount >= 0m && state.PendingAmount <= AssetTransaction.MaximumAmount, fact, "待确认买入金额无效");
-            state.PendingBuys[fact.Id] = new PendingBuy(fact.Amount, fact.FundTradeDate ?? fact.Date);
+            state.PendingBuys[fact.Id] = new PendingBuy(fact.Amount, fact.Fee, fact.FundTradeDate ?? fact.Date);
             return;
         }
 
@@ -271,9 +279,7 @@ public sealed class LedgerReplayCalculator
         {
             if (state.CoverageFrom is null)
             {
-                var hadOpening = allFacts.Any(other => other.AssetType == fact.AssetType && other.PositionId == fact.PositionId
-                    && other.Kind is AssetTransactionKind.FundOpening or AssetTransactionKind.GoldOpening
-                        or AssetTransactionKind.GoldCorrection or AssetTransactionKind.StockOpening);
+                var hadOpening = openingKeys.Contains((fact.AssetType, fact.PositionId));
                 Ensure(canStartWithBuy && !hadOpening, fact, "缺少有效起始持仓，须先处理关联起始记录");
                 state.CoverageFrom = fact.Date;
             }
@@ -300,6 +306,10 @@ public sealed class LedgerReplayCalculator
     {
         var pendingBuys = active.Where(fact => fact.Kind == AssetTransactionKind.FundBuyPending)
             .ToDictionary(fact => fact.Id);
+        var confirmCounts = active
+            .Where(fact => fact.Kind == AssetTransactionKind.FundBuyConfirm && fact.LinkedTransactionId is not null)
+            .GroupBy(fact => fact.LinkedTransactionId!.Value)
+            .ToDictionary(group => group.Key, group => group.Count());
 
         foreach (var confirm in active.Where(fact => fact.Kind == AssetTransactionKind.FundBuyConfirm))
         {
@@ -308,8 +318,7 @@ public sealed class LedgerReplayCalculator
                 throw new HistoryValidationException("买入确认关联的待确认记录不存在、已撤销或已结转。");
             }
 
-            if (active.Any(fact => fact.Id != confirm.Id && fact.Kind == AssetTransactionKind.FundBuyConfirm
-                && fact.LinkedTransactionId == pendingId))
+            if (confirmCounts.GetValueOrDefault(pendingId) > 1)
             {
                 throw new HistoryValidationException("同一笔买入待确认只能确认一次。");
             }
@@ -345,6 +354,14 @@ public sealed class LedgerReplayCalculator
             .ToDictionary(fact => fact.Id);
         var confirms = active.Where(fact => fact.Kind == AssetTransactionKind.FundSellConfirm)
             .ToDictionary(fact => fact.Id);
+        var sellConfirmCounts = confirms.Values
+            .Where(fact => fact.LinkedTransactionId is not null)
+            .GroupBy(fact => fact.LinkedTransactionId!.Value)
+            .ToDictionary(group => group.Key, group => group.Count());
+        var sellArrivalCounts = active
+            .Where(fact => fact.Kind == AssetTransactionKind.FundSellArrival && fact.LinkedTransactionId is not null)
+            .GroupBy(fact => fact.LinkedTransactionId!.Value)
+            .ToDictionary(group => group.Key, group => group.Count());
 
         foreach (var confirm in confirms.Values)
         {
@@ -353,8 +370,7 @@ public sealed class LedgerReplayCalculator
                 throw new HistoryValidationException("赎回确认关联的申请不存在、已撤销或已确认。");
             }
 
-            if (active.Any(fact => fact.Id != confirm.Id && fact.Kind == AssetTransactionKind.FundSellConfirm
-                && fact.LinkedTransactionId == applyId))
+            if (sellConfirmCounts.GetValueOrDefault(applyId) > 1)
             {
                 throw new HistoryValidationException("同一笔赎回申请只能确认一次。");
             }
@@ -388,8 +404,7 @@ public sealed class LedgerReplayCalculator
                 throw new HistoryValidationException("赎回到账关联的确认记录不存在、已撤销或已到账。");
             }
 
-            if (active.Any(fact => fact.Id != arrival.Id && fact.Kind == AssetTransactionKind.FundSellArrival
-                && fact.LinkedTransactionId == confirmId))
+            if (sellArrivalCounts.GetValueOrDefault(confirmId) > 1)
             {
                 throw new HistoryValidationException("同一笔赎回确认只能到账一次。");
             }
@@ -431,6 +446,11 @@ public sealed class LedgerReplayCalculator
             }
         }
 
+        var goldArrivalCounts = active
+            .Where(fact => fact.Kind == AssetTransactionKind.GoldSellArrival && fact.LinkedTransactionId is not null)
+            .GroupBy(fact => fact.LinkedTransactionId!.Value)
+            .ToDictionary(group => group.Key, group => group.Count());
+
         foreach (var arrival in active.Where(fact => fact.Kind == AssetTransactionKind.GoldSellArrival))
         {
             if (arrival.LinkedTransactionId is not Guid pendingId || !pendings.TryGetValue(pendingId, out var pending))
@@ -438,8 +458,7 @@ public sealed class LedgerReplayCalculator
                 throw new HistoryValidationException("积存金卖到账关联的记录不存在、已撤销或已到账。");
             }
 
-            if (active.Any(fact => fact.Id != arrival.Id && fact.Kind == AssetTransactionKind.GoldSellArrival
-                && fact.LinkedTransactionId == pendingId))
+            if (goldArrivalCounts.GetValueOrDefault(pendingId) > 1)
             {
                 throw new HistoryValidationException("同一笔积存金卖出只能到账一次。");
             }
@@ -518,9 +537,10 @@ public sealed class LedgerReplayCalculator
         foreach (var pending in pendings)
         {
             var navTradeDate = At(prices, AssetType.Fund, positionId, pending.TradeDate)?.Price;
+            var principal = pending.Amount - pending.Fee;
             total += navTradeDate is null or <= 0m || navAsOf is null
-                ? pending.Amount
-                : pending.Amount * navAsOf.Value / navTradeDate.Value;
+                ? principal
+                : principal * navAsOf.Value / navTradeDate.Value;
         }
 
         return total;
@@ -559,5 +579,5 @@ public sealed class LedgerReplayCalculator
         public DateOnly? CoverageFrom { get; set; }
     }
 
-    private readonly record struct PendingBuy(decimal Amount, DateOnly TradeDate);
+    private readonly record struct PendingBuy(decimal Amount, decimal Fee, DateOnly TradeDate);
 }

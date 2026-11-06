@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import BackButton from '../components/BackButton.vue'
+import LoadingButton from '../components/LoadingButton.vue'
+import AnimatedMoney from '../components/AnimatedMoney.vue'
+import LoadingState from '../components/LoadingState.vue'
 import CashAdjustmentLink from '../components/CashAdjustmentLink.vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -356,13 +359,15 @@ function goBack(): void {
   <main class="page provident-page with-nav">
     <header class="provident-header">
       <BackButton @back="goBack" />
+      <h1>公积金</h1>
     </header>
 
-    <p v-if="isLoading && !overview" class="state">正在读取公积金…</p>
+    <LoadingState v-if="isLoading && !overview" variant="hero" label="正在读取公积金" />
+    <LoadingState v-if="isLoading && !overview" variant="list" :rows="3" label="正在读取公积金明细" />
 
     <section v-else-if="errorMessage" class="state">
       <p>{{ errorMessage }}</p>
-      <button type="button" class="secondary-button" @click="loadOverview">重新加载</button>
+      <LoadingButton class="secondary-button" :loading="isLoading" loading-label="加载中…" @click="loadOverview">重新加载</LoadingButton>
     </section>
 
     <template v-else-if="overview">
@@ -371,7 +376,7 @@ function goBack(): void {
           公积金余额
           <span class="hero-tag">个人＋单位</span>
         </p>
-        <h2 class="hero-balance"><span>¥</span>{{ formatMoney(overview.balance) }}</h2>
+        <h2 class="hero-balance"><span>¥</span><AnimatedMoney :value="overview.balance" prefix="" /></h2>
         <p class="hero-meta">截至 {{ formatBusinessDate(overview.asOfDate) }}</p>
         <div class="hero-metrics">
           <div>
@@ -526,9 +531,9 @@ function goBack(): void {
           <button type="button" class="secondary-button" :disabled="isSaving" @click="closeSheet">
             取消
           </button>
-          <button type="submit" class="primary-button" :disabled="!canSubmit">
-            {{ isSaving ? '保存中…' : '保存' }}
-          </button>
+          <LoadingButton class="primary-button" type="submit" :loading="isSaving" :disabled="!canSubmit" loading-label="保存中…">
+            保存
+          </LoadingButton>
         </div>
       </form>
     </BottomSheet>
@@ -544,7 +549,15 @@ function goBack(): void {
 .provident-header {
   display: flex;
   align-items: center;
+  gap: 10px;
   margin-bottom: 16px;
+}
+
+.provident-header h1 {
+  margin: 0;
+  font-size: var(--text-title3);
+  font-weight: 700;
+  letter-spacing: -0.4px;
 }
 
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import LoadingState from './LoadingState.vue'
 import { todayInBusinessTimeZone } from '../utils/format'
 import type { MarketDay, TradingDay } from '../types/plan'
 
@@ -105,7 +106,7 @@ function closureTitle(market: MarketDay): string {
       <span><i class="legend-dot hk" />港股休市</span>
     </div>
 
-    <div v-if="loading" class="calendar-state">正在读取日历…</div>
+    <LoadingState v-if="loading" variant="list" :rows="4" compact label="正在读取日历" />
     <div v-else-if="error" class="calendar-state error">
       <span>{{ error }}</span>
       <button type="button" class="text-button" @click="emit('retry')">重试</button>
@@ -177,6 +178,17 @@ function closureTitle(market: MarketDay): string {
   gap: 10px;
 }
 
+@media (max-width: 360px) {
+  .calendar-head {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+
+  .calendar-nav {
+    margin-left: auto;
+  }
+}
+
 .calendar-title {
   display: flex;
   align-items: center;
@@ -187,6 +199,7 @@ function closureTitle(market: MarketDay): string {
 .calendar-title strong {
   font-size: 0.8125rem;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .calendar-tag {

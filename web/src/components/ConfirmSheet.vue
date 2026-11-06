@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import BottomSheet from './BottomSheet.vue'
+import LoadingButton from './LoadingButton.vue'
 
 withDefaults(defineProps<{
   open: boolean
@@ -26,15 +27,15 @@ defineEmits<{ confirm: []; cancel: [] }>()
       <button type="button" class="secondary-button" :disabled="busy" @click="$emit('cancel')">
         {{ cancelLabel }}
       </button>
-      <button
-        type="button"
+      <LoadingButton
         class="confirm-button"
         :class="{ danger }"
-        :disabled="busy"
+        :loading="busy"
+        loading-label="处理中…"
         @click="$emit('confirm')"
       >
-        {{ busy ? '处理中…' : confirmLabel }}
-      </button>
+        {{ confirmLabel }}
+      </LoadingButton>
     </div>
   </BottomSheet>
 </template>

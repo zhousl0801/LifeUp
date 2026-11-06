@@ -1,8 +1,9 @@
 import { beforeEach, expect, test, vi } from 'vitest'
-import { apiRequest, pendingMutationCount, readPendingMutations } from './client'
+import { apiRequest, clearReadCache, pendingMutationCount, readPendingMutations } from './client'
 
 beforeEach(() => {
   localStorage.clear()
+  clearReadCache()
   vi.restoreAllMocks()
 })
 
@@ -84,4 +85,25 @@ test('nested history confirmations use the same pending journal and recovery rec
   const body = JSON.stringify({ change: { requestId: 'history-request' }, previewToken: 'preview' })
   await expect(apiRequest('/api/ledger/history/change', { method: 'POST', body })).rejects.toThrow('保存结果待核实')
   expect(readPendingMutations()[0]?.requestId).toBe('history-request')
+})
+
+test('repeated reads use the short-lived cache until a write invalidates it', async () => {
+  const fetch = vi.spyOn(globalThis, 'fetch')
+    .mockResolvedValueOnce(new Response(JSON.stringify({ amount: 100 }), { status: 200 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ amount: 200 }), { status: 200 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ amount: 300 }), { status: 200 }))
+
+  const first = await apiRequest<{ amount: number }>('/api/ledger')
+  const cached = await apiRequest<{ amount: number }>('/api/ledger')
+
+  expect(cached).toEqual(first)
+  expect(fetch).toHaveBeenCalledTimes(1)
+
+  await apiRequest('/api/ledger/entries', {
+    method: 'POST', body: JSON.stringify({ amount: 1, requestId: 'cache-invalidation' })
+  })
+  const refreshed = await apiRequest<{ amount: number }>('/api/ledger')
+
+  expect(refreshed.amount).toBe(300)
+  expect(fetch).toHaveBeenCalledTimes(3)
 })

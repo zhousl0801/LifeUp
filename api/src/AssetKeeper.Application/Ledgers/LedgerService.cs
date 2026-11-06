@@ -33,25 +33,22 @@ public sealed class LedgerService
 
         var (from, to) = EntryPeriodRange.For(EntryPeriod.Month, _businessDateProvider.Today);
         var totals = await _ledgerRepository.GetEntryTotalsAsync(ledger.Id, from, to, cancellationToken);
-        var providentAccount = await _ledgerRepository.GetProvidentFundAccountAsync(
-            ledger.Id,
-            cancellationToken);
-        var fundPositions = await _ledgerRepository.GetFundPositionsAsync(ledger.Id, cancellationToken);
-        var stockPositions = await _ledgerRepository.GetStockPositionsAsync(ledger.Id, cancellationToken);
-        var goldHolding = await _ledgerRepository.GetGoldHoldingAsync(ledger.Id, cancellationToken);
-        var providentTransactions = providentAccount is null
+        var data = await _ledgerRepository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
+        var providentAccount = data.Provident;
+        var fundPositions = data.Positions;
+        var stockPositions = data.Stocks;
+        var goldHolding = data.Gold;
+        IReadOnlyList<AssetTransaction> providentTransactions = providentAccount is null
             ? Array.Empty<AssetTransaction>()
-            : await _ledgerRepository.GetAssetTransactionsAsync(
-                ledger.Id,
-                AssetType.ProvidentFund,
-                from,
-                to,
-                int.MaxValue,
-                cancellationToken);
+            : data.Transactions
+                .Where(transaction => !transaction.IsReversed
+                    && transaction.AssetType == AssetType.ProvidentFund
+                    && transaction.BusinessDate >= from
+                    && transaction.BusinessDate <= to)
+                .ToList();
         var monthDeposit = providentTransactions
             .Where(transaction => transaction.Kind == AssetTransactionKind.ProvidentDeposit)
             .Sum(transaction => transaction.Amount);
-        var data = await _ledgerRepository.GetReplayDataAsync(ledger.Id, cancellationToken);
         var snapshot = new LedgerReplayCalculator().Calculate(data, BusinessFact.From(data), _businessDateProvider.Today, currentDate: _businessDateProvider.Today);
         var pendingFund = snapshot.Funds.Sum(item => item.PendingAmount);
         var pendingFundValue = snapshot.Funds.Sum(item => item.PendingValue);

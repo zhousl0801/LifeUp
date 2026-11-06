@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { expect, test, vi } from 'vitest'
 import AssetTrendChart from './AssetTrendChart.vue'
 import type { AssetTrend } from '../types/trend'
@@ -6,9 +6,13 @@ import type { AssetTrend } from '../types/trend'
 const chart = vi.hoisted(() => ({
   on: vi.fn(), setOption: vi.fn(), resize: vi.fn(), dispose: vi.fn()
 }))
-vi.mock('echarts/core', () => ({ use: vi.fn(), init: () => chart }))
+const runtime = vi.hoisted(() => ({
+  load: vi.fn()
+}))
+vi.mock('../utils/chartRuntime', () => ({ loadChartRuntime: runtime.load }))
 
 test('selecting a trend date reports the current point without changing its financial values', async () => {
+  runtime.load.mockResolvedValue({ init: () => chart })
   const point = {
     date: '2026-10-01', totalAssets: null, knownTotalAssets: 1200, cash: 1200,
     provident: null, fundValue: 0, fundPending: 0, fundPendingArrival: 0,
@@ -17,6 +21,7 @@ test('selecting a trend date reports the current point without changing its fina
   }
   const trend: AssetTrend = { range: 'month', from: point.date, to: point.date, points: [point], notes: [] }
   const view = mount(AssetTrendChart, { props: { trend } })
+  await flushPromises()
   const select = chart.on.mock.calls[0]![1] as (event: unknown) => void
 
   select({ axesInfo: [{ axisDim: 'x', axisIndex: 0, value: 0 }] })

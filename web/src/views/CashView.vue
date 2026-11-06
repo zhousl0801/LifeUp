@@ -4,7 +4,10 @@ import { useRoute, useRouter } from 'vue-router'
 import { fetchCashOverview, reconcileCash } from '../api/cash'
 import { ApiError, getApiErrorMessage } from '../api/client'
 import AppNav from '../components/AppNav.vue'
+import AnimatedMoney from '../components/AnimatedMoney.vue'
 import BackButton from '../components/BackButton.vue'
+import LoadingButton from '../components/LoadingButton.vue'
+import LoadingState from '../components/LoadingState.vue'
 import { amountTone, formatMoney, formatSignedMoney, parseAmount, subtractAmounts } from '../utils/format'
 import { formatPeriodLabel } from '../utils/period'
 import type { CashActivity, CashActivityType, CashOverview } from '../types/cash'
@@ -271,14 +274,16 @@ function handleKeydown(event: KeyboardEvent): void {
   <main class="page cash-page with-nav">
     <header class="cash-header">
       <BackButton @back="router.push({ name: 'home' })" />
+      <h1>现金</h1>
       <button type="button" class="reconcile-link" @click="openReconcile">核对余额</button>
     </header>
 
-    <p v-if="isLoading && !overview" class="state">正在读取现金…</p>
+    <LoadingState v-if="isLoading && !overview" variant="hero" label="正在读取现金" />
+    <LoadingState v-if="isLoading && !overview" variant="list" :rows="3" label="正在读取现金明细" />
 
     <section v-else-if="errorMessage" class="state">
       <p>{{ errorMessage }}</p>
-      <button type="button" class="secondary-button" @click="loadCash">重新加载</button>
+      <LoadingButton class="secondary-button" :loading="isLoading" loading-label="加载中…" @click="loadCash">重新加载</LoadingButton>
     </section>
 
     <template v-else-if="overview">
@@ -287,7 +292,7 @@ function handleKeydown(event: KeyboardEvent): void {
           可用现金
           <span class="hero-tag">统一余额</span>
         </p>
-        <h2 class="hero-balance"><span>¥</span>{{ formatMoney(overview.balance) }}</h2>
+        <h2 class="hero-balance"><span>¥</span><AnimatedMoney :value="overview.balance" prefix="" /></h2>
         <div class="hero-metrics">
           <div>
             <span>本月现金流入</span>
@@ -435,14 +440,15 @@ function handleKeydown(event: KeyboardEvent): void {
 
             <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
 
-            <button
-              type="button"
+            <LoadingButton
               class="primary-button"
+              :loading="isSaving"
               :disabled="!canSave"
+              loading-label="保存中…"
               @click="submitReconcile"
             >
-              {{ isSaving ? '保存中…' : '保存核对' }}
-            </button>
+              保存核对
+            </LoadingButton>
           </div>
         </section>
       </div>
@@ -461,6 +467,13 @@ function handleKeydown(event: KeyboardEvent): void {
   align-items: center;
   gap: 10px;
   margin-bottom: 16px;
+}
+
+.cash-header h1 {
+  margin: 0;
+  font-size: var(--text-title3);
+  font-weight: 700;
+  letter-spacing: -0.4px;
 }
 
 .reconcile-link {

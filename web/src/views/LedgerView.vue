@@ -6,7 +6,10 @@ import { fetchCategories } from '../api/categories'
 import { ApiError, getApiErrorMessage } from '../api/client'
 import AppNav from '../components/AppNav.vue'
 import AppIcon from '../components/AppIcon.vue'
+import AnimatedMoney from '../components/AnimatedMoney.vue'
 import EmptyState from '../components/EmptyState.vue'
+import LoadingState from '../components/LoadingState.vue'
+import LoadingButton from '../components/LoadingButton.vue'
 import PageHeader from '../components/PageHeader.vue'
 import LedgerStatsChart from '../components/LedgerStatsChart.vue'
 import { ExpenseCategories, IncomeCategories } from '../constants/categories'
@@ -343,16 +346,12 @@ function goBack(): void {
     <button v-if="hasFilters && groupedEntries.length" type="button" class="back-link" @click="clearFilters">清除筛选</button>
     </details>
 
-    <div v-if="isLoading && !summary" class="skeleton-stack" role="status" aria-label="正在读取记录">
-      <div class="skeleton skeleton-card" />
-      <div class="skeleton skeleton-row" />
-      <div class="skeleton skeleton-row" />
-      <div class="skeleton skeleton-row" />
-    </div>
+    <LoadingState v-if="isLoading && !summary" variant="card" label="正在读取记录" />
+    <LoadingState v-if="isLoading && !summary" variant="list" :rows="3" label="正在读取记录列表" />
 
     <section v-else-if="errorMessage" class="state">
       <p>{{ errorMessage }}</p>
-      <button type="button" class="secondary-button" @click="loadEntries()">重新加载</button>
+      <LoadingButton class="secondary-button" :loading="isLoading" loading-label="加载中…" @click="loadEntries()">重新加载</LoadingButton>
     </section>
 
     <template v-else>
@@ -367,10 +366,11 @@ function goBack(): void {
         </header>
         <div class="day-card">
           <button
-            v-for="entry in group.entries"
+            v-for="(entry, index) in group.entries"
             :key="entry.id"
             type="button"
-            class="entry-row"
+            class="entry-row stagger-item"
+            :style="{ '--stagger': Math.min(index, 8) }"
             @click="openEntry(entry.id)"
           >
             <span class="entry-mark"><AppIcon :name="entry.category" /></span>
@@ -391,7 +391,13 @@ function goBack(): void {
         @action="hasFilters ? clearFilters() : openEntry()"
       />
     </template>
-  <button v-if="summary && summary.entries.length < summary.totalCount" type="button" class="secondary-button" :disabled="isLoading" @click="loadEntries(true)">加载更多（已显示 {{ summary.entries.length }} / {{ summary.totalCount }}）</button>
+  <LoadingButton
+    v-if="summary && summary.entries.length < summary.totalCount"
+    class="secondary-button"
+    :loading="isLoading"
+    loading-label="加载中…"
+    @click="loadEntries(true)"
+  >加载更多（已显示 {{ summary.entries.length }} / {{ summary.totalCount }}）</LoadingButton>
     </template>
 
     <template v-else>
@@ -400,17 +406,17 @@ function goBack(): void {
         <button type="button" :class="{ active: statsKind === 'income' }" @click="statsKind = 'income'">收入</button>
       </div>
 
-      <p v-if="statsLoading && !stats" class="state">正在读取图表…</p>
+      <LoadingState v-if="statsLoading && !stats" variant="chart" compact label="正在读取图表" />
       <section v-else-if="statsError" class="state">
         <p>{{ statsError }}</p>
-        <button type="button" class="secondary-button" @click="loadStats">重新加载</button>
+        <LoadingButton class="secondary-button" :loading="statsLoading" loading-label="加载中…" @click="loadStats">重新加载</LoadingButton>
       </section>
 
       <template v-else-if="stats">
         <section class="stats-panel">
           <div class="stats-head">
             <h2>{{ statsKind === 'income' ? '收入' : '支出' }}</h2>
-            <b>¥{{ formatMoney(statsTotal) }}</b>
+            <b><AnimatedMoney :value="statsTotal" /></b>
           </div>
           <p class="stats-meta">
             日均 ¥{{ formatMoney(statsAverage) }} · 覆盖 {{ stats.coveredDays }} 天 · {{ periodLabel }}

@@ -15,7 +15,12 @@ public sealed class MonthChangeService
         _dates = dates;
     }
 
-    public async Task<MonthChangeDto?> GetAsync(CancellationToken cancellationToken)
+    public Task<MonthChangeDto?> GetAsync(CancellationToken cancellationToken)
+    {
+        return GetAsync(ChangeScope.Month, cancellationToken);
+    }
+
+    public async Task<MonthChangeDto?> GetAsync(ChangeScope scope, CancellationToken cancellationToken)
     {
         var ledger = await _ledgerRepository.GetAsync(cancellationToken);
 
@@ -26,15 +31,20 @@ public sealed class MonthChangeService
 
         var today = _dates.Today;
         var monthStart = new DateOnly(today.Year, today.Month, 1);
-        var from = ledger.StartDate > monthStart ? ledger.StartDate : monthStart;
+        var isDay = scope == ChangeScope.Day;
+        var from = isDay
+            ? today
+            : (ledger.StartDate > monthStart ? ledger.StartDate : monthStart);
         var notes = new List<string>();
-        var data = await _ledgerRepository.GetReplayDataAsync(ledger.Id, cancellationToken);
+        var data = await _ledgerRepository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
         var facts = BusinessFact.From(data);
         var calculator = new LedgerReplayCalculator();
 
-        // 月初基线落在账本起始日之前，才能做真正的“同口径”月度比较。
-        var hasPreMonthBaseline = ledger.StartDate < monthStart;
-        var baselineDate = hasPreMonthBaseline ? monthStart.AddDays(-1) : ledger.StartDate;
+        // 比较基线必须落在账本起始日之前：当日对比昨天，本月对比月初前一天。
+        var hasBaseline = isDay ? ledger.StartDate < today : ledger.StartDate < monthStart;
+        var baselineDate = isDay
+            ? (hasBaseline ? today.AddDays(-1) : ledger.StartDate)
+            : (hasBaseline ? monthStart.AddDays(-1) : ledger.StartDate);
         var before = calculator.Calculate(data, facts, baselineDate, currentDate: today);
         var now = calculator.Calculate(data, facts, today, currentDate: today);
 
@@ -46,10 +56,10 @@ public sealed class MonthChangeService
             .ToList();
         var commonKnown = comparableTypes.Count > 0
             && comparableTypes.All(pair => pair.Value.Value is not null && nowValues[pair.Key].Value is not null);
-        var comparableChange = hasPreMonthBaseline && commonKnown
+        var comparableChange = hasBaseline && commonKnown
             ? Round(comparableTypes.Sum(pair => nowValues[pair.Key].Value!.Value - pair.Value.Value!.Value))
             : (decimal?)null;
-        var comparableBase = hasPreMonthBaseline && commonKnown
+        var comparableBase = hasBaseline && commonKnown
             ? Round(comparableTypes.Sum(pair => pair.Value.Value!.Value))
             : (decimal?)null;
 
@@ -99,9 +109,11 @@ public sealed class MonthChangeService
             BuildAssetChange("stock", beforeValues, nowValues)
         };
 
-        if (!hasPreMonthBaseline)
+        if (!hasBaseline)
         {
-            notes.Add("账本起始日晚于本月月初，本月暂无可比基线；新增记录单独列出。");
+            notes.Add(isDay
+                ? "账本从今天开始，当日暂无可比基线；新增记录单独列出。"
+                : "账本起始日晚于本月月初，本月暂无可比基线；新增记录单独列出。");
         }
         else if (comparableChange is null)
         {
@@ -111,7 +123,7 @@ public sealed class MonthChangeService
 
         if (addedRecords > 0)
         {
-            notes.Add($"含新增记录 {addedRecords.ToString("N2", CultureInfo.InvariantCulture)} 元，不计入本月变化。");
+            notes.Add($"含新增记录 {addedRecords.ToString("N2", CultureInfo.InvariantCulture)} 元，不计入{(isDay ? "当日" : "本月")}变化。");
         }
 
         return new MonthChangeDto(

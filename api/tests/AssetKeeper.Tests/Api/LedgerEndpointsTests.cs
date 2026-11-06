@@ -68,6 +68,30 @@ public sealed class LedgerEndpointsTests
     }
 
     [Fact]
+    public async Task GetDayChange_AfterInitialization_ReturnsTodayChange()
+    {
+        using var factory = new AssetKeeperApiFactory
+        {
+            Clock = new FixedTimeProvider(new DateTimeOffset(2026, 10, 20, 2, 0, 0, TimeSpan.Zero))
+        };
+        using var client = factory.CreateClient();
+
+        await client.PostAsJsonAsync("/api/ledger/initialize", new
+        {
+            startDate = "2026-10-01",
+            cashBalance = 100m
+        });
+        var response = await client.GetAsync("/api/ledger/day-change");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var change = await response.Content.ReadFromJsonAsync<MonthChangeDto>();
+        Assert.NotNull(change);
+        Assert.Equal(new DateOnly(2026, 10, 20), change.From);
+        Assert.Equal(new DateOnly(2026, 10, 20), change.To);
+    }
+
+    [Fact]
     public async Task GetMonthChange_WithoutCompleteAssets_ReturnsEmptyChangeAndNotes()
     {
         // 固定时钟：这个用例断言的是「账本起始日就是本月」的情况，

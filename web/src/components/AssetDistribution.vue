@@ -2,6 +2,8 @@
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import AppIcon from './AppIcon.vue'
+import LoadingButton from './LoadingButton.vue'
+import AnimatedMoney from './AnimatedMoney.vue'
 import { amountTone, formatMoney, formatSignedMoney, sumAmounts } from '../utils/format'
 import type { AssetChange, AssetKey, LedgerOverview } from '../types/ledger'
 
@@ -23,9 +25,11 @@ const props = defineProps<{
   overview: LedgerOverview
   changes?: AssetChange[]
   comparable?: boolean
+  changeScope?: 'day' | 'month'
   editable?: boolean
   manageTo?: string
   hideFundCount?: boolean
+  busyKey?: AssetKey | null
 }>()
 
 const emit = defineEmits<{ toggleNotHeld: [key: AssetKey, notHeld: boolean] }>()
@@ -108,6 +112,8 @@ const barSegments = computed(() => rows.value
   .filter((row) => row.configured && !row.notHeld && row.amount !== null && row.amount > 0)
   .map((row) => ({ key: row.key, width: row.percent ?? 0 })))
 
+const changePrefix = computed(() => props.changeScope === 'day' ? '较昨日' : '较上月')
+
 const barLabel = computed(() => {
   const parts = rows.value
     .filter((row) => row.configured && !row.notHeld && row.percent !== null)
@@ -148,14 +154,14 @@ function changeLabel(row: DistributionRow): string {
   }
 
   if (row.change?.isNew) {
-    return '本月新增'
+    return `${props.changeScope === 'day' ? '当日' : '本月'}新增`
   }
 
   if (props.comparable === false || row.change?.change == null) {
-    return '较上月 —'
+    return `${changePrefix.value} —`
   }
 
-  return `较上月 ${formatSignedMoney(row.change.change)}`
+  return `${changePrefix.value} ${formatSignedMoney(row.change.change)}`
 }
 
 function changeTone(row: DistributionRow): string {
@@ -188,7 +194,13 @@ function changeTone(row: DistributionRow): string {
     </div>
 
     <ul class="asset-list">
-      <li v-for="row in rows" :key="row.key" class="asset-row" :class="{ muted: row.notHeld }">
+      <li
+        v-for="(row, index) in rows"
+        :key="row.key"
+        class="asset-row stagger-item"
+        :class="{ muted: row.notHeld }"
+        :style="{ '--stagger': Math.min(index, 8) }"
+      >
         <RouterLink v-if="row.configured && !row.notHeld" :to="row.to" class="asset-link">
           <span class="asset-main">
             <span class="asset-title">
@@ -200,7 +212,10 @@ function changeTone(row: DistributionRow): string {
             </small>
           </span>
           <span class="asset-side">
-            <b class="asset-amount">{{ amountLabel(row) }}</b>
+            <b class="asset-amount">
+              <AnimatedMoney v-if="row.amount !== null" :value="row.amount" />
+              <template v-else>{{ amountLabel(row) }}</template>
+            </b>
             <small><span :class="changeTone(row)">{{ changeLabel(row) }}</span></small>
           </span>
           <span class="asset-percent">
@@ -222,11 +237,12 @@ function changeTone(row: DistributionRow): string {
           </span>
           <span v-if="editable" class="row-actions">
             <RouterLink v-if="!row.notHeld" :to="row.to" class="row-action">添加</RouterLink>
-            <button
-              type="button"
+            <LoadingButton
               class="row-action subtle"
+              :loading="busyKey === row.key"
+              loading-label="处理中…"
               @click="emit('toggleNotHeld', row.key, !row.notHeld)"
-            >{{ row.notHeld ? '恢复' : '不持有' }}</button>
+            >{{ row.notHeld ? '恢复' : '不持有' }}</LoadingButton>
           </span>
           <RouterLink v-else-if="!row.notHeld" :to="row.to" class="row-action">添加</RouterLink>
           <span v-else class="asset-percent">—</span>
@@ -373,7 +389,16 @@ function changeTone(row: DistributionRow): string {
   font-weight: 600;
 }
 
-.asset-main small,
+.asset-main small {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .asset-side small {
   overflow: hidden;
   color: var(--color-text-secondary);

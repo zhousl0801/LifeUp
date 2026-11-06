@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using AssetKeeper.Application.Cash;
@@ -14,19 +15,9 @@ using AssetKeeper.Application.Stocks;
 using AssetKeeper.Infrastructure.Backup;
 using AssetKeeper.Infrastructure.Persistence;
 using AssetKeeper.Infrastructure.Quotes;
-using AssetKeeper.Api.Security;
-using Fido2NetLib;
-using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using System.Threading.RateLimiting;
-
-if (args is ["hash-password", var password])
-{
-    Console.WriteLine(AccessPasswordHasher.Hash(password));
-    return;
-}
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -35,69 +26,17 @@ builder.Services.AddControllers()
     {
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
     });
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+});
+builder.Services.Configure<BrotliCompressionProviderOptions>(options => options.Level = CompressionLevel.Optimal);
+builder.Services.Configure<GzipCompressionProviderOptions>(options => options.Level = CompressionLevel.Optimal);
 builder.Services.AddOpenApi();
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
     policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
-
-builder.Services.AddSingleton<AccessCredential>();
-builder.Services.AddScoped<AccessCookieEvents>();
-builder.Services.AddMemoryCache();
-builder.Services.AddScoped<PasskeyChallenges>();
-builder.Services.AddScoped<PasskeyService>();
-
-builder.Services.AddSingleton(serviceProvider => PasskeyOptions.Resolve(
-    serviceProvider.GetRequiredService<IConfiguration>(),
-    serviceProvider.GetRequiredService<IWebHostEnvironment>()));
-builder.Services.AddSingleton<IFido2>(serviceProvider =>
-{
-    var passkeyOptions = serviceProvider.GetRequiredService<PasskeyOptions>();
-
-    return new Fido2(passkeyOptions.Enabled
-        ? passkeyOptions.ToFido2Configuration()
-        : new Fido2Configuration { RPID = "localhost", RPName = "资产管家" });
-});
-
-builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
-    .AddCookie(options =>
-    {
-        options.Cookie.Name = "asset-keeper-access";
-        options.Cookie.HttpOnly = true;
-        options.Cookie.IsEssential = true;
-        options.Cookie.SameSite = SameSiteMode.Lax;
-        options.Cookie.SecurePolicy = builder.Environment.IsProduction()
-            ? CookieSecurePolicy.Always
-            : CookieSecurePolicy.SameAsRequest;
-        options.ExpireTimeSpan = TimeSpan.FromDays(7);
-        options.SlidingExpiration = true;
-        options.EventsType = typeof(AccessCookieEvents);
-    });
-builder.Services.AddAuthorization(options =>
-{
-    // 生产环境始终要求登录；开发环境仅在配置了口令后才启用，便于本地验证完整流程。
-    var requiresAccess = builder.Environment.IsProduction()
-        || !string.IsNullOrWhiteSpace(builder.Configuration[AccessCredential.PasswordKey])
-        || !string.IsNullOrWhiteSpace(builder.Configuration[AccessCredential.PasswordHashKey]);
-
-    if (requiresAccess)
-    {
-        options.FallbackPolicy = new AuthorizationPolicyBuilder()
-            .RequireAuthenticatedUser()
-            .Build();
-    }
-});
-builder.Services.AddRateLimiter(options =>
-{
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.AddPolicy(AccessRateLimiting.LoginPolicy, context =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-            _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = 10,
-                Window = TimeSpan.FromMinutes(5),
-                QueueLimit = 0
-            }));
-});
 
 var connectionString = builder.Configuration.GetConnectionString("Default");
 
@@ -108,6 +47,7 @@ if (string.IsNullOrWhiteSpace(connectionString))
 
 builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
 builder.Services.AddScoped<ILedgerRepository, LedgerRepository>();
+builder.Services.AddSingleton<ReplayDataCache>();
 builder.Services.AddScoped<LedgerService>();
 builder.Services.AddScoped<TrendService>();
 builder.Services.AddScoped<MonthChangeService>();
@@ -159,10 +99,7 @@ builder.Services.AddSingleton<BusinessDateProvider>();
 
 var app = builder.Build();
 
-if (app.Environment.IsProduction() && !app.Services.GetRequiredService<AccessCredential>().IsConfigured)
-{
-    throw new InvalidOperationException("ASSET_KEEPER_ACCESS_PASSWORD_HASH or ASSET_KEEPER_ACCESS_PASSWORD must be configured in production.");
-}
+app.UseResponseCompression();
 
 if (app.Environment.IsProduction())
 {
@@ -183,15 +120,11 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseCors();
-app.UseRateLimiter();
-app.UseAuthentication();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-app.UseAuthorization();
-
 app.MapControllers();
-app.MapFallbackToFile("index.html").AllowAnonymous();
+app.MapFallbackToFile("index.html");
 
 app.Run();
 

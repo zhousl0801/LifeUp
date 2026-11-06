@@ -77,20 +77,21 @@
   --color-border-disabled: var(--palette-lilac-300);
   --color-bg-readonly: var(--palette-lilac-50);
 
-  /* 深色 Hero 与薄荷强调，首页及深色头部共用。 */
-  --color-hero-bg: var(--palette-ink-900);
-  --color-hero-bg-end: #2A2548;
-  --color-hero-surface: rgba(255, 255, 255, 0.08);
-  --color-hero-surface-strong: var(--palette-ink-700);
-  --color-hero-track: var(--palette-ink-800);
+  /* 深色 Hero 与薄荷强调，首页及深色头部共用。
+   * 浅色主题使用“日光版”：比深色主题更亮、更紫、阴影更轻，避免白天像一块黑板。 */
+  --color-hero-bg: #262047;
+  --color-hero-bg-end: #3B3270;
+  --color-hero-surface: rgba(255, 255, 255, 0.10);
+  --color-hero-surface-strong: #453C7A;
+  --color-hero-track: #322B5E;
   --color-hero-text: var(--palette-white);
-  --color-hero-text-secondary: #A9A6C5;
-  --color-hero-text-muted: #8F8BAC;
-  --color-hero-border: rgba(169, 166, 197, 0.14);
+  --color-hero-text-secondary: #C2BCE0;
+  --color-hero-text-muted: #A8A2CC;
+  --color-hero-border: rgba(255, 255, 255, 0.16);
   --color-hero-active: var(--palette-white);
   --color-hero-active-text: var(--palette-ink-900);
   --color-hero-line: var(--palette-mint);
-  --color-hero-line-area: rgba(124, 231, 177, 0.22);
+  --color-hero-line-area: rgba(124, 231, 177, 0.20);
   --color-accent-mint: var(--palette-mint);
   --color-accent-mint-strong: var(--palette-mint-strong);
   --color-accent-mint-soft: rgba(124, 231, 177, 0.14);
@@ -147,7 +148,7 @@
   --color-overlay: rgba(18, 15, 36, 0.48);
   --color-shadow: rgba(30, 27, 56, 0.06);
   --color-shadow-strong: rgba(30, 27, 56, 0.14);
-  --color-shadow-hero: rgba(30, 27, 56, 0.28);
+  --color-shadow-hero: rgba(38, 32, 71, 0.18);
   --color-skeleton-base: var(--palette-lilac-100);
   --color-skeleton-highlight: var(--palette-lilac-50);
   --color-text-selection-bg: var(--palette-violet-200);

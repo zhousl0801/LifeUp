@@ -175,7 +175,7 @@ public sealed class AssetEndpointsTests
         });
         var positionResponse = await client.PostAsJsonAsync("/api/ledger/funds/positions", new
         {
-            name = "纳指基金",
+            name = "债券基金",
             code = "000001",
             shareClass = "A",
             platform = "示例平台",

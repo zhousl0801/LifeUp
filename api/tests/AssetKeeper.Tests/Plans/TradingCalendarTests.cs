@@ -63,6 +63,26 @@ public sealed class TradingCalendarTests
     }
 
     [Fact]
+    public void Official2027Calendar_IsLoadedForAllThreeMarkets()
+    {
+        var lunarHoliday = TradingCalendar.Default.GetDay(new DateOnly(2027, 2, 8));
+        Assert.False(lunarHoliday.IsTradingDay);
+        Assert.False(lunarHoliday.Markets.Single(market => market.Market == "CN").IsOpen);
+        Assert.False(lunarHoliday.Markets.Single(market => market.Market == "HK").IsOpen);
+        Assert.True(lunarHoliday.Markets.Single(market => market.Market == "US").IsOpen);
+        Assert.All(lunarHoliday.Markets, market => Assert.False(market.UsesWeekdayFallback));
+
+        var presidentsDay = TradingCalendar.Default.GetDay(new DateOnly(2027, 2, 15));
+        Assert.False(presidentsDay.IsTradingDay);
+        Assert.True(presidentsDay.Markets.Single(market => market.Market == "CN").IsOpen);
+        Assert.False(presidentsDay.Markets.Single(market => market.Market == "US").IsOpen);
+
+        var thanksgiving = TradingCalendar.Default.GetDay(new DateOnly(2027, 11, 26));
+        Assert.True(thanksgiving.IsTradingDay);
+        Assert.True(thanksgiving.Markets.Single(market => market.Market == "US").IsHalfDay);
+    }
+
+    [Fact]
     public void Month_ReturnsEveryDateAndMarksForeignMarketClosures()
     {
         var days = TradingCalendar.Default.GetMonth(2026, 10);

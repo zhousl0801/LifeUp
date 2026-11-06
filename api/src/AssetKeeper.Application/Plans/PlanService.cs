@@ -181,8 +181,7 @@ public sealed class PlanService
 
         if (plan is null && request.Cycle == AutoPlanCycle.TradingDay)
         {
-            var earliest = request.StartDate > _dates.Today ? request.StartDate.AddDays(-1) : _dates.Today;
-            request = request with { StartDate = TradingCalendar.Default.NextTradingDay(earliest, tradingScope) };
+            request = request with { StartDate = ResolveInitialTradingDay(request.StartDate, tradingScope) };
         }
 
         var name = string.IsNullOrWhiteSpace(request.Name) ? DefaultName(request.Type, positionName) : request.Name.Trim();
@@ -210,8 +209,9 @@ public sealed class PlanService
             }
             else
             {
-                var generationFloor = plan.Cycle == AutoPlanCycle.TradingDay
-                    && _dates.ToBusinessInstant(_dates.Today, request.Time) > now ? _dates.Today : _dates.Today.AddDays(1);
+                var generationFloor = _dates.ToBusinessInstant(_dates.Today, request.Time) > now
+                    ? _dates.Today
+                    : _dates.Today.AddDays(1);
                 plan.Update(
                     request.Type,
                     name,
@@ -249,6 +249,20 @@ public sealed class PlanService
         }
     }
 
+    private DateOnly ResolveInitialTradingDay(DateOnly requestedStart, AutoPlanTradingScope scope)
+    {
+        var today = _dates.Today;
+        var target = requestedStart > today ? requestedStart : today;
+        var cutoff = _dates.ToBusinessInstant(today, new TimeOnly(15, 0));
+
+        if (target == today && _dates.UtcNow < cutoff && TradingCalendar.Default.IsTradingDay(today, scope))
+        {
+            return today;
+        }
+
+        return TradingCalendar.Default.NextTradingDay(target == today ? today : target.AddDays(-1), scope);
+    }
+
     public Task<AssetOperationResult<PlanDto>> PauseAsync(Guid planId, PlanActionRequest request, CancellationToken cancellationToken)
     {
         return new MutationExecutor(_ledgerRepository, _dates).ExecuteAsync(
@@ -275,6 +289,49 @@ public sealed class PlanService
             AssetOperationResult<PlanDto>.Conflict,
             message => AssetOperationResult<PlanDto>.Invalid(new[] { message }),
             cancellationToken);
+    }
+
+    public Task<AssetOperationResult<PlanDeleteResultDto>> DeleteAsync(
+        Guid planId,
+        PlanActionRequest request,
+        CancellationToken cancellationToken)
+    {
+        return new MutationExecutor(_ledgerRepository, _dates).ExecuteAsync(
+            "plan.delete",
+            request.RequestId,
+            new { PlanId = planId, Request = request },
+            () => DeleteCoreAsync(planId, cancellationToken),
+            result => result.Status is AssetOperationStatus.Success,
+            result => result,
+            AssetOperationResult<PlanDeleteResultDto>.Conflict,
+            message => AssetOperationResult<PlanDeleteResultDto>.Invalid(new[] { message }),
+            cancellationToken);
+    }
+
+    private async Task<AssetOperationResult<PlanDeleteResultDto>> DeleteCoreAsync(
+        Guid planId,
+        CancellationToken cancellationToken)
+    {
+        var ledger = await _ledgerRepository.GetForUpdateAsync(cancellationToken);
+
+        if (ledger is null)
+        {
+            return AssetOperationResult<PlanDeleteResultDto>.NotFound("账本尚未初始化。");
+        }
+
+        var plan = await _planRepository.GetPlanForUpdateAsync(ledger.Id, planId, cancellationToken);
+
+        if (plan is null)
+        {
+            return AssetOperationResult<PlanDeleteResultDto>.NotFound("计划不存在。");
+        }
+
+        var occurrences = await _planRepository.GetOccurrencesByPlanAsync(plan.Id, cancellationToken);
+
+        _planRepository.RemoveOccurrences(occurrences);
+        _planRepository.RemovePlan(plan);
+
+        return AssetOperationResult<PlanDeleteResultDto>.Success(new PlanDeleteResultDto(plan.Id));
     }
 
     private async Task<AssetOperationResult<PlanDto>> TransitionAsync(

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using AssetKeeper.Application.History;
 using AssetKeeper.Application.Ledgers;
 using AssetKeeper.Domain.Assets;
@@ -6,6 +7,9 @@ namespace AssetKeeper.Application.Funds;
 
 public sealed class FundReturnService
 {
+    private static readonly ConcurrentDictionary<string, CacheEntry> Cache = new();
+    private static readonly TimeSpan CacheLifetime = TimeSpan.FromSeconds(20);
+
     private readonly ILedgerRepository _ledgerRepository;
     private readonly BusinessDateProvider _dates;
 
@@ -30,7 +34,7 @@ public sealed class FundReturnService
         }
 
         var today = _dates.Today;
-        var data = await _ledgerRepository.GetReplayDataAsync(ledger.Id, cancellationToken);
+        var data = await _ledgerRepository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
         var facts = BusinessFact.From(data);
         var active = facts.Where(fact => !fact.IsReversed).ToList();
         var activeIds = active.Select(fact => fact.Id).ToHashSet();
@@ -49,12 +53,6 @@ public sealed class FundReturnService
             return EmptyResult(range, today, today, ["当前分组没有基金持仓。"]);
         }
 
-        var familyKeys = FundIdentity.FamilyKeys(positions);
-        var fundNames = positions
-            .GroupBy(position => familyKeys[position.Id], StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
-        var fundNameById = familyKeys;
-        var groupNames = groups.ToDictionary(group => group.Id, group => group.Name);
         var anchorDate = anchor ?? today;
 
         if (anchorDate > today)
@@ -67,6 +65,23 @@ public sealed class FundReturnService
             anchorDate = ledger.StartDate;
         }
 
+        var scopeKey = string.Join(",", positions.Select(position => $"{position.Id:N}:{position.FundGroupId}"));
+        var groupKey = string.Join(",", groups
+            .OrderBy(group => group.Id)
+            .Select(group => $"{group.Id:N}:{group.Name}:{group.SortOrder}"));
+        var cacheKey = $"{ledger.Id:N}:{ledger.Version}:{range}:{anchorDate:yyyyMMdd}:{groupId}:{ungrouped}:{today:yyyyMMdd}:{scopeKey}:{groupKey}";
+
+        if (TryGetCached(cacheKey, out var cached))
+        {
+            return cached;
+        }
+
+        var familyKeys = FundIdentity.FamilyKeys(positions);
+        var fundNames = positions
+            .GroupBy(position => familyKeys[position.Id], StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
+        var fundNameById = familyKeys;
+        var groupNames = groups.ToDictionary(group => group.Id, group => group.Name);
         var from = RangeStart(range, anchorDate, ledger.StartDate);
 
         if (from > today)
@@ -260,7 +275,7 @@ public sealed class FundReturnService
             notes.Add("未披露净值的日期不计当日收益，累计收益沿用上一个有效值。");
         }
 
-        return new FundReturnDto(
+        var result = new FundReturnDto(
             range,
             from,
             today,
@@ -278,7 +293,39 @@ public sealed class FundReturnService
             points,
             fundSummaries,
             notes.Distinct().ToList());
+        Store(cacheKey, result);
+        return result;
     }
+
+    private static bool TryGetCached(string key, out FundReturnDto value)
+    {
+        if (Cache.TryGetValue(key, out var entry) && entry.ExpiresAt > DateTimeOffset.UtcNow)
+        {
+            value = entry.Data;
+            return true;
+        }
+
+        Cache.TryRemove(key, out _);
+        value = null!;
+        return false;
+    }
+
+    private static void Store(string key, FundReturnDto value)
+    {
+        if (Cache.Count >= 64)
+        {
+            var now = DateTimeOffset.UtcNow;
+
+            foreach (var pair in Cache.Where(pair => pair.Value.ExpiresAt <= now).ToList())
+            {
+                Cache.TryRemove(pair.Key, out _);
+            }
+        }
+
+        Cache[key] = new CacheEntry(DateTimeOffset.UtcNow.Add(CacheLifetime), value);
+    }
+
+    private sealed record CacheEntry(DateTimeOffset ExpiresAt, FundReturnDto Data);
 
     public async Task<FundReturnDayDto?> GetDayAsync(
         DateOnly date,
@@ -294,7 +341,7 @@ public sealed class FundReturnService
         }
 
         var today = _dates.Today;
-        var data = await _ledgerRepository.GetReplayDataAsync(ledger.Id, cancellationToken);
+        var data = await _ledgerRepository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
         var facts = BusinessFact.From(data);
         var active = facts.Where(fact => !fact.IsReversed).ToList();
         var activeIds = active.Select(fact => fact.Id).ToHashSet();
@@ -500,7 +547,18 @@ public sealed class FundReturnService
             && positionIds.Contains(fact.PositionId.Value)
             && fact.Date <= to))
         {
-            if (correction.Price is null)
+            // 基金份额核对通常不携带价格，按核对日之前最近一个有效净值估算这次份额变动的资金流。
+            var price = correction.Price ?? data.Prices
+                .Where(item => !item.IsSuperseded
+                    && item.AssetType == AssetType.Fund
+                    && item.FundPositionId == correction.PositionId
+                    && item.EffectiveDate <= correction.Date)
+                .OrderByDescending(item => item.EffectiveDate)
+                .ThenByDescending(item => item.RevisionOrder)
+                .Select(item => (decimal?)item.Price)
+                .FirstOrDefault();
+
+            if (price is null)
             {
                 isKnown = false;
                 continue;
@@ -526,7 +584,7 @@ public sealed class FundReturnService
 
             var key = (correction.PositionId!.Value, correction.Date);
             values[key] = values.GetValueOrDefault(key)
-                + ((correction.Quantity ?? 0m) - previousQuantity) * correction.Price.Value;
+                + ((correction.Quantity ?? 0m) - previousQuantity) * price.Value;
         }
 
         return (values, isKnown);

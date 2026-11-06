@@ -62,6 +62,11 @@ internal sealed class FakeLedgerRepository : ILedgerRepository
         return Task.FromResult(new LedgerReplayData(Ledger!, _entries, _adjustments, _assetTransactions, _prices, _fundPositions, _stockPositions, ProvidentAccount, GoldHolding));
     }
 
+    public Task<LedgerReplayData> GetReplayDataReadOnlyAsync(Guid ledgerId, CancellationToken cancellationToken)
+    {
+        return GetReplayDataAsync(ledgerId, cancellationToken);
+    }
+
     public Task AddPriceObservationAsync(PriceObservation price, CancellationToken cancellationToken)
     {
         _prices.Add(price);

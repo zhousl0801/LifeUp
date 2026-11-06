@@ -128,7 +128,7 @@ public sealed class PlanExecutionTests
         Assert.Equal(1, first.Waiting);
         Assert.Equal(100m, (await context.Ledger.GetOverviewAsync(CancellationToken.None))!.Cash.Amount);
         Assert.Equal(200m, (await context.Provident.GetOverviewAsync(CancellationToken.None))!.Balance);
-        var waiting = (await context.PlanRepo.GetPendingOccurrencesAsync(context.LedgerId, CancellationToken.None));
+        var waiting = (await context.PlanRepo.GetPendingOccurrencesAsync(context.LedgerId, null, CancellationToken.None));
         Assert.Empty(waiting);
         var all = await context.PlanRepo.GetOccurrencesAsync(context.LedgerId, null, null, 10, CancellationToken.None);
         var sipOccurrence = all.Single(occurrence => occurrence.Type == AutoPlanType.FundSip);
@@ -236,6 +236,29 @@ public sealed class PlanExecutionTests
     }
 
     [Fact]
+    public async Task DeletePlan_RemovesPlanAndOccurrencesButKeepsRecordedEntries()
+    {
+        await using var context = await CreateAsync(1000m);
+        var plan = await SavePlanAsync(context, AutoPlanType.SalaryIncome, 100m, null, null, new TimeOnly(9, 0), Today);
+        await context.Execution.RunDueAsync(CancellationToken.None);
+
+        var request = new PlanActionRequest(Guid.NewGuid());
+        var deleted = await context.Plans.DeleteAsync(plan.Id, request, CancellationToken.None);
+
+        Assert.Equal(AssetOperationStatus.Success, deleted.Status);
+        var overview = await context.Plans.GetOverviewAsync(CancellationToken.None);
+        Assert.NotNull(overview);
+        Assert.Empty(overview.Plans);
+        Assert.Empty(overview.PendingOccurrences);
+        Assert.Empty(await context.PlanRepo.GetOccurrencesAsync(context.LedgerId, null, null, 10, CancellationToken.None));
+        Assert.Equal(1100m, (await context.Ledger.GetOverviewAsync(CancellationToken.None))!.Cash.Amount);
+
+        var replay = await context.Plans.DeleteAsync(plan.Id, request, CancellationToken.None);
+
+        Assert.Equal(AssetOperationStatus.Success, replay.Status);
+    }
+
+    [Fact]
     public async Task MainPlanAndDuplicateFundSip_AreRejected()
     {
         await using var context = await CreateAsync(1000m);
@@ -280,11 +303,11 @@ public sealed class PlanExecutionTests
     }
 
     [Fact]
-    public async Task TradingDaySave_TargetsShareClassAndStartsAfterCreationWithoutCashChange()
+    public async Task TradingDaySave_BeforeCutoffStartsTodayWithoutCashChange()
     {
         await using var context = await CreateAsync(1000m);
         await CreatePositionAsync(context);
-        var request = Request(AutoPlanType.FundSip, 100m, null, AutoPlanCycle.TradingDay, new TimeOnly(9, 0), Today)
+        var request = Request(AutoPlanType.FundSip, 100m, null, AutoPlanCycle.TradingDay, new TimeOnly(11, 0), Today)
             with
         { FundTarget = new("测试基金", "000001", "A") };
 
@@ -292,7 +315,8 @@ public sealed class PlanExecutionTests
         var retried = await context.Plans.SaveAsync(request, CancellationToken.None);
 
         Assert.Equal(AssetOperationStatus.Created, saved.Status);
-        Assert.Equal(Today.AddDays(1), saved.Result!.StartDate);
+        Assert.Equal(Today, saved.Result!.StartDate);
+        Assert.Equal(Today, saved.Result.NextDueDate);
         Assert.Equal(saved.Result.Id, retried.Result!.Id);
         Assert.Equal("000001", saved.Result.FundTarget!.Code);
         Assert.Equal(1000m, (await context.Ledger.GetOverviewAsync(CancellationToken.None))!.Cash.Amount);
@@ -301,21 +325,39 @@ public sealed class PlanExecutionTests
     }
 
     [Fact]
+    public async Task TradingDaySave_AfterCutoffStartsNextTradingDay()
+    {
+        await using var context = await CreateAsync(1000m);
+        await CreatePositionAsync(context);
+        var afterCutoff = new BusinessDateProvider(new FixedTimeProvider(Now.AddHours(5)));
+        var plans = new PlanService(context.Repository, context.PlanRepo, afterCutoff);
+        var request = Request(AutoPlanType.FundSip, 100m, null, AutoPlanCycle.TradingDay, new TimeOnly(11, 0), Today)
+            with
+        { FundTarget = new("测试基金", "000001", "A") };
+
+        var saved = await plans.SaveAsync(request, CancellationToken.None);
+
+        Assert.Equal(AssetOperationStatus.Created, saved.Status);
+        Assert.Equal(Today.AddDays(1), saved.Result!.StartDate);
+        Assert.Equal(Today.AddDays(1), saved.Result.NextDueDate);
+    }
+
+    [Fact]
     public async Task TradingDayRun_RetriesWithoutDuplicateBuy()
     {
         await using var context = await CreateAsync(1000m);
         var position = await CreatePositionAsync(context);
         await SavePlanAsync(context, AutoPlanType.FundSip, 100m, position, AutoPlanCycle.TradingDay, new TimeOnly(9, 0), Today);
-        var nextDates = new BusinessDateProvider(new FixedTimeProvider(Now.AddDays(1)));
-        var funds = new FundService(context.Repository, nextDates);
-        var execution = new PlanExecutionService(context.Repository, context.PlanRepo, nextDates,
-            new LedgerEntryService(context.Repository, nextDates), new ProvidentFundService(context.Repository, nextDates), funds);
+        var dueDates = new BusinessDateProvider(new FixedTimeProvider(Now.AddHours(2)));
+        var funds = new FundService(context.Repository, dueDates);
+        var execution = new PlanExecutionService(context.Repository, context.PlanRepo, dueDates,
+            new LedgerEntryService(context.Repository, dueDates), new ProvidentFundService(context.Repository, dueDates), funds);
 
         Assert.Equal(1, (await execution.RunDueAsync(CancellationToken.None)).Completed);
         Assert.Equal(0, (await execution.RunDueAsync(CancellationToken.None)).Completed);
         Assert.Equal(900m, (await context.Ledger.GetOverviewAsync(CancellationToken.None))!.Cash.Amount);
         Assert.Equal(100m, (await funds.GetOverviewAsync(CancellationToken.None))!.PendingAmount);
-        Assert.Equal("T2026-10-22", (await context.PlanRepo.GetOccurrencesAsync(context.LedgerId, null, null, 100, CancellationToken.None)).Single().PeriodKey);
+        Assert.Equal("T2026-10-21", (await context.PlanRepo.GetOccurrencesAsync(context.LedgerId, null, null, 100, CancellationToken.None)).Single().PeriodKey);
     }
 
     [Fact]
@@ -363,6 +405,48 @@ public sealed class PlanExecutionTests
         Assert.Equal(AssetOperationStatus.Success, changed.Status);
         Assert.Equal(0, (await context.Execution.RunDueAsync(CancellationToken.None)).CreatedOccurrences);
         Assert.True(changed.Result!.GenerateFrom > Today);
+    }
+
+    [Fact]
+    public async Task SwitchToWeekly_DoesNotBackfillPeriodsBeforeEdit()
+    {
+        await using var context = await CreateAsync(1000m);
+        var position = await CreatePositionAsync(context);
+        var original = await SavePlanAsync(context, AutoPlanType.FundSip, 100m, position, AutoPlanCycle.Monthly,
+            new TimeOnly(9, 0), Today.AddDays(-20));
+        var changed = await context.Plans.SaveAsync(Request(AutoPlanType.FundSip, 100m, position,
+            AutoPlanCycle.Weekly, new TimeOnly(9, 0), original.StartDate) with
+        { Id = original.Id }, CancellationToken.None);
+
+        Assert.Equal(AssetOperationStatus.Success, changed.Status);
+
+        var run = await context.Execution.RunDueAsync(CancellationToken.None);
+
+        Assert.Equal(0, run.CreatedOccurrences);
+        Assert.Equal(Today.AddDays(1), changed.Result!.GenerateFrom);
+    }
+
+    [Fact]
+    public async Task ChangeWeeklyWeekday_DoesNotBackfillPeriodsBeforeEdit()
+    {
+        await using var context = await CreateAsync(1000m);
+        var position = await CreatePositionAsync(context);
+        var original = await SavePlanAsync(context, AutoPlanType.FundSip, 100m, position, AutoPlanCycle.Weekly,
+            new TimeOnly(9, 0), Today.AddDays(-20));
+        var request = Request(AutoPlanType.FundSip, 100m, position, AutoPlanCycle.Weekly,
+            new TimeOnly(9, 0), original.StartDate) with
+        {
+            Id = original.Id,
+            DayOfWeek = 4
+        };
+        var changed = await context.Plans.SaveAsync(request, CancellationToken.None);
+
+        Assert.Equal(AssetOperationStatus.Success, changed.Status);
+
+        var run = await context.Execution.RunDueAsync(CancellationToken.None);
+
+        Assert.Equal(0, run.CreatedOccurrences);
+        Assert.Equal(Today.AddDays(1), changed.Result!.GenerateFrom);
     }
 
     [Fact]

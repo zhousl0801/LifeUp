@@ -3,6 +3,8 @@ import { storeToRefs } from 'pinia'
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getApiErrorMessage } from '../api/client'
+import LoadingState from '../components/LoadingState.vue'
+import LoadingButton from '../components/LoadingButton.vue'
 import { useLedgerStore } from '../stores/ledger'
 import { MaximumAmount, parseAmount, todayInBusinessTimeZone } from '../utils/format'
 
@@ -100,17 +102,17 @@ function clearErrors(): void {
   <main class="page">
     <header class="app-header">
       <div>
-        <p class="app-name">资产管家</p>
+        <p class="app-name">LifeUp</p>
         <p class="app-sub">建立起始账本</p>
       </div>
       <span class="currency-tag">CNY</span>
     </header>
 
-    <p v-if="isChecking" class="state">正在检查账本…</p>
+    <LoadingState v-if="isChecking" variant="card" label="正在检查账本" />
 
     <section v-else-if="loadError" class="state">
       <p>{{ loadError }}</p>
-      <button class="secondary-button" type="button" @click="checkLedger">重新检查</button>
+      <LoadingButton class="secondary-button" :loading="isChecking" loading-label="检查中…" @click="checkLedger">重新检查</LoadingButton>
     </section>
 
     <template v-else>
@@ -143,9 +145,9 @@ function clearErrors(): void {
 
         <p v-if="errors.form" class="form-error" role="alert">{{ errors.form }}</p>
 
-        <button class="primary-button" type="submit" :disabled="isSaving">
-          {{ isSaving ? '保存中…' : '建立账本' }}
-        </button>
+        <LoadingButton class="primary-button" type="submit" :loading="isSaving" loading-label="保存中…">
+          建立账本
+        </LoadingButton>
       </form>
     </template>
   </main>

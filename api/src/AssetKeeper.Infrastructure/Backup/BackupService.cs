@@ -25,11 +25,13 @@ public sealed class BackupService
 
     private readonly AppDbContext _db;
     private readonly BusinessDateProvider _dates;
+    private readonly ReplayDataCache _replayCache;
 
-    public BackupService(AppDbContext db, BusinessDateProvider dates)
+    public BackupService(AppDbContext db, BusinessDateProvider dates, ReplayDataCache? replayCache = null)
     {
         _db = db;
         _dates = dates;
+        _replayCache = replayCache ?? new ReplayDataCache();
     }
 
     public async Task<BackupDocument?> ExportAsync(CancellationToken cancellationToken)
@@ -163,6 +165,7 @@ public sealed class BackupService
         }
 
         await PersistAsync(parsed, cancellationToken);
+        _replayCache.InvalidateAll();
 
         return new RestoreBackupResultDto(
             true,

@@ -11,6 +11,8 @@ public interface ILedgerRepository
 
     Task<LedgerReplayData> GetReplayDataAsync(Guid ledgerId, CancellationToken cancellationToken);
 
+    Task<LedgerReplayData> GetReplayDataReadOnlyAsync(Guid ledgerId, CancellationToken cancellationToken);
+
     Task AddPriceObservationAsync(PriceObservation price, CancellationToken cancellationToken);
 
     Task<PriceObservation?> GetLatestPriceObservationAsync(

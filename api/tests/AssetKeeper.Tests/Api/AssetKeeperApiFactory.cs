@@ -14,10 +14,12 @@ public sealed class AssetKeeperApiFactory : WebApplicationFactory<Program>
 {
     public TestQuoteProvider Quotes { get; } = new();
     public TimeProvider? Clock { get; init; }
+    public string Environment { get; init; } = "Development";
     private readonly string _databaseName = $"asset-keeper-tests-{Guid.NewGuid()}";
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        builder.UseEnvironment(Environment);
         builder.ConfigureAppConfiguration((_, configuration) =>
         {
             configuration.AddInMemoryCollection(new Dictionary<string, string?>

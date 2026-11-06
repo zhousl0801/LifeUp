@@ -110,6 +110,27 @@ public sealed class BatchQuoteRefreshTests
     }
 
     [Fact]
+    public async Task FundBatch_PrefetchesQuotesConcurrently()
+    {
+        var provider = new ParallelFundProvider();
+        var context = await CreateAsync(provider, null, provider);
+        await TestFundQuotes.CreatePositionAsync(context.Repository, new BusinessDateProvider(new FixedTimeProvider(Now)), PositionRequest("000001"), CancellationToken.None);
+        await TestFundQuotes.CreatePositionAsync(context.Repository, new BusinessDateProvider(new FixedTimeProvider(Now)), PositionRequest("000002", "第二只基金"), CancellationToken.None);
+
+        var run = await context.Quotes.RefreshAsync(
+            QuoteRefreshScope.Funds,
+            "manual",
+            0,
+            TimeSpan.Zero,
+            CancellationToken.None);
+
+        Assert.NotNull(run);
+        Assert.Equal(2, run.FundSucceeded);
+        Assert.Equal(2, provider.Started);
+        Assert.True(provider.MaxConcurrent >= 2);
+    }
+
+    [Fact]
     public async Task GoldBatch_RetriesAndUpdatesReferenceQuote()
     {
         var provider = new ScriptedGoldProvider(
@@ -180,7 +201,8 @@ public sealed class BatchQuoteRefreshTests
 
     private static async Task<TestContext> CreateAsync(
         IFundQuoteProvider? fundProvider,
-        IGoldQuoteProvider? goldProvider = null)
+        IGoldQuoteProvider? goldProvider = null,
+        IFundQuoteProvider? prefetchFundProvider = null)
     {
         var repository = new FakeLedgerRepository();
         var dates = new BusinessDateProvider(new FixedTimeProvider(Now));
@@ -200,7 +222,8 @@ public sealed class BatchQuoteRefreshTests
             dates,
             monitor,
             options,
-            NullLogger<QuoteRefreshService>.Instance);
+            NullLogger<QuoteRefreshService>.Instance,
+            prefetchFundProvider);
 
         return new TestContext(repository, funds, gold, monitor, quotes);
     }
@@ -211,6 +234,49 @@ public sealed class BatchQuoteRefreshTests
         GoldService Gold,
         QuoteRefreshMonitor Monitor,
         QuoteRefreshService Quotes);
+
+    private sealed class ParallelFundProvider : IFundQuoteProvider
+    {
+        private readonly TaskCompletionSource _bothStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _started;
+        private int _active;
+        private int _maxConcurrent;
+
+        public int Started => Volatile.Read(ref _started);
+
+        public int MaxConcurrent => Volatile.Read(ref _maxConcurrent);
+
+        public async Task<ExternalFundQuote> GetLatestAsync(string code, CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _started);
+            var active = Interlocked.Increment(ref _active);
+
+            while (true)
+            {
+                var current = Volatile.Read(ref _maxConcurrent);
+
+                if (active <= current || Interlocked.CompareExchange(ref _maxConcurrent, active, current) == current)
+                {
+                    break;
+                }
+            }
+
+            if (Volatile.Read(ref _started) >= 2)
+            {
+                _bothStarted.TrySetResult();
+            }
+
+            try
+            {
+                await _bothStarted.Task.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
+                return new ExternalFundQuote(code, 2.5m, Today, "eastmoney", Now);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _active);
+            }
+        }
+    }
 
     private sealed class ScriptedFundProvider : IFundQuoteProvider
     {

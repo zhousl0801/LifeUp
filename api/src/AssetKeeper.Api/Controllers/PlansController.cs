@@ -110,6 +110,21 @@ public sealed class PlansController : AssetOperationsControllerBase
         return ToActionResult(result);
     }
 
+    [HttpDelete("{planId:guid}")]
+    [ProducesResponseType<PlanDeleteResultDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Delete(
+        Guid planId,
+        [FromBody] PlanActionRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _planService.DeleteAsync(planId, request, cancellationToken);
+
+        return ToActionResult(result);
+    }
+
     [HttpPost("occurrences/{occurrenceId:guid}/skip")]
     [ProducesResponseType<PlanOccurrenceDto>(StatusCodes.Status200OK)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
