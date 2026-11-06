@@ -25,6 +25,7 @@ import AnimatedMoney from '../components/AnimatedMoney.vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
 import BackButton from '../components/BackButton.vue'
+import LoadingButton from '../components/LoadingButton.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import ConfirmSheet from '../components/ConfirmSheet.vue'
 import FundReturnsPanel from '../components/FundReturnsPanel.vue'
@@ -113,6 +114,8 @@ const pendingGroupRemoval = ref<{ id: string; name: string } | null>(null)
 const groupDraft = ref('')
 const groupError = ref('')
 const groupBusy = ref(false)
+const cancellingPendingId = ref<string | null>(null)
+const groupBusyKey = ref('')
 const groupDetailId = ref<string | null>(null)
 const editingGroupId = ref<string | null>(null)
 const editingGroupName = ref('')
@@ -142,7 +145,6 @@ const form = reactive({
   fee: '0',
   confirmationDelayDays: '2',
   businessDate: today,
-  tradeDate: today,
   priorProfit: '',
   note: ''
 })
@@ -278,6 +280,32 @@ const pendingCount = computed(() =>
 const cancellablePendingCount = computed(() =>
   scopedPendingBuys.value.filter((item) => item.canCancel).length
   + scopedSellApplications.value.filter((item) => item.canCancel).length)
+
+const pendingSummary = computed(() => {
+  const parts: string[] = []
+
+  if (scopedPendingBuys.value.length) {
+    parts.push(`买入待确认 ${scopedPendingBuys.value.length}`)
+  }
+
+  if (scopedSellApplications.value.length) {
+    parts.push(`赎回申请 ${scopedSellApplications.value.length}`)
+  }
+
+  if (scopedPendingArrivals.value.length) {
+    parts.push(`待到账 ${scopedPendingArrivals.value.length}`)
+  }
+
+  if (scopedPendingBuys.value.length) {
+    parts.push('到期自动确认')
+  }
+
+  if (cancellablePendingCount.value) {
+    parts.push('15:00 前可撤销')
+  }
+
+  return parts.join(' · ')
+})
 
 const scopedActivities = computed(() => {
   const trades = (overview.value?.activities ?? []).filter((item) => item.type !== 'quote')
@@ -619,6 +647,24 @@ function cumulativeProfit(fund: FundSummary): number {
   return addAmounts(fund.holdingProfit, fund.realizedProfit)
 }
 
+const todayProfit = computed(() => {
+  const funds = scopedFunds.value
+  const quoted = funds.filter((fund) => fund.hasEffectiveQuotes)
+  const latestDate = funds
+    .map((fund) => fund.latestNetValueDate)
+    .filter((date): date is string => Boolean(date))
+    .sort()
+    .at(-1) ?? null
+
+  return {
+    value: sumAmounts(funds.map((fund) => fund.dailyProfit)),
+    hasValue: quoted.length > 0,
+    complete: quoted.length === funds.length,
+    latestDate,
+    isToday: latestDate === today
+  }
+})
+
 const scopedPlans = computed(() => {
   if (!hasScopeFilter.value) {
     return plans.value
@@ -653,9 +699,9 @@ const sheetSubtitle = computed(() => {
     case 'opening':
       return '用于已有持仓，不扣现金'
     case 'buy':
-      return '现金减少，T+2 自动确认份额'
+      return `现金减少，T+${selectedPosition.value?.confirmationDelayDays ?? 2} 自动确认份额`
     case 'buyConfirm':
-      return '买入后按 T 日净值自动确认'
+      return '买入后按确认净值自动结转份额'
     case 'shares':
       return '生成份额核对记录，保留原有流水'
     case 'sell':
@@ -673,7 +719,7 @@ const sheetNote = computed(() => {
     case 'opening':
       return '录入已有持仓不会从现金扣除购买成本，也不产生生活收支。'
     case 'buy':
-      return '15:00 前可撤销；截止后按基金 T 日净值和实际申购费自动计算份额。'
+      return '按提交时间所在交易日的基金净值确认份额，15:00 前可撤销；份额由行情数据源自动计算。'
     case 'shares':
       return '只修改持仓份额，净值必须由行情数据源获取。'
     case 'sell':
@@ -702,7 +748,6 @@ const canSubmit = computed(() => {
       return form.positionId !== '' && !!selectedPosition.value?.code && (parseAmount(form.amount) ?? 0) > 0
         && (parseAmount(form.fee) ?? -1) >= 0
         && (parseAmount(form.fee) ?? Number.POSITIVE_INFINITY) < (parseAmount(form.amount) ?? 0)
-        && form.businessDate !== ''
     case 'shares':
       return form.positionId !== '' && parseNonNegativeQuantity(form.shares) !== null
     case 'sell':
@@ -918,7 +963,7 @@ function weightOf(fund: FundSummary): string {
   return total > 0 ? `${formatMoney(fund.assetValue / total * 100)}%` : '—'
 }
 
-// 待确认买入在 T 日就定了份额，只是还没确认，所以卡片资产要把它算进去，
+// 待确认买入在确认净值日就定了份额，只是还没确认，所以卡片资产要把它算进去，
 // 否则各只基金加起来和顶部总额对不上。
 function pendingOf(fund: FundSummary): number {
   return addAmounts(fund.pendingBuyAmount, fund.pendingArrivalAmount)
@@ -1196,18 +1241,24 @@ async function confirmRemoveGroup(): Promise<void> {
 
 async function toggleGroupFund(fund: FundSummary): Promise<void> {
   const group = managedGroup.value
-  const positionId = fund.classes.flatMap((fundClass) => fundClass.platforms)[0]?.positionId
+  const positionIds = Array.from(new Set(
+    fund.classes.flatMap((fundClass) => fundClass.platforms).map((platform) => platform.positionId)))
 
-  if (!group || !positionId || groupBusy.value) {
+  if (!group || positionIds.length === 0 || groupBusy.value) {
     return
   }
 
   const isMember = fund.groupId === group.id
   groupBusy.value = true
+  groupBusyKey.value = fund.key
   groupError.value = ''
 
   try {
-    await assignFundGroup(positionId, isMember ? null : group.id)
+    // 同一基金可能有多个平台持仓；逐个移动，避免并发请求争抢账本版本。
+    for (const positionId of positionIds) {
+      await assignFundGroup(positionId, isMember ? null : group.id)
+    }
+
     notice.value = isMember
       ? `「${fund.name}」已移出「${group.name}」。`
       : `「${fund.name}」已加入「${group.name}」。`
@@ -1217,6 +1268,7 @@ async function toggleGroupFund(fund: FundSummary): Promise<void> {
     await loadOverview()
   } finally {
     groupBusy.value = false
+    groupBusyKey.value = ''
   }
 }
 
@@ -1233,13 +1285,6 @@ function planCycleLabel(plan: AutoPlan): string {
   return `每月 ${plan.dayOfMonth ?? 1} 日`
 }
 
-// T 日默认跟下单日期一致；只有用户主动改过（或晚于下单日）时才保留用户的选择。
-function syncTradeDateToBusinessDate(): void {
-  if (!form.tradeDate || form.tradeDate < form.businessDate) {
-    form.tradeDate = form.businessDate
-  }
-}
-
 function openSheet(kind: SheetKind, positionId?: string): void {
   sheet.value = kind
   confirmingSellId.value = null
@@ -1249,7 +1294,6 @@ function openSheet(kind: SheetKind, positionId?: string): void {
   formError.value = ''
   form.note = ''
   form.businessDate = today
-  form.tradeDate = today
   form.priorProfit = ''
   form.shares = ''
   form.cost = ''
@@ -1498,18 +1542,12 @@ async function submitBuy(): Promise<void> {
     return
   }
 
-  if (form.tradeDate && form.tradeDate < form.businessDate) {
-    formError.value = 'T 日不能早于下单日期。'
-    return
-  }
-
   isSaving.value = true
   const result = await buyFund({
     positionId: position.id,
     amount,
     fee,
-    businessDate: form.businessDate,
-    tradeDate: form.tradeDate || form.businessDate,
+    businessDate: todayInBusinessTimeZone(),
     note: form.note.trim(),
     requestId: requestId.value
   })
@@ -1775,6 +1813,12 @@ function clearSelectedFund(): void {
 }
 
 async function cancelPending(transactionId: string): Promise<void> {
+  if (cancellingPendingId.value) {
+    return
+  }
+
+  cancellingPendingId.value = transactionId
+
   try {
     await cancelFundPending(transactionId, createRequestId())
     notice.value = '待处理基金交易已撤销。'
@@ -1782,6 +1826,8 @@ async function cancelPending(transactionId: string): Promise<void> {
     await loadOverview()
   } catch (error) {
     notice.value = getApiErrorMessage(error, '撤销失败，请刷新后重试。')
+  } finally {
+    cancellingPendingId.value = null
   }
 }
 
@@ -1823,7 +1869,7 @@ function goBack(): void {
 
     <section v-else-if="errorMessage" class="state">
       <p>{{ errorMessage }}</p>
-      <button type="button" class="secondary-button" @click="loadOverview">重新加载</button>
+      <LoadingButton class="secondary-button" :loading="isLoading" loading-label="加载中…" @click="loadOverview">重新加载</LoadingButton>
     </section>
 
     <template v-else-if="overview">
@@ -1842,6 +1888,19 @@ function goBack(): void {
           <template v-if="scope.pendingBuyAmount > 0"> · 含待确认 <AnimatedMoney :value="scope.pendingBuyAmount" /></template>
           <template v-if="scope.pendingArrivalAmount > 0"> · 含待到账 <AnimatedMoney :value="scope.pendingArrivalAmount" /></template>
         </p>
+        <div class="hero-today">
+          <span>今日收益</span>
+          <b :class="amountTone(todayProfit.hasValue ? todayProfit.value : null)">
+            {{ todayProfit.hasValue ? formatSignedMoney(todayProfit.value) : '—' }}
+          </b>
+          <small v-if="!todayProfit.hasValue">行情待补</small>
+          <small v-else-if="!todayProfit.isToday || !todayProfit.complete">
+            <template v-if="!todayProfit.isToday && todayProfit.latestDate">
+              按 {{ formatBusinessDate(todayProfit.latestDate) }} 净值
+            </template>
+            <template v-if="!todayProfit.complete"> · 部分持仓行情待补</template>
+          </small>
+        </div>
         <div class="hero-metrics">
           <div>
             <span>持有收益</span>
@@ -1887,10 +1946,10 @@ function goBack(): void {
       </div>
 
       <div class="view-tabs ui-segmented" role="tablist" aria-label="投资视图">
-        <button type="button" role="tab" :aria-selected="activeView === 'positions'" :class="{ active: activeView === 'positions' }" @click="setView('positions')">持仓</button>
-        <button type="button" role="tab" :aria-selected="activeView === 'returns'" :class="{ active: activeView === 'returns' }" @click="setView('returns')">收益</button>
-        <button type="button" role="tab" :aria-selected="activeView === 'activities'" :class="{ active: activeView === 'activities' }" @click="setView('activities')">交易</button>
-        <button type="button" role="tab" :aria-selected="activeView === 'plans'" :class="{ active: activeView === 'plans' }" @click="setView('plans')">定投</button>
+        <button type="button" role="tab" :aria-selected="activeView === 'positions'" :class="{ active: activeView === 'positions' }" @click="setView('positions')">持仓明细</button>
+        <button type="button" role="tab" :aria-selected="activeView === 'returns'" :class="{ active: activeView === 'returns' }" @click="setView('returns')">收益日历</button>
+        <button type="button" role="tab" :aria-selected="activeView === 'activities'" :class="{ active: activeView === 'activities' }" @click="setView('activities')">交易记录</button>
+        <button type="button" role="tab" :aria-selected="activeView === 'plans'" :class="{ active: activeView === 'plans' }" @click="setView('plans')">我的定投</button>
       </div>
       <div v-if="searchText.trim()" class="active-search">
         <span>当前仅显示搜索结果</span>
@@ -1900,36 +1959,29 @@ function goBack(): void {
       <p v-if="notice" class="notice" role="status">{{ notice }}</p>
 
       <button
-        v-if="pendingCount && activeView !== 'activities'"
+        v-if="pendingCount && activeView !== 'activities' && activeView !== 'returns'"
         type="button"
         class="pending-shortcut"
         @click="showPending"
       >
         <span class="pending-shortcut-copy">
           <b>{{ pendingCount }} 笔待处理</b>
-          <small>
-            买入待确认 {{ scopedPendingBuys.length }} · 赎回申请 {{ scopedSellApplications.length }}
-            · 待到账 {{ scopedPendingArrivals.length }}
-            <template v-if="scopedPendingBuys.length"> · T+2 自动确认</template>
-            <template v-if="cancellablePendingCount"> · 15:00 前可撤销</template>
-          </small>
+          <small>{{ pendingSummary }}</small>
         </span>
         <span class="pending-shortcut-action">查看 ›</span>
       </button>
 
-      <template v-if="activeView === 'positions' || activeView === 'returns'">
+      <template v-if="activeView === 'returns'">
         <FundReturnsPanel
-          v-if="activeView === 'returns'"
           :group-id="returnsGroupId"
           :ungrouped="returnsUngrouped"
         />
+      </template>
 
+      <template v-else-if="activeView === 'positions'">
         <div class="section-head">
-          <h2>{{ activeView === 'positions' ? '组合持仓' : '基金收益明细' }}</h2>
-          <span class="meta">
-            <template v-if="activeView === 'returns'">共 {{ scopedFunds.length }} 只基金</template>
-            <template v-else>可用现金 ¥{{ formatMoney(overview.cashBalance) }}</template>
-          </span>
+          <h2>持仓明细</h2>
+          <span class="meta">可用现金 ¥{{ formatMoney(overview.cashBalance) }}</span>
         </div>
 
         <section v-if="sortedFunds.length" class="fund-list">
@@ -2102,7 +2154,7 @@ function goBack(): void {
         <LoadingState v-if="plansLoading" variant="list" :rows="3" compact label="正在读取定投计划" />
         <section v-else-if="plansError" class="state">
           <p>{{ plansError }}</p>
-          <button type="button" class="secondary-button" @click="plansLoaded = false; plansError = ''; loadPlans()">重新加载</button>
+          <LoadingButton class="secondary-button" :loading="plansLoading" loading-label="加载中…" @click="plansLoaded = false; plansError = ''; loadPlans()">重新加载</LoadingButton>
         </section>
         <section v-else-if="scopedPlans.length" class="fund-plan-list">
           <article v-for="plan in scopedPlans" :key="plan.id" class="fund-plan-row">
@@ -2169,7 +2221,7 @@ function goBack(): void {
               aria-label="分组名称"
               @keydown.enter.prevent="saveGroupName(managedGroup.id)"
             />
-            <button type="button" class="confirm-button" :disabled="groupBusy" @click="saveGroupName(managedGroup.id)">保存</button>
+            <LoadingButton class="confirm-button" :loading="groupBusy" loading-label="保存中…" @click="saveGroupName(managedGroup.id)">保存</LoadingButton>
             <button type="button" class="text-button" :disabled="groupBusy" @click="editingGroupId = null">取消</button>
           </template>
           <template v-else>
@@ -2208,6 +2260,7 @@ function goBack(): void {
             class="group-asset-row"
             :class="{ selected: fund.groupId === managedGroup.id }"
             :disabled="groupBusy"
+            :aria-busy="groupBusyKey === fund.key"
             @click="toggleGroupFund(fund)"
           >
             <span class="group-asset-copy">
@@ -2218,7 +2271,8 @@ function goBack(): void {
               </small>
             </span>
             <span class="group-check" :class="{ checked: fund.groupId === managedGroup.id }">
-              <AppIcon v-if="fund.groupId === managedGroup.id" name="check" />
+              <span v-if="groupBusyKey === fund.key" class="group-check-spinner" aria-hidden="true" />
+              <AppIcon v-else-if="fund.groupId === managedGroup.id" name="check" />
             </span>
           </button>
         </section>
@@ -2249,7 +2303,7 @@ function goBack(): void {
             <span>新增分组</span>
             <div class="group-create-row">
               <input v-model="groupDraft" type="text" maxlength="20" placeholder="例如：纳斯达克指数" />
-              <button type="submit" class="primary-button" :disabled="groupBusy">添加</button>
+              <LoadingButton class="primary-button" type="submit" :loading="groupBusy" loading-label="添加中…">添加</LoadingButton>
             </div>
           </label>
         </form>
@@ -2281,7 +2335,7 @@ function goBack(): void {
           <b>{{ selectedPendingBuy.positionName }}</b>
         </div>
         <div v-if="selectedPendingBuy" class="summary-line">
-          <span>下单日期</span>
+          <span>买入日期</span>
           <b>{{ formatBusinessDate(selectedPendingBuy.businessDate) }}</b>
         </div>
         <div v-if="selectedPendingBuy" class="summary-line">
@@ -2289,8 +2343,8 @@ function goBack(): void {
           <b>¥{{ formatMoney(selectedPendingBuy.amount) }} · 申购费 ¥{{ formatMoney(selectedPendingBuy.fee) }}</b>
         </div>
         <div v-if="selectedPendingBuy" class="summary-line">
-          <span>交易日</span>
-          <b>T 日 {{ formatBusinessDate(selectedPendingBuy.tradeDate) }} · {{ monthDayText(selectedPendingBuy.confirmationDate) }}自动确认份额</b>
+          <span>确认净值日</span>
+          <b>{{ formatBusinessDate(selectedPendingBuy.tradeDate) }} · {{ monthDayText(selectedPendingBuy.confirmationDate) }}自动确认份额</b>
         </div>
         <div v-if="selectedSellApplication" class="summary-line">
           <span>申请赎回</span>
@@ -2305,7 +2359,15 @@ function goBack(): void {
       <div v-if="sheet === 'buyConfirm' && selectedPendingBuy" class="form-stack">
         <p v-if="selectedPendingBuy.note" class="form-note">备注：{{ selectedPendingBuy.note }}</p>
         <p class="form-note">{{ selectedPendingBuy.canCancel ? '可在撤销截止时间前撤销这笔交易。' : '已超过撤销时间，等待自动确认。' }}</p>
-        <button v-if="selectedPendingBuy.canCancel" type="button" class="secondary-button danger-text" @click="cancelPending(selectedPendingBuy.transactionId)">撤销这笔待确认</button>
+        <LoadingButton
+          v-if="selectedPendingBuy.canCancel"
+          class="secondary-button danger-text"
+          :loading="cancellingPendingId === selectedPendingBuy.transactionId"
+          loading-label="撤销中…"
+          @click="cancelPending(selectedPendingBuy.transactionId)"
+        >
+          撤销这笔待确认
+        </LoadingButton>
       </div>
 
       <form v-else class="form-stack" @submit.prevent="submit">
@@ -2402,16 +2464,6 @@ function goBack(): void {
             <span>实际申购费（元）</span>
             <input v-model="form.fee" type="text" inputmode="decimal" placeholder="0.00" />
           </label>
-          <label class="form-field">
-            <span>下单日期</span>
-            <input v-model="form.businessDate" type="date" :max="today" @change="syncTradeDateToBusinessDate" />
-            <small>补录历史买入时选择实际下单日期。</small>
-          </label>
-          <label class="form-field">
-            <span>T 日（净值日）</span>
-            <input v-model="form.tradeDate" type="date" :min="form.businessDate" />
-            <small>按哪一天净值确认份额，默认与下单日期相同；15:00 后下单的按平台规则改为下一个交易日。</small>
-          </label>
           <small v-if="!selectedPosition?.code" class="form-note">请先为该持仓设置基金代码，才能从数据源自动确认份额。</small>
         </template>
 
@@ -2480,13 +2532,14 @@ function goBack(): void {
               :max="today"
             />
           </label>
-          <p class="form-note">确认份额不能超过申请份额；净值日期默认取申请日 T 日，可按实际成交调整。</p>
-          <button
+          <p class="form-note">确认份额不能超过申请份额；净值日期默认取申请日，可按实际成交调整。</p>
+          <LoadingButton
             v-if="selectedSellApplication?.canCancel"
-            type="button"
             class="text-button danger-text"
+            :loading="cancellingPendingId === selectedSellApplication.transactionId"
+            loading-label="撤销中…"
             @click="cancelPending(selectedSellApplication.transactionId)"
-          >撤销赎回申请</button>
+          >撤销赎回申请</LoadingButton>
         </template>
 
         <template v-else-if="sheet === 'sellArrival'">
@@ -2518,9 +2571,9 @@ function goBack(): void {
           <button type="button" class="secondary-button" :disabled="isSaving" @click="closeSheet">
             取消
           </button>
-          <button type="submit" class="primary-button" :disabled="!canSubmit">
-            {{ isSaving ? '保存中…' : '保存' }}
-          </button>
+          <LoadingButton class="primary-button" type="submit" :loading="isSaving" :disabled="!canSubmit" loading-label="保存中…">
+            保存
+          </LoadingButton>
         </div>
       </form>
     </BottomSheet>
@@ -2550,12 +2603,12 @@ function goBack(): void {
         <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
 
         <div class="duplicate-actions">
-          <button type="button" class="primary-button" :disabled="isSaving" @click="updateDuplicatePosition">
-            {{ isSaving ? '更新中…' : '更新已有持仓' }}
-          </button>
-          <button type="button" class="secondary-button" :disabled="isSaving" @click="addDuplicatePosition">
+          <LoadingButton class="primary-button" :loading="isSaving" loading-label="更新中…" @click="updateDuplicatePosition">
+            更新已有持仓
+          </LoadingButton>
+          <LoadingButton class="secondary-button" :loading="isSaving" loading-label="新增中…" @click="addDuplicatePosition">
             新增独立持仓
-          </button>
+          </LoadingButton>
           <button type="button" class="text-button" :disabled="isSaving" @click="duplicatePrompt = null">取消</button>
         </div>
       </template>
@@ -2670,6 +2723,32 @@ function goBack(): void {
   color: var(--color-hero-text-secondary);
   font-size: var(--text-caption);
   line-height: 1.6;
+}
+
+.hero-today {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin-top: 12px;
+}
+
+.hero-today span {
+  color: var(--color-hero-text-secondary);
+  font-size: var(--text-caption);
+}
+
+.hero-today b {
+  color: var(--color-hero-text);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.hero-today small {
+  color: var(--color-hero-text-secondary);
+  font-size: var(--text-caption);
 }
 
 .hero-metrics {
@@ -3073,6 +3152,12 @@ function goBack(): void {
 }
 
 @media (max-width: 360px) {
+  .view-tabs button {
+    padding: 0 4px;
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+
   .fund-card > header {
     padding: 16px 14px;
   }
@@ -3571,6 +3656,26 @@ function goBack(): void {
 
 .group-asset-copy .group-asset-hint {
   color: var(--color-brand);
+}
+
+.group-check-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--color-brand);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: group-check-spin 0.7s linear infinite;
+}
+
+.group-check.checked .group-check-spinner {
+  border-color: var(--color-on-brand);
+  border-right-color: transparent;
+}
+
+@keyframes group-check-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .group-check {

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { logout, passkeyEnabled } from '../api/access'
 import { deletePasskey, fetchPasskeys, passkeySupported, registerPasskey, type PasskeySummary } from '../api/passkeys'
 import ConfirmSheet from '../components/ConfirmSheet.vue'
+import LoadingButton from '../components/LoadingButton.vue'
 import PageHeader from '../components/PageHeader.vue'
 import LoadingState from '../components/LoadingState.vue'
 
@@ -11,6 +12,7 @@ const router = useRouter()
 const credentials = ref<PasskeySummary[]>([])
 const loading = ref(false)
 const busy = ref(false)
+const busyKind = ref<'enable' | 'delete' | 'signout' | ''>('')
 const error = ref('')
 const notice = ref('')
 const pendingRemoval = ref<PasskeySummary | null>(null)
@@ -54,6 +56,7 @@ async function enable(): Promise<void> {
   if (busy.value) return
 
   busy.value = true
+  busyKind.value = 'enable'
   error.value = ''
   notice.value = ''
 
@@ -65,6 +68,7 @@ async function enable(): Promise<void> {
     error.value = value instanceof Error ? value.message : '启用失败，请重试'
   } finally {
     busy.value = false
+    busyKind.value = ''
   }
 }
 
@@ -79,6 +83,7 @@ async function confirmRemoval(): Promise<void> {
   if (!credential || busy.value) return
 
   busy.value = true
+  busyKind.value = 'delete'
   error.value = ''
   notice.value = ''
 
@@ -91,12 +96,14 @@ async function confirmRemoval(): Promise<void> {
     error.value = value instanceof Error ? value.message : '删除失败，请重试'
   } finally {
     busy.value = false
+    busyKind.value = ''
   }
 }
 
 async function signOut(): Promise<void> {
   if (busy.value) return
   busy.value = true
+  busyKind.value = 'signout'
   await logout()
 }
 
@@ -119,9 +126,15 @@ onMounted(load)
       <p v-else-if="!passkeySupported" class="security-note">
         当前浏览器不支持 Passkey，请使用访问口令登录，或改在手机 Safari / Chrome 上启用。
       </p>
-      <button v-else class="primary-button security-action" type="button" :disabled="busy" @click="enable">
-        {{ busy ? '等待验证…' : '在此设备启用' }}
-      </button>
+      <LoadingButton
+        v-else
+        class="primary-button security-action"
+        :loading="busyKind === 'enable'"
+        loading-label="等待验证…"
+        @click="enable"
+      >
+        在此设备启用
+      </LoadingButton>
     </section>
 
     <p v-if="notice" class="security-notice" role="status">{{ notice }}</p>
@@ -145,9 +158,14 @@ onMounted(load)
     <section class="security-card">
       <h2>退出登录</h2>
       <p>退出后需要重新验证访问口令或指纹 / Face ID，已保存的 Passkey 不会删除。</p>
-      <button class="secondary-button security-action" type="button" :disabled="busy" @click="signOut">
+      <LoadingButton
+        class="secondary-button security-action"
+        :loading="busyKind === 'signout'"
+        loading-label="退出中…"
+        @click="signOut"
+      >
         退出登录
-      </button>
+      </LoadingButton>
     </section>
 
     <p class="timeline-note">

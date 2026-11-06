@@ -4,6 +4,7 @@ import { fetchHistory } from '../api/history'
 import { getApiErrorMessage } from '../api/client'
 import type { BusinessFact } from '../types/history'
 import { formatMoney } from '../utils/format'
+import LoadingButton from './LoadingButton.vue'
 
 const props = defineProps<{ businessDate: string; cashEffect: number; disabled?: boolean }>()
 const model = defineModel<string | null>({ default: null })
@@ -28,7 +29,16 @@ async function load(): Promise<void> {
 
 <template>
   <div class="cash-adjustment-link">
-    <button v-if="!opened" type="button" class="back-link" :disabled="disabled" @click="load">关联此前核对差额（漏记业务）</button>
+    <LoadingButton
+      v-if="!opened || loading"
+      class="back-link"
+      :loading="loading"
+      :disabled="disabled"
+      loading-label="加载中…"
+      @click="load"
+    >
+      关联此前核对差额（漏记业务）
+    </LoadingButton>
     <template v-else>
       <label class="form-field">
         <span>关联现金核对记录</span>
@@ -40,7 +50,10 @@ async function load(): Promise<void> {
         </select>
       </label>
       <small class="form-note">关联后重算核对差额，避免重复增减现金。日期、方向与累计金额由保存时校验。</small>
-      <p v-if="error" class="form-error">{{ error }} <button type="button" @click="load">重试</button></p>
+      <p v-if="error" class="form-error">
+        {{ error }}
+        <LoadingButton class="back-link" :loading="loading" loading-label="加载中…" @click="load">重试</LoadingButton>
+      </p>
     </template>
   </div>
 </template>

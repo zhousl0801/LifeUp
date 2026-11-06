@@ -20,6 +20,7 @@ const baseUrl = import.meta.env.VITE_API_BASE_URL ?? ''
 
 const readCacheTtlMs = 15_000
 const readCacheLimit = 50
+const requestTimeoutMs = 15_000
 const readCache = new Map<string, { at: number; data: unknown }>()
 
 export const activeRequestCount = ref(0)
@@ -78,12 +79,15 @@ export async function readOnlyRequest<T>(path: string, init?: RequestInit): Prom
   }
 
   activeRequestCount.value++
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), requestTimeoutMs)
 
   try {
     const response = await fetch(`${baseUrl}${path}`, {
       ...init,
       credentials: 'include',
-      headers
+      headers,
+      signal: init?.signal ?? controller.signal
     })
 
     if (!response.ok) {
@@ -119,7 +123,14 @@ export async function readOnlyRequest<T>(path: string, init?: RequestInit): Prom
     }
 
     return data
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new ApiError(0, '请求超时，请检查网络后重试。')
+    }
+
+    throw error
   } finally {
+    window.clearTimeout(timeout)
     activeRequestCount.value--
   }
 }

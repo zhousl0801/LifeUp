@@ -408,6 +408,48 @@ public sealed class PlanExecutionTests
     }
 
     [Fact]
+    public async Task SwitchToWeekly_DoesNotBackfillPeriodsBeforeEdit()
+    {
+        await using var context = await CreateAsync(1000m);
+        var position = await CreatePositionAsync(context);
+        var original = await SavePlanAsync(context, AutoPlanType.FundSip, 100m, position, AutoPlanCycle.Monthly,
+            new TimeOnly(9, 0), Today.AddDays(-20));
+        var changed = await context.Plans.SaveAsync(Request(AutoPlanType.FundSip, 100m, position,
+            AutoPlanCycle.Weekly, new TimeOnly(9, 0), original.StartDate) with
+        { Id = original.Id }, CancellationToken.None);
+
+        Assert.Equal(AssetOperationStatus.Success, changed.Status);
+
+        var run = await context.Execution.RunDueAsync(CancellationToken.None);
+
+        Assert.Equal(0, run.CreatedOccurrences);
+        Assert.Equal(Today.AddDays(1), changed.Result!.GenerateFrom);
+    }
+
+    [Fact]
+    public async Task ChangeWeeklyWeekday_DoesNotBackfillPeriodsBeforeEdit()
+    {
+        await using var context = await CreateAsync(1000m);
+        var position = await CreatePositionAsync(context);
+        var original = await SavePlanAsync(context, AutoPlanType.FundSip, 100m, position, AutoPlanCycle.Weekly,
+            new TimeOnly(9, 0), Today.AddDays(-20));
+        var request = Request(AutoPlanType.FundSip, 100m, position, AutoPlanCycle.Weekly,
+            new TimeOnly(9, 0), original.StartDate) with
+        {
+            Id = original.Id,
+            DayOfWeek = 4
+        };
+        var changed = await context.Plans.SaveAsync(request, CancellationToken.None);
+
+        Assert.Equal(AssetOperationStatus.Success, changed.Status);
+
+        var run = await context.Execution.RunDueAsync(CancellationToken.None);
+
+        Assert.Equal(0, run.CreatedOccurrences);
+        Assert.Equal(Today.AddDays(1), changed.Result!.GenerateFrom);
+    }
+
+    [Fact]
     public async Task TradingDayEdit_BeforeDueTimePreservesTodaysFuturePeriod()
     {
         await using var context = await CreateAsync(1000m);

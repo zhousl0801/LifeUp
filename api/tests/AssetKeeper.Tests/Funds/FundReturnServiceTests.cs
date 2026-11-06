@@ -113,6 +113,22 @@ public sealed class FundReturnServiceTests
     }
 
     [Fact]
+    public async Task ShareCorrection_DoesNotDisableIntervalReturns()
+    {
+        await using var context = await CreateAsync(withClassC: false);
+        var positionId = context.Db.FundPositions.Select(position => position.Id).Single();
+
+        await context.Funds.CorrectSharesAsync(
+            new CorrectFundSharesRequest(positionId, 100m, "份额核对", Guid.NewGuid()),
+            CancellationToken.None);
+
+        var result = await context.Returns.GetAsync(TrendRange.Month, Today, null, false, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.NotNull(result.IntervalProfit);
+    }
+
+    [Fact]
     public async Task EmptyScope_ReturnsExplanationWithoutThrowing()
     {
         await using var context = await CreateAsync(withClassC: false);

@@ -476,6 +476,50 @@ public sealed class FundServiceTests
     }
 
     [Fact]
+    public async Task BuyAsync_UsesChinaCalendarForDomesticAndThreeMarketsForQdii()
+    {
+        var repository = new FakeLedgerRepository();
+        var provider = new BusinessDateProvider(new FixedTimeProvider(
+            new DateTimeOffset(2026, 10, 19, 2, 0, 0, TimeSpan.Zero)));
+        await new LedgerService(repository, provider).InitializeAsync(
+            new InitializeLedgerRequest(new DateOnly(2026, 10, 15), 10000m),
+            CancellationToken.None);
+        var funds = new FundService(repository, provider);
+
+        var domestic = await TestFundQuotes.CreatePositionAsync(repository, provider,
+            new CreateFundPositionRequest(
+                "债券基金", "000003", "A", "平台一", 100m, 1000m, 1m,
+                new DateOnly(2026, 10, 15), null, Guid.NewGuid(),
+                HoldingDate: new DateOnly(2026, 10, 15)),
+            CancellationToken.None);
+        var qdii = await TestFundQuotes.CreatePositionAsync(repository, provider,
+            new CreateFundPositionRequest(
+                "纳指基金", "000004", "A", "平台一", 100m, 1000m, 1m,
+                new DateOnly(2026, 10, 15), null, Guid.NewGuid(),
+                HoldingDate: new DateOnly(2026, 10, 15)),
+            CancellationToken.None);
+
+        await funds.BuyAsync(
+            new BuyFundRequest(domestic.Result!.Position.Id, 100m, new DateOnly(2026, 10, 19), null, Guid.NewGuid()),
+            CancellationToken.None);
+        await funds.BuyAsync(
+            new BuyFundRequest(qdii.Result!.Position.Id, 100m, new DateOnly(2026, 10, 19), null, Guid.NewGuid()),
+            CancellationToken.None);
+
+        var overview = await funds.GetOverviewAsync(CancellationToken.None);
+
+        Assert.NotNull(overview);
+        Assert.Equal(new DateOnly(2026, 10, 19),
+            overview.PendingBuys.Single(item => item.PositionId == domestic.Result.Position.Id).TradeDate);
+        Assert.Equal(new DateOnly(2026, 10, 20),
+            overview.PendingBuys.Single(item => item.PositionId == qdii.Result.Position.Id).TradeDate);
+        Assert.Equal(new DateOnly(2026, 10, 21),
+            overview.PendingBuys.Single(item => item.PositionId == domestic.Result.Position.Id).ConfirmationDate);
+        Assert.Equal(new DateOnly(2026, 10, 22),
+            overview.PendingBuys.Single(item => item.PositionId == qdii.Result.Position.Id).ConfirmationDate);
+    }
+
+    [Fact]
     public async Task BuyAsync_WithExplicitTradeDate_UsesThatDayForConfirmation()
     {
         var context = await CreateContextAsync();
@@ -515,7 +559,7 @@ public sealed class FundServiceTests
         var context = await CreateContextAsync(startDate: new DateOnly(2026, 10, 15));
         var position = await CreatePositionAsync(context);
         var funds = AutoConfirmFunds(context, new TradeDateQuotes(new DateOnly(2026, 10, 19), 13m));
-        await BuyPendingWithDateAsync(funds, position.Id, 130m, new DateOnly(2026, 10, 19));
+        await BuyPendingWithDateAsync(funds, position.Id, 130m, new DateOnly(2026, 10, 19), new DateOnly(2026, 10, 19));
 
         var confirmed = await funds.ConfirmDueBuysAsync(CancellationToken.None);
 
@@ -535,7 +579,7 @@ public sealed class FundServiceTests
         var context = await CreateContextAsync(startDate: new DateOnly(2026, 10, 15));
         var position = await CreatePositionAsync(context);
         var funds = AutoConfirmFunds(context, new TradeDateQuotes(new DateOnly(2026, 10, 20), 13m));
-        await BuyPendingWithDateAsync(funds, position.Id, 130m, new DateOnly(2026, 10, 20));
+        await BuyPendingWithDateAsync(funds, position.Id, 130m, new DateOnly(2026, 10, 20), new DateOnly(2026, 10, 20));
 
         // 10-20 下单、T+2 是 10-22，确认日未到，这笔应该继续待确认。
         var confirmed = await funds.ConfirmDueBuysAsync(CancellationToken.None);
@@ -554,7 +598,7 @@ public sealed class FundServiceTests
         var context = await CreateContextAsync(startDate: new DateOnly(2026, 10, 15));
         var position = await CreatePositionAsync(context);
         var funds = AutoConfirmFunds(context, new TradeDateQuotes(new DateOnly(2026, 10, 18), 13m));
-        await BuyPendingWithDateAsync(funds, position.Id, 130m, new DateOnly(2026, 10, 19));
+        await BuyPendingWithDateAsync(funds, position.Id, 130m, new DateOnly(2026, 10, 19), new DateOnly(2026, 10, 19));
 
         // 数据源还没公布这一天的净值时，自动确认不猜份额，保留待确认等下一次刷新重试。
         var confirmed = await funds.ConfirmDueBuysAsync(CancellationToken.None);
@@ -655,10 +699,11 @@ public sealed class FundServiceTests
         FundService funds,
         Guid positionId,
         decimal amount,
-        DateOnly businessDate)
+        DateOnly businessDate,
+        DateOnly? tradeDate = null)
     {
         var result = await funds.BuyAsync(
-            new BuyFundRequest(positionId, amount, businessDate, null, Guid.NewGuid()),
+            new BuyFundRequest(positionId, amount, businessDate, null, Guid.NewGuid(), TradeDate: tradeDate),
             CancellationToken.None);
 
         Assert.Equal(AssetOperationStatus.Created, result.Status);

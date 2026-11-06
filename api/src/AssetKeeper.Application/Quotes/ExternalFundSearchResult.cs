@@ -23,6 +23,7 @@ public static class FundProfileRules
             || text.Contains("港股", StringComparison.OrdinalIgnoreCase)
             || text.Contains("恒生", StringComparison.OrdinalIgnoreCase)
             || text.Contains("纳斯达克", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("纳指", StringComparison.OrdinalIgnoreCase)
             || text.Contains("标普", StringComparison.OrdinalIgnoreCase);
     }
 

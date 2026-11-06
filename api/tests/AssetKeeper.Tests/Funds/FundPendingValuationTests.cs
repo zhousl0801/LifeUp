@@ -37,6 +37,26 @@ public sealed class FundPendingValuationTests
     }
 
     [Fact]
+    public async Task PendingBuy_ValuesNetAmountAfterSubscriptionFee()
+    {
+        await using var context = await CreateAsync();
+
+        // 扣款 600 元、申购费 6 元，T 日净值 2.0；10-30 净值 1.8。
+        // 待确认本金应为 594 元，折算后 534.60，而不是 540。
+        await context.Funds.BuyAsync(
+            new BuyFundRequest(context.PositionId, 600m, new DateOnly(2026, 10, 29), null, Guid.NewGuid(),
+                Fee: 6m, TradeDate: new DateOnly(2026, 10, 29)),
+            CancellationToken.None);
+        await TestFundQuotes.RefreshAsync(context.Repository, context.Dates, context.PositionId, 1.8m, new DateOnly(2026, 10, 30));
+
+        var overview = (await new FundService(context.Repository, context.Dates)
+            .GetOverviewAsync(CancellationToken.None))!;
+
+        Assert.Equal(600m, overview.PendingAmount);
+        Assert.Equal(2334.6m, overview.TotalValue);
+    }
+
+    [Fact]
     public async Task ConfirmingPendingBuy_DoesNotChangeTotalValue()
     {
         await using var context = await CreateAsync();

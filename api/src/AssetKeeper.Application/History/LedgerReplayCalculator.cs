@@ -181,7 +181,7 @@ public sealed class LedgerReplayCalculator
         {
             state.PendingAmount += fact.Amount;
             Ensure(state.PendingAmount >= 0m && state.PendingAmount <= AssetTransaction.MaximumAmount, fact, "待确认买入金额无效");
-            state.PendingBuys[fact.Id] = new PendingBuy(fact.Amount, fact.FundTradeDate ?? fact.Date);
+            state.PendingBuys[fact.Id] = new PendingBuy(fact.Amount, fact.Fee, fact.FundTradeDate ?? fact.Date);
             return;
         }
 
@@ -518,9 +518,10 @@ public sealed class LedgerReplayCalculator
         foreach (var pending in pendings)
         {
             var navTradeDate = At(prices, AssetType.Fund, positionId, pending.TradeDate)?.Price;
+            var principal = pending.Amount - pending.Fee;
             total += navTradeDate is null or <= 0m || navAsOf is null
-                ? pending.Amount
-                : pending.Amount * navAsOf.Value / navTradeDate.Value;
+                ? principal
+                : principal * navAsOf.Value / navTradeDate.Value;
         }
 
         return total;
@@ -559,5 +560,5 @@ public sealed class LedgerReplayCalculator
         public DateOnly? CoverageFrom { get; set; }
     }
 
-    private readonly record struct PendingBuy(decimal Amount, DateOnly TradeDate);
+    private readonly record struct PendingBuy(decimal Amount, decimal Fee, DateOnly TradeDate);
 }

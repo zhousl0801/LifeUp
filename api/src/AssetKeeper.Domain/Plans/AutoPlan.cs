@@ -92,11 +92,21 @@ public sealed class AutoPlan
             throw new ArgumentException("计划类型不能修改，请新建对应计划。");
         }
 
+        var periodRuleChanged = Cycle != cycle
+            || DayOfMonth != dayOfMonth
+            || DayOfWeek != dayOfWeek
+            || (cycle == AutoPlanCycle.TradingDay && TradingScope != tradingScope);
+
         SetValues(type, name, amount, fee, cycle, dayOfMonth, dayOfWeek, time, startDate, fundPositionId, tradingScope, now);
         GenerateFrom = GenerateFrom > startDate ? GenerateFrom : startDate;
-        if (cycle == AutoPlanCycle.TradingDay && GenerateFrom < generationFloor)
+
+        // 周期、星期、每月日期或交易日范围变化后，历史期次键会整体失效。
+        // 把生成起点推到本次修改之后，避免调度器把过去的所有期次一次性补建并执行。
+        var floor = generationFloor > startDate ? generationFloor : startDate;
+
+        if (GenerateFrom < floor && (periodRuleChanged || cycle == AutoPlanCycle.TradingDay))
         {
-            GenerateFrom = generationFloor;
+            GenerateFrom = floor;
         }
 
         UpdatedAt = now;

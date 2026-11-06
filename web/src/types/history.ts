@@ -66,31 +66,3 @@ export interface HistoryOverview {
   audit: { requestId: string; createdAt: string; beforeJson: string | null }[]
   snapshot: ReplayResult
 }
-
-export interface HistoryChange {
-  requestId: string
-  expectedLedgerVersion: number
-  source: BusinessFact['source']
-  factId: string
-  expectedFactVersion: number
-  action: 'correct' | 'reverse'
-  date: string
-  sequence: number
-  amount: number
-  quantity: number | null
-  price: number | null
-  priceDate: string | null
-  entryKind: EntryKind | null
-  category: string | null
-  note: string | null
-  reason: string
-  relatedCashAdjustmentId: string | null
-  fee?: number | null
-}
-
-export interface HistoryPreview {
-  ledgerVersion: number
-  before: ReplayResult
-  after: ReplayResult
-  previewToken: string
-}

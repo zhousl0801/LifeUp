@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import AppIcon from './AppIcon.vue'
+import LoadingButton from './LoadingButton.vue'
 import { applyAmountKey, type AmountKey } from '../utils/amount'
 
 const props = defineProps<{
   modelValue: string
   canSubmit: boolean
   disabled: boolean
+  loading?: boolean
   dateLabel: string
 }>()
 
@@ -63,14 +65,15 @@ function pickDate(): void {
     <button type="button" :disabled="disabled" aria-label="小数点" @click="press('.')">.</button>
     <button type="button" :disabled="disabled" @click="press('0')">0</button>
     <button type="button" :disabled="disabled" aria-label="删除一位" @click="press('back')">⌫</button>
-    <button
-      type="button"
+    <LoadingButton
       class="key-done"
+      :loading="loading"
       :disabled="disabled || !canSubmit"
+      loading-label="保存中"
       @click="submit"
     >
       完成
-    </button>
+    </LoadingButton>
   </div>
 </template>
 

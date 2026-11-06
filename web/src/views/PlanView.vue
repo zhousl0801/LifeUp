@@ -20,6 +20,7 @@ import AppIcon from '../components/AppIcon.vue'
 import AppNav from '../components/AppNav.vue'
 import AnimatedMoney from '../components/AnimatedMoney.vue'
 import BackButton from '../components/BackButton.vue'
+import LoadingButton from '../components/LoadingButton.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import ConfirmSheet from '../components/ConfirmSheet.vue'
 import LoadingState from '../components/LoadingState.vue'
@@ -61,6 +62,7 @@ const editingPlan = ref<AutoPlan | null>(null)
 const isSaving = ref(false)
 const formError = ref('')
 const busyAction = ref('')
+const busyKind = ref('')
 const pendingPlanRemoval = ref<AutoPlan | null>(null)
 const isDeletingPlan = ref(false)
 const calendarYear = ref(Number(today.slice(0, 4)))
@@ -399,6 +401,10 @@ async function load(): Promise<void> {
 }
 
 async function loadPositions(): Promise<void> {
+  if (positionsLoading.value) {
+    return
+  }
+
   positionsLoading.value = true
   positionsError.value = ''
   try {
@@ -682,6 +688,7 @@ async function ensurePositionForTarget(target: FundSearchResult): Promise<void> 
 
 async function togglePlan(plan: AutoPlan): Promise<void> {
   busyAction.value = plan.id
+  busyKind.value = 'toggle'
 
   try {
     if (plan.isActive) {
@@ -697,6 +704,7 @@ async function togglePlan(plan: AutoPlan): Promise<void> {
     notice.value = getApiErrorMessage(error, '操作失败，请重试。')
   } finally {
     busyAction.value = ''
+    busyKind.value = ''
   }
 }
 
@@ -727,6 +735,7 @@ async function confirmPlanRemoval(): Promise<void> {
 
 async function handleOccurrence(occurrenceId: string, action: 'retry' | 'skip'): Promise<void> {
   busyAction.value = occurrenceId
+  busyKind.value = action
 
   try {
     if (action === 'retry') {
@@ -742,11 +751,13 @@ async function handleOccurrence(occurrenceId: string, action: 'retry' | 'skip'):
     notice.value = getApiErrorMessage(error, '操作失败，请重试。')
   } finally {
     busyAction.value = ''
+    busyKind.value = ''
   }
 }
 
 async function recordCurrentOccurrence(occurrenceId: string): Promise<void> {
   busyAction.value = occurrenceId
+  busyKind.value = 'record'
 
   try {
     const result = await recordOccurrence(occurrenceId, createRequestId())
@@ -758,11 +769,13 @@ async function recordCurrentOccurrence(occurrenceId: string): Promise<void> {
     notice.value = getApiErrorMessage(error, '补记本期失败，请重试。')
   } finally {
     busyAction.value = ''
+    busyKind.value = ''
   }
 }
 
 async function runNow(): Promise<void> {
   busyAction.value = 'run'
+  busyKind.value = 'run'
 
   try {
     const result = await runPlans()
@@ -772,6 +785,7 @@ async function runNow(): Promise<void> {
     notice.value = getApiErrorMessage(error, '立即执行失败，请重试。')
   } finally {
     busyAction.value = ''
+    busyKind.value = ''
   }
 }
 
@@ -988,7 +1002,7 @@ function goBack(): void {
 
     <section v-else-if="errorMessage" class="state">
       <p>{{ errorMessage }}</p>
-      <button type="button" class="secondary-button" @click="load">重新加载</button>
+      <LoadingButton class="secondary-button" :loading="isLoading" loading-label="加载中…" @click="load">重新加载</LoadingButton>
     </section>
 
     <template v-else-if="overview">
@@ -1068,12 +1082,12 @@ function goBack(): void {
                           <span class="fund-row-actions">
                             <button type="button" class="link-button" @click="openEdit(plan)">编辑</button>
                             <span class="action-sep" aria-hidden="true" />
-                            <button
-                              type="button"
+                            <LoadingButton
                               class="link-button"
-                              :disabled="busyAction === plan.id"
+                              :loading="busyAction === plan.id && busyKind === 'toggle'"
+                              loading-label="处理中…"
                               @click="togglePlan(plan)"
-                            >{{ plan.isActive ? '暂停' : '恢复' }}</button>
+                            >{{ plan.isActive ? '暂停' : '恢复' }}</LoadingButton>
                             <span class="action-sep" aria-hidden="true" />
                             <button
                               type="button"
@@ -1110,12 +1124,12 @@ function goBack(): void {
                     <span class="plan-foot-actions">
                       <button type="button" class="link-button" @click="openEdit(fund.single)">编辑</button>
                       <span class="action-sep" aria-hidden="true" />
-                      <button
-                        type="button"
+                      <LoadingButton
                         class="link-button"
-                        :disabled="busyAction === fund.single.id"
+                        :loading="busyAction === fund.single.id && busyKind === 'toggle'"
+                        loading-label="处理中…"
                         @click="togglePlan(fund.single)"
-                      >{{ fund.single.isActive ? '暂停' : '恢复' }}</button>
+                      >{{ fund.single.isActive ? '暂停' : '恢复' }}</LoadingButton>
                       <span class="action-sep" aria-hidden="true" />
                       <button
                         type="button"
@@ -1153,12 +1167,12 @@ function goBack(): void {
                 <span class="plan-foot-actions">
                   <button type="button" class="link-button" @click="openEdit(plan)">编辑</button>
                   <span class="action-sep" aria-hidden="true" />
-                  <button
-                    type="button"
+                  <LoadingButton
                     class="link-button"
-                    :disabled="busyAction === plan.id"
+                    :loading="busyAction === plan.id && busyKind === 'toggle'"
+                    loading-label="处理中…"
                     @click="togglePlan(plan)"
-                  >{{ plan.isActive ? '暂停' : '恢复' }}</button>
+                  >{{ plan.isActive ? '暂停' : '恢复' }}</LoadingButton>
                   <span class="action-sep" aria-hidden="true" />
                   <button
                     type="button"
@@ -1189,30 +1203,30 @@ function goBack(): void {
               <small v-if="occurrence.errorMessage" class="occurrence-error">{{ occurrence.errorMessage }}</small>
             </div>
             <div class="occurrence-actions">
-              <button
-                type="button"
+              <LoadingButton
                 class="small-button"
-                :disabled="busyAction === occurrence.id"
+                :loading="busyAction === occurrence.id && busyKind === 'record'"
+                loading-label="补记中…"
                 @click="recordCurrentOccurrence(occurrence.id)"
               >
                 补记本期
-              </button>
-              <button
-                type="button"
+              </LoadingButton>
+              <LoadingButton
                 class="small-button"
-                :disabled="busyAction === occurrence.id"
+                :loading="busyAction === occurrence.id && busyKind === 'retry'"
+                loading-label="排队中…"
                 @click="handleOccurrence(occurrence.id, 'retry')"
               >
                 重新排队
-              </button>
-              <button
-                type="button"
+              </LoadingButton>
+              <LoadingButton
                 class="small-button"
-                :disabled="busyAction === occurrence.id"
+                :loading="busyAction === occurrence.id && busyKind === 'skip'"
+                loading-label="跳过中…"
                 @click="handleOccurrence(occurrence.id, 'skip')"
               >
                 跳过
-              </button>
+              </LoadingButton>
             </div>
           </article>
         </section>
@@ -1245,7 +1259,7 @@ function goBack(): void {
       <template v-if="occurrencesExpanded">
         <div v-if="occurrenceError" class="occurrence-state">
           <span>{{ occurrenceError }}</span>
-          <button type="button" class="text-button" @click="loadOccurrences()">重试</button>
+          <LoadingButton class="text-button" :loading="occurrenceLoading" loading-label="加载中…" @click="loadOccurrences()">重试</LoadingButton>
         </div>
         <template v-else>
           <section
@@ -1377,7 +1391,7 @@ function goBack(): void {
         </label>
 
         <p v-if="form.type === 'fundSip' && positionsError" class="form-error" role="alert">
-          {{ positionsError }} <button type="button" class="small-button" @click="loadPositions">重新加载基金</button>
+          {{ positionsError }} <LoadingButton class="small-button" :loading="positionsLoading" loading-label="加载中…" @click="loadPositions">重新加载基金</LoadingButton>
         </p>
         <label v-if="form.type === 'fundSip'" class="form-field">
           <span>周期</span>
@@ -1430,9 +1444,9 @@ function goBack(): void {
         <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
         <div class="form-actions">
           <button type="button" class="secondary-button" :disabled="isSaving" @click="closeSheet">取消</button>
-          <button type="submit" class="primary-button" :disabled="!canSubmit">
-            {{ isSaving ? '保存中…' : '保存' }}
-          </button>
+          <LoadingButton class="primary-button" type="submit" :loading="isSaving" :disabled="!canSubmit" loading-label="保存中…">
+            保存
+          </LoadingButton>
         </div>
       </form>
     </BottomSheet>

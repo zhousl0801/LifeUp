@@ -178,6 +178,17 @@ function closureTitle(market: MarketDay): string {
   gap: 10px;
 }
 
+@media (max-width: 360px) {
+  .calendar-head {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+
+  .calendar-nav {
+    margin-left: auto;
+  }
+}
+
 .calendar-title {
   display: flex;
   align-items: center;
@@ -188,6 +199,7 @@ function closureTitle(market: MarketDay): string {
 .calendar-title strong {
   font-size: 0.8125rem;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .calendar-tag {

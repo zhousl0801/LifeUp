@@ -9,6 +9,7 @@ import AssetDistribution from '../components/AssetDistribution.vue'
 import BackButton from '../components/BackButton.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import LoadingState from '../components/LoadingState.vue'
+import LoadingButton from '../components/LoadingButton.vue'
 import { useLedgerStore } from '../stores/ledger'
 import { todayInBusinessTimeZone } from '../utils/format'
 import type { AssetKey, LedgerOverview, MonthChange } from '../types/ledger'
@@ -19,6 +20,7 @@ const overview = ref<LedgerOverview | null>(null)
 const monthChange = ref<MonthChange | null>(null)
 const updateDate = ref(todayInBusinessTimeZone())
 const isLoading = ref(false)
+const coverageBusyKey = ref<AssetKey | null>(null)
 const errorMessage = ref('')
 const notice = ref('')
 const maintenanceOpen = ref(false)
@@ -132,10 +134,11 @@ async function load(): Promise<void> {
 async function toggleNotHeld(key: AssetKey, notHeld: boolean): Promise<void> {
   const ledger = overview.value
 
-  if (!ledger || key === 'cash') {
+  if (!ledger || key === 'cash' || coverageBusyKey.value) {
     return
   }
 
+  coverageBusyKey.value = key
   errorMessage.value = ''
   notice.value = ''
 
@@ -149,6 +152,8 @@ async function toggleNotHeld(key: AssetKey, notHeld: boolean): Promise<void> {
     notice.value = notHeld ? '已标记为不持有。' : '已恢复为待录入。'
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error, '保存失败，请重试。')
+  } finally {
+    coverageBusyKey.value = null
   }
 }
 
@@ -174,7 +179,7 @@ function goHome(): void {
 
     <section v-else-if="errorMessage && !overview" class="state">
       <p>{{ errorMessage }}</p>
-      <button class="secondary-button" type="button" @click="load">重新加载</button>
+      <LoadingButton class="secondary-button" :loading="isLoading" loading-label="加载中…" @click="load">重新加载</LoadingButton>
     </section>
 
     <template v-else-if="overview">
@@ -202,6 +207,7 @@ function goHome(): void {
         :changes="monthChange?.assetChanges"
         :comparable="monthChange?.hasComparableData ?? false"
         editable
+        :busy-key="coverageBusyKey"
         @toggle-not-held="toggleNotHeld"
       />
     </template>

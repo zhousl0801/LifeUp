@@ -2,14 +2,17 @@
 import { ref } from 'vue'
 import { login, passkeyAvailable } from '../api/access'
 import { passkeySupported, signInWithPasskey } from '../api/passkeys'
+import LoadingButton from '../components/LoadingButton.vue'
 
 const password = ref('')
 const error = ref('')
 const busy = ref(false)
+const mode = ref<'password' | 'passkey' | ''>('')
 
 async function submit(): Promise<void> {
   if (busy.value || !password.value) return
   busy.value = true
+  mode.value = 'password'
   error.value = ''
   try {
     await login(password.value)
@@ -18,12 +21,14 @@ async function submit(): Promise<void> {
     error.value = value instanceof Error ? value.message : '验证失败，请重试'
   } finally {
     busy.value = false
+    mode.value = ''
   }
 }
 
 async function usePasskey(): Promise<void> {
   if (busy.value) return
   busy.value = true
+  mode.value = 'passkey'
   error.value = ''
   try {
     await signInWithPasskey()
@@ -31,6 +36,7 @@ async function usePasskey(): Promise<void> {
     error.value = value instanceof Error ? value.message : '指纹 / Face ID 登录未完成'
   } finally {
     busy.value = false
+    mode.value = ''
   }
 }
 </script>
@@ -43,9 +49,14 @@ async function usePasskey(): Promise<void> {
       <p>查看账本需要验证身份</p>
 
       <template v-if="passkeyAvailable && passkeySupported">
-        <button class="access-passkey" type="button" :disabled="busy" @click="usePasskey">
-          {{ busy ? '等待验证…' : '使用指纹 / Face ID 登录' }}
-        </button>
+        <LoadingButton
+          class="access-passkey"
+          :loading="mode === 'passkey'"
+          loading-label="等待验证…"
+          @click="usePasskey"
+        >
+          使用指纹 / Face ID 登录
+        </LoadingButton>
         <p class="access-divider"><span>或输入访问口令</span></p>
       </template>
 
@@ -60,9 +71,15 @@ async function usePasskey(): Promise<void> {
           :autofocus="!(passkeyAvailable && passkeySupported)"
         >
         <p v-if="error" class="access-error" role="alert">{{ error }}</p>
-        <button class="access-submit" type="submit" :disabled="busy || !password">
-          {{ busy ? '验证中…' : '进入账本' }}
-        </button>
+        <LoadingButton
+          class="access-submit"
+          type="submit"
+          :loading="mode === 'password'"
+          :disabled="!password"
+          loading-label="验证中…"
+        >
+          进入账本
+        </LoadingButton>
       </form>
     </div>
   </main>

@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import AppIcon from './AppIcon.vue'
+import LoadingButton from './LoadingButton.vue'
 import AnimatedMoney from './AnimatedMoney.vue'
 import { amountTone, formatMoney, formatSignedMoney, sumAmounts } from '../utils/format'
 import type { AssetChange, AssetKey, LedgerOverview } from '../types/ledger'
@@ -27,6 +28,7 @@ const props = defineProps<{
   editable?: boolean
   manageTo?: string
   hideFundCount?: boolean
+  busyKey?: AssetKey | null
 }>()
 
 const emit = defineEmits<{ toggleNotHeld: [key: AssetKey, notHeld: boolean] }>()
@@ -232,11 +234,12 @@ function changeTone(row: DistributionRow): string {
           </span>
           <span v-if="editable" class="row-actions">
             <RouterLink v-if="!row.notHeld" :to="row.to" class="row-action">添加</RouterLink>
-            <button
-              type="button"
+            <LoadingButton
               class="row-action subtle"
+              :loading="busyKey === row.key"
+              loading-label="处理中…"
               @click="emit('toggleNotHeld', row.key, !row.notHeld)"
-            >{{ row.notHeld ? '恢复' : '不持有' }}</button>
+            >{{ row.notHeld ? '恢复' : '不持有' }}</LoadingButton>
           </span>
           <RouterLink v-else-if="!row.notHeld" :to="row.to" class="row-action">添加</RouterLink>
           <span v-else class="asset-percent">—</span>
@@ -383,7 +386,16 @@ function changeTone(row: DistributionRow): string {
   font-weight: 600;
 }
 
-.asset-main small,
+.asset-main small {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .asset-side small {
   overflow: hidden;
   color: var(--color-text-secondary);

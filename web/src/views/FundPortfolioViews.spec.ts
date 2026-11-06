@@ -1,6 +1,7 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { beforeEach, expect, test, vi } from 'vitest'
 import FundsView from './FundsView.vue'
+import { todayInBusinessTimeZone } from '../utils/format'
 
 const mocks = vi.hoisted(() => ({
   overview: vi.fn(),
@@ -273,7 +274,7 @@ test('confirmed buy no longer keeps showing as 交易进行中', async () => {
 
   const view = mount(FundsView, { attachTo: document.body })
   await flushPromises()
-  await view.findAll('.view-tabs button').find((button) => button.text() === '交易')!.trigger('click')
+  await view.findAll('.view-tabs button').find((button) => button.text() === '交易记录')!.trigger('click')
   await flushPromises()
 
   expect(view.findAll('.activity-row')).toHaveLength(1)
@@ -290,7 +291,7 @@ test('pending shortcut opens the transaction tab and expands pending items', asy
   await view.get('.pending-shortcut').trigger('click')
   await flushPromises()
 
-  expect(view.find('.view-tabs button[aria-selected="true"]').text()).toBe('交易')
+  expect(view.find('.view-tabs button[aria-selected="true"]').text()).toBe('交易记录')
   expect(view.findAll('.activity-row.is-pending')).toHaveLength(1)
   expect(view.find('.activity-row.is-pending').text()).toContain('待确认 · 10月23日自动确认')
   view.unmount()
@@ -361,7 +362,7 @@ test('pending activities sort above settled ones', async () => {
 
   const view = mount(FundsView, { attachTo: document.body })
   await flushPromises()
-  await view.findAll('.view-tabs button').find((button) => button.text() === '交易')!.trigger('click')
+  await view.findAll('.view-tabs button').find((button) => button.text() === '交易记录')!.trigger('click')
   await flushPromises()
 
   const rows = view.findAll('.activity-row')
@@ -382,6 +383,34 @@ test('holding profit, holding rate and realized profit share one color conventio
   expect(metrics[1]!.find('b').classes()).toContain('amount-gain')
   expect(metrics[2]!.find('b').text()).toBe('0.00')
   expect(metrics[2]!.find('b').classes()).not.toContain('amount-gain')
+  expect(view.find('.hero-today').text()).toContain('今日收益')
+  view.unmount()
+})
+
+test('today profit is calculated from the selected group and today\'s disclosed net values', async () => {
+  const today = todayInBusinessTimeZone()
+  const data = structuredClone(overview)
+
+  for (const fund of data.funds) {
+    for (const fundClass of fund.classes) {
+      for (const platform of fundClass.platforms) {
+        platform.netValueDate = today
+        platform.hasEffectiveQuote = true
+      }
+    }
+  }
+
+  mocks.overview.mockResolvedValue(data)
+  const view = mount(FundsView)
+  await flushPromises()
+
+  expect(view.find('.hero-today').text()).toContain('+19.00')
+
+  const groupTab = view.findAll('.group-pill').find((button) => button.text() === '纳斯达克指数')!
+  await groupTab.trigger('click')
+  await flushPromises()
+  expect(view.find('.hero-today').text()).toContain('+24.00')
+
   view.unmount()
 })
 
@@ -403,7 +432,7 @@ test('switching group filters total, funds, pending items and activities consist
   expect(view.findAll('.fund-card')[0]!.text()).toContain('纳指基金')
   expect(view.find('.pending-shortcut').exists()).toBe(false)
 
-  await view.findAll('.view-tabs button').find((button) => button.text() === '交易')!.trigger('click')
+  await view.findAll('.view-tabs button').find((button) => button.text() === '交易记录')!.trigger('click')
   await flushPromises()
   expect(view.findAll('.activity-row.is-pending')).toHaveLength(0)
   expect(view.findAll('.activity-row')).toHaveLength(1)
@@ -628,7 +657,7 @@ test('fund recurring view reads plans and filters them to the active group', asy
   const view = mount(FundsView, { attachTo: document.body })
   await flushPromises()
 
-  await view.findAll('.view-tabs button').find((button) => button.text() === '定投')!.trigger('click')
+  await view.findAll('.view-tabs button').find((button) => button.text() === '我的定投')!.trigger('click')
   await flushPromises()
   expect(mocks.plans).toHaveBeenCalledTimes(1)
   expect(view.findAll('.fund-plan-row')).toHaveLength(2)

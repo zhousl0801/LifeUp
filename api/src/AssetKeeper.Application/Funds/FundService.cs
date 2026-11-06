@@ -6,6 +6,7 @@ using AssetKeeper.Application.Quotes;
 using AssetKeeper.Application.Plans;
 using AssetKeeper.Domain.Assets;
 using AssetKeeper.Domain.Ledgers;
+using AssetKeeper.Domain.Plans;
 
 namespace AssetKeeper.Application.Funds;
 
@@ -44,6 +45,7 @@ public sealed class FundService
         var groups = await _ledgerRepository.GetFundGroupsAsync(ledger.Id, cancellationToken);
         var replayData = await _ledgerRepository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
         var positions = replayData.Positions;
+        var positionsById = positions.ToDictionary(position => position.Id);
         var transactions = replayData.Transactions
             .Where(transaction => !transaction.IsReversed && transaction.AssetType == AssetType.Fund)
             .OrderByDescending(transaction => transaction.BusinessDate)
@@ -79,7 +81,10 @@ public sealed class FundService
                 transaction.Note,
                 transaction.Fee,
                 GetFundTradeDate(transaction),
-                GetConfirmationDate(GetFundTradeDate(transaction), transaction.ConfirmationDelayDays),
+                GetConfirmationDate(
+                    GetFundTradeDate(transaction),
+                    transaction.ConfirmationDelayDays,
+                    ResolveTradingScope(positionsById.GetValueOrDefault(transaction.FundPositionId ?? Guid.Empty))),
                 CanCancel(transaction)))
             .ToList();
         var pendingAmount = pendingBuys.Sum(item => item.Amount);
@@ -552,7 +557,8 @@ public sealed class FundService
         try
         {
             var now = _businessDateProvider.UtcNow;
-            var tradeDate = request.TradeDate ?? ResolveBuyTradeDate(request.BusinessDate, now);
+            var tradingScope = ResolveTradingScope(position);
+            var tradeDate = request.TradeDate ?? ResolveBuyTradeDate(request.BusinessDate, now, tradingScope);
             var transaction = AssetTransaction.CreateFundBuyPending(
                 ledger.Id,
                 position.Id,
@@ -1255,11 +1261,19 @@ public sealed class FundService
         foreach (var transaction in pending)
         {
             var tradeDate = GetFundTradeDate(transaction);
-            var confirmationDate = GetConfirmationDate(tradeDate, transaction.ConfirmationDelayDays);
-            if (_businessDateProvider.Today < confirmationDate
-                || transaction.FundPositionId is not Guid positionId
+            if (transaction.FundPositionId is not Guid positionId
                 || !positions.TryGetValue(positionId, out var position)
                 || string.IsNullOrWhiteSpace(position.Code))
+            {
+                continue;
+            }
+
+            var confirmationDate = GetConfirmationDate(
+                tradeDate,
+                transaction.ConfirmationDelayDays,
+                ResolveTradingScope(position));
+
+            if (_businessDateProvider.Today < confirmationDate)
             {
                 continue;
             }
@@ -1491,21 +1505,31 @@ public sealed class FundService
         return message.Length <= 300 ? message : message[..300];
     }
 
-    private DateOnly ResolveBuyTradeDate(DateOnly requestedDate, DateTimeOffset now)
+    private static AutoPlanTradingScope ResolveTradingScope(FundPosition? position)
     {
-        if (requestedDate != _businessDateProvider.Today)
+        return position is not null && FundProfileRules.IsQdii(position.Name, null)
+            ? AutoPlanTradingScope.ThreeMarkets
+            : AutoPlanTradingScope.China;
+    }
+
+    private DateOnly ResolveBuyTradeDate(DateOnly requestedDate, DateTimeOffset now, AutoPlanTradingScope tradingScope)
+    {
+        var today = _businessDateProvider.Today;
+
+        if (requestedDate != today)
         {
-            return requestedDate;
+            return TradingCalendar.Default.IsTradingDay(requestedDate, tradingScope)
+                ? requestedDate
+                : TradingCalendar.Default.NextTradingDay(requestedDate.AddDays(-1), tradingScope);
         }
 
-        var today = _businessDateProvider.Today;
-        if (!TradingCalendar.Default.GetDay(today).IsTradingDay)
+        if (!TradingCalendar.Default.IsTradingDay(today, tradingScope))
         {
-            return TradingCalendar.Default.NextTradingDay(today.AddDays(-1));
+            return TradingCalendar.Default.NextTradingDay(today.AddDays(-1), tradingScope);
         }
 
         return now >= _businessDateProvider.ToBusinessInstant(today, new TimeOnly(15, 0))
-            ? TradingCalendar.Default.NextTradingDay(today)
+            ? TradingCalendar.Default.NextTradingDay(today, tradingScope)
             : today;
     }
 
@@ -1521,12 +1545,12 @@ public sealed class FundService
             && now < _businessDateProvider.ToBusinessInstant(today, new TimeOnly(15, 0));
     }
 
-    private static DateOnly GetConfirmationDate(DateOnly tradeDate, int delayDays)
+    private static DateOnly GetConfirmationDate(DateOnly tradeDate, int delayDays, AutoPlanTradingScope tradingScope)
     {
         var date = tradeDate;
         for (var index = 0; index < delayDays; index++)
         {
-            date = TradingCalendar.Default.NextTradingDay(date);
+            date = TradingCalendar.Default.NextTradingDay(date, tradingScope);
         }
 
         return date;

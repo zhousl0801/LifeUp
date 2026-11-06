@@ -7,6 +7,7 @@ import { ApiError, getApiErrorMessage } from '../api/client'
 import AmountKeypad from '../components/AmountKeypad.vue'
 import AppIcon from '../components/AppIcon.vue'
 import LoadingState from '../components/LoadingState.vue'
+import LoadingButton from '../components/LoadingButton.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import { categoriesFor } from '../constants/categories'
 import type { EntryCategory } from '../types/category'
@@ -818,14 +819,14 @@ function handleKeydown(event: KeyboardEvent): void {
                 >
                   取消
                 </button>
-                <button
-                  type="button"
+                <LoadingButton
                   class="danger-button"
-                  :disabled="isReversing"
+                  :loading="isReversing"
+                  loading-label="撤销中…"
                   @click="confirmReverse"
                 >
-                  {{ isReversing ? '撤销中…' : '确认撤销' }}
-                </button>
+                  确认撤销
+                </LoadingButton>
               </div>
             </section>
 
@@ -868,7 +869,8 @@ function handleKeydown(event: KeyboardEvent): void {
         <AmountKeypad
           v-model="form.expression"
           :can-submit="canSubmit"
-          :disabled="isSaving || !canEdit"
+          :disabled="!canEdit"
+          :loading="isSaving"
           :date-label="dateLabel"
           @submit="submit"
           @pick-date="pickDate"
@@ -890,9 +892,9 @@ function handleKeydown(event: KeyboardEvent): void {
           <p v-if="categorySheetError" class="form-error">{{ categorySheetError }}</p>
           <div class="form-actions">
             <button type="button" class="secondary-button" :disabled="isCategorySaving" @click="closeCategorySheet">取消</button>
-            <button type="submit" class="primary-button" :disabled="isCategorySaving || !newCategoryName.trim()">
-              {{ isCategorySaving ? '保存中…' : '保存' }}
-            </button>
+            <LoadingButton class="primary-button" type="submit" :loading="isCategorySaving" :disabled="!newCategoryName.trim()" loading-label="保存中…">
+              保存
+            </LoadingButton>
           </div>
         </form>
 
@@ -903,9 +905,9 @@ function handleKeydown(event: KeyboardEvent): void {
           <p v-if="categorySheetError" class="form-error">{{ categorySheetError }}</p>
           <div class="form-actions">
             <button type="button" class="secondary-button" :disabled="isCategorySaving" @click="closeCategorySheet">取消</button>
-            <button type="button" class="danger-button" :disabled="isCategorySaving" @click="confirmDeleteCategory">
-              {{ isCategorySaving ? '删除中…' : '确认删除' }}
-            </button>
+            <LoadingButton class="danger-button" :loading="isCategorySaving" loading-label="删除中…" @click="confirmDeleteCategory">
+              确认删除
+            </LoadingButton>
           </div>
         </template>
       </BottomSheet>

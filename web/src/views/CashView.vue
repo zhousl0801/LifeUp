@@ -6,6 +6,7 @@ import { ApiError, getApiErrorMessage } from '../api/client'
 import AppNav from '../components/AppNav.vue'
 import AnimatedMoney from '../components/AnimatedMoney.vue'
 import BackButton from '../components/BackButton.vue'
+import LoadingButton from '../components/LoadingButton.vue'
 import LoadingState from '../components/LoadingState.vue'
 import { amountTone, formatMoney, formatSignedMoney, parseAmount, subtractAmounts } from '../utils/format'
 import { formatPeriodLabel } from '../utils/period'
@@ -273,6 +274,7 @@ function handleKeydown(event: KeyboardEvent): void {
   <main class="page cash-page with-nav">
     <header class="cash-header">
       <BackButton @back="router.push({ name: 'home' })" />
+      <h1>现金</h1>
       <button type="button" class="reconcile-link" @click="openReconcile">核对余额</button>
     </header>
 
@@ -281,7 +283,7 @@ function handleKeydown(event: KeyboardEvent): void {
 
     <section v-else-if="errorMessage" class="state">
       <p>{{ errorMessage }}</p>
-      <button type="button" class="secondary-button" @click="loadCash">重新加载</button>
+      <LoadingButton class="secondary-button" :loading="isLoading" loading-label="加载中…" @click="loadCash">重新加载</LoadingButton>
     </section>
 
     <template v-else-if="overview">
@@ -438,14 +440,15 @@ function handleKeydown(event: KeyboardEvent): void {
 
             <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
 
-            <button
-              type="button"
+            <LoadingButton
               class="primary-button"
+              :loading="isSaving"
               :disabled="!canSave"
+              loading-label="保存中…"
               @click="submitReconcile"
             >
-              {{ isSaving ? '保存中…' : '保存核对' }}
-            </button>
+              保存核对
+            </LoadingButton>
           </div>
         </section>
       </div>
@@ -464,6 +467,13 @@ function handleKeydown(event: KeyboardEvent): void {
   align-items: center;
   gap: 10px;
   margin-bottom: 16px;
+}
+
+.cash-header h1 {
+  margin: 0;
+  font-size: var(--text-title3);
+  font-weight: 700;
+  letter-spacing: -0.4px;
 }
 
 .reconcile-link {

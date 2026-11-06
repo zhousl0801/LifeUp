@@ -1,3 +1,5 @@
+import { clearReadCache } from './client'
+
 export interface BackupSummary {
   ledgerId: string
   startDate: string
@@ -52,6 +54,9 @@ export function restoreBackup(
   return requestJson<RestoreBackupResult>('/api/ledger/backup/restore', {
     method: 'POST',
     body: JSON.stringify({ backup, validationToken, replaceExisting })
+  }).then((result) => {
+    clearReadCache()
+    return result
   })
 }
 

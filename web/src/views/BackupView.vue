@@ -9,6 +9,7 @@ import {
 } from '../api/backup'
 import type { BackupSummary, BackupValidation, RestoreBackupResult } from '../api/backup'
 import BackButton from '../components/BackButton.vue'
+import LoadingButton from '../components/LoadingButton.vue'
 import { addAmounts, formatBusinessDate, formatMoney } from '../utils/format'
 
 const router = useRouter()
@@ -18,6 +19,7 @@ const isReading = ref(false)
 const isValidating = ref(false)
 const isRestoring = ref(false)
 const isExporting = ref(false)
+const exportingKind = ref<'details' | 'backup' | ''>('')
 const validation = ref<BackupValidation | null>(null)
 const restoreResult = ref<RestoreBackupResult | null>(null)
 const message = ref('')
@@ -39,6 +41,7 @@ function goBack(): void {
 
 async function exportDetails(): Promise<void> {
   isExporting.value = true
+  exportingKind.value = 'details'
   message.value = ''
   errorMessage.value = ''
 
@@ -49,11 +52,13 @@ async function exportDetails(): Promise<void> {
     errorMessage.value = error instanceof Error ? error.message : '导出明细失败，请重试。'
   } finally {
     isExporting.value = false
+    exportingKind.value = ''
   }
 }
 
 async function exportBackup(): Promise<void> {
   isExporting.value = true
+  exportingKind.value = 'backup'
   message.value = ''
   errorMessage.value = ''
 
@@ -64,6 +69,7 @@ async function exportBackup(): Promise<void> {
     errorMessage.value = error instanceof Error ? error.message : '下载备份失败，请重试。'
   } finally {
     isExporting.value = false
+    exportingKind.value = ''
   }
 }
 
@@ -196,12 +202,24 @@ function summaryItems(summary: BackupSummary): { label: string; value: string }[
         </label>
       </div>
       <div class="backup-actions">
-        <button type="button" class="action-secondary" :disabled="isExporting" @click="exportDetails">
+        <LoadingButton
+          class="action-secondary"
+          :loading="exportingKind === 'details'"
+          :disabled="isExporting"
+          loading-label="导出中…"
+          @click="exportDetails"
+        >
           导出明细 CSV
-        </button>
-        <button type="button" class="action-primary" :disabled="isExporting" @click="exportBackup">
+        </LoadingButton>
+        <LoadingButton
+          class="action-primary"
+          :loading="exportingKind === 'backup'"
+          :disabled="isExporting"
+          loading-label="下载中…"
+          @click="exportBackup"
+        >
           下载完整备份
-        </button>
+        </LoadingButton>
       </div>
       <p class="helper-note">明细 CSV 包含日期、类型、方向、金额、现金影响、数量、净值、费用、分类 / 标的、状态和关联标识。</p>
     </section>
@@ -218,14 +236,15 @@ function summaryItems(summary: BackupSummary): { label: string; value: string }[
       <p v-if="fileName" class="file-name">已选择：{{ fileName }}</p>
 
       <div class="backup-actions">
-        <button
-          type="button"
+        <LoadingButton
           class="action-secondary"
-          :disabled="!hasBackup || isValidating || isReading"
+          :loading="isValidating"
+          :disabled="!hasBackup || isReading"
+          loading-label="正在校验…"
           @click="validateSelected"
         >
-          {{ isValidating ? '正在校验…' : '重新校验' }}
-        </button>
+          重新校验
+        </LoadingButton>
       </div>
 
       <p class="helper-note">
@@ -295,15 +314,16 @@ function summaryItems(summary: BackupSummary): { label: string; value: string }[
           <span>我确认用这份备份替换当前账本；恢复失败不会修改当前账本。</span>
         </label>
 
-        <button
+        <LoadingButton
           v-if="validation.isValid"
-          type="button"
           class="restore-button"
+          :loading="isRestoring"
           :disabled="!canRestore"
+          loading-label="正在恢复…"
           @click="restore"
         >
-          {{ isRestoring ? '正在恢复…' : validation.willReplace ? '确认恢复并替换当前账本' : '确认恢复' }}
-        </button>
+          {{ validation.willReplace ? '确认恢复并替换当前账本' : '确认恢复' }}
+        </LoadingButton>
       </section>
     </template>
 

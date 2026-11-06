@@ -14,6 +14,7 @@ import AssetTrendChart from '../components/AssetTrendChart.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
+import LoadingButton from '../components/LoadingButton.vue'
 import { useLedgerStore } from '../stores/ledger'
 import { amountTone, formatBusinessDate, formatMoney, formatSignedMoney, sumAmounts, todayInBusinessTimeZone } from '../utils/format'
 import { useCountUp } from '../utils/countUp'
@@ -353,7 +354,7 @@ onBeforeUnmount(() => {
 
       <section v-else-if="errorMessage" class="hero-error">
         <p>{{ errorMessage }}</p>
-        <button class="hero-reload" type="button" @click="loadLedger">重新加载</button>
+        <LoadingButton class="hero-reload" :loading="isLoading" loading-label="加载中…" @click="loadLedger">重新加载</LoadingButton>
       </section>
 
       <template v-else-if="overview">

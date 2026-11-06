@@ -6,6 +6,7 @@ import BottomSheet from './BottomSheet.vue'
 import AnimatedMoney from './AnimatedMoney.vue'
 import FundReturnChart from './FundReturnChart.vue'
 import LoadingState from './LoadingState.vue'
+import LoadingButton from './LoadingButton.vue'
 import { amountTone, formatBusinessDate, formatMoney, formatSignedMoney, todayInBusinessTimeZone } from '../utils/format'
 import type { TrendRange } from '../types/trend'
 import type { FundReturn, FundReturnDay, FundReturnPoint } from '../types/fundReturn'
@@ -206,7 +207,7 @@ function rowTitle(shareClass: string | null, platform: string | null): string {
     <LoadingState v-if="isLoading && !data" variant="chart" compact label="正在读取投资收益" />
     <section v-else-if="errorMessage" class="state">
       <p>{{ errorMessage }}</p>
-      <button type="button" class="secondary-button" @click="load">重新加载</button>
+      <LoadingButton class="secondary-button" :loading="isLoading" loading-label="加载中…" @click="load">重新加载</LoadingButton>
     </section>
 
     <template v-else-if="data">
@@ -239,11 +240,6 @@ function rowTitle(shareClass: string | null, platform: string | null): string {
         {{ formatBusinessDate(data.from) }} — {{ formatBusinessDate(data.to) }}
       </p>
 
-      <div v-if="data.points.length" class="chart-card">
-        <FundReturnChart :points="data.points" :range="data.range" />
-        <p class="chart-color-note">红涨绿跌；柱形在零线上下表示当日盈亏，折线为累计收益。</p>
-      </div>
-
       <div class="calendar-card">
         <header class="calendar-head">
           <button type="button" :disabled="!canGoPrev" aria-label="上个月" @click="shiftMonth(-1)">‹</button>
@@ -273,6 +269,11 @@ function rowTitle(shareClass: string | null, platform: string | null): string {
           </button>
         </div>
         <p class="calendar-note">“—”表示当天没有新净值披露或依据不足，不代表收益为 0；日历金额按元取整，点击日期查看精确明细。</p>
+      </div>
+
+      <div v-if="data.points.length" class="chart-card">
+        <FundReturnChart :points="data.points" :range="data.range" />
+        <p class="chart-color-note">红涨绿跌；柱形在零线上下表示当日盈亏，折线为累计收益。</p>
       </div>
 
       <ul v-if="data.notes.length" class="return-notes">

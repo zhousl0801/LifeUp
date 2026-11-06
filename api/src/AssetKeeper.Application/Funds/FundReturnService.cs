@@ -500,7 +500,18 @@ public sealed class FundReturnService
             && positionIds.Contains(fact.PositionId.Value)
             && fact.Date <= to))
         {
-            if (correction.Price is null)
+            // 基金份额核对通常不携带价格，按核对日之前最近一个有效净值估算这次份额变动的资金流。
+            var price = correction.Price ?? data.Prices
+                .Where(item => !item.IsSuperseded
+                    && item.AssetType == AssetType.Fund
+                    && item.FundPositionId == correction.PositionId
+                    && item.EffectiveDate <= correction.Date)
+                .OrderByDescending(item => item.EffectiveDate)
+                .ThenByDescending(item => item.RevisionOrder)
+                .Select(item => (decimal?)item.Price)
+                .FirstOrDefault();
+
+            if (price is null)
             {
                 isKnown = false;
                 continue;
@@ -526,7 +537,7 @@ public sealed class FundReturnService
 
             var key = (correction.PositionId!.Value, correction.Date);
             values[key] = values.GetValueOrDefault(key)
-                + ((correction.Quantity ?? 0m) - previousQuantity) * correction.Price.Value;
+                + ((correction.Quantity ?? 0m) - previousQuantity) * price.Value;
         }
 
         return (values, isKnown);

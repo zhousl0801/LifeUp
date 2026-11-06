@@ -81,7 +81,7 @@ beforeEach(() => {
 })
 
 async function showActivities(view: ReturnType<typeof mount>): Promise<void> {
-  await view.findAll('.view-tabs button').find((button) => button.text() === '交易')!.trigger('click')
+  await view.findAll('.view-tabs button').find((button) => button.text() === '交易记录')!.trigger('click')
   await flushPromises()
 }
 
@@ -98,7 +98,7 @@ test('pending buy displays transaction details without editable fields or save a
   await row.trigger('click')
   await flushPromises()
   const sheetText = document.querySelector('.sheet')!.textContent ?? ''
-  expect(sheetText).toContain('T 日 2026年10月21日')
+  expect(sheetText).toContain('确认净值日')
   expect(sheetText).toContain('10月23日自动确认份额')
   expect(sheetText).toContain('待确认扣款')
   expect(sheetText).toContain('300.00')
@@ -155,9 +155,9 @@ test('buy only records the paid amount and defers shares to confirmation', async
   expect(mocks.buy).toHaveBeenCalledTimes(1)
   expect(mocks.buy.mock.calls[0]![0]).toMatchObject({ positionId: 'p1', amount: 300 })
   expect(mocks.buy.mock.calls[0]![0]).not.toHaveProperty('shares')
-  // T 日默认跟下单日期一致，自动确认按这一天的净值折算份额。
-  expect(mocks.buy.mock.calls[0]![0]).toMatchObject({ tradeDate: expect.any(String) })
-  expect(mocks.buy.mock.calls[0]![0].tradeDate).toBe(mocks.buy.mock.calls[0]![0].businessDate)
+  // 买入按提交当时的业务日期记录；净值日由服务端按基金交易范围推断。
+  expect(mocks.buy.mock.calls[0]![0]).toMatchObject({ businessDate: expect.any(String) })
+  expect(mocks.buy.mock.calls[0]![0]).not.toHaveProperty('tradeDate')
   view.unmount()
 })
 

@@ -7,6 +7,7 @@ import { ApiError, getApiErrorMessage } from '../api/client'
 import AppNav from '../components/AppNav.vue'
 import AnimatedMoney from '../components/AnimatedMoney.vue'
 import BackButton from '../components/BackButton.vue'
+import LoadingButton from '../components/LoadingButton.vue'
 import LoadingState from '../components/LoadingState.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import {
@@ -444,6 +445,7 @@ function goBack(): void {
   <main class="page gold-page with-nav">
     <header class="gold-header">
       <BackButton @back="goBack" />
+      <h1>积存金</h1>
     </header>
 
     <LoadingState v-if="isLoading && !overview" variant="hero" label="正在读取积存金" />
@@ -451,7 +453,7 @@ function goBack(): void {
 
     <section v-else-if="errorMessage" class="state">
       <p>{{ errorMessage }}</p>
-      <button type="button" class="secondary-button" @click="loadOverview">重新加载</button>
+      <LoadingButton class="secondary-button" :loading="isLoading" loading-label="加载中…" @click="loadOverview">重新加载</LoadingButton>
     </section>
 
     <template v-else-if="overview">
@@ -697,9 +699,9 @@ function goBack(): void {
           <button type="button" class="secondary-button" :disabled="isSaving" @click="closeSheet">
             取消
           </button>
-          <button type="submit" class="primary-button" :disabled="!canSubmit">
-            {{ isSaving ? '保存中…' : '保存' }}
-          </button>
+          <LoadingButton class="primary-button" type="submit" :loading="isSaving" :disabled="!canSubmit" loading-label="保存中…">
+            保存
+          </LoadingButton>
         </div>
       </form>
     </BottomSheet>
@@ -715,7 +717,15 @@ function goBack(): void {
 .gold-header {
   display: flex;
   align-items: center;
+  gap: 10px;
   margin-bottom: 16px;
+}
+
+.gold-header h1 {
+  margin: 0;
+  font-size: var(--text-title3);
+  font-weight: 700;
+  letter-spacing: -0.4px;
 }
 
 .gold-hero {

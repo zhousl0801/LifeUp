@@ -9,6 +9,7 @@ import AppIcon from '../components/AppIcon.vue'
 import AnimatedMoney from '../components/AnimatedMoney.vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
+import LoadingButton from '../components/LoadingButton.vue'
 import PageHeader from '../components/PageHeader.vue'
 import LedgerStatsChart from '../components/LedgerStatsChart.vue'
 import { ExpenseCategories, IncomeCategories } from '../constants/categories'
@@ -350,7 +351,7 @@ function goBack(): void {
 
     <section v-else-if="errorMessage" class="state">
       <p>{{ errorMessage }}</p>
-      <button type="button" class="secondary-button" @click="loadEntries()">重新加载</button>
+      <LoadingButton class="secondary-button" :loading="isLoading" loading-label="加载中…" @click="loadEntries()">重新加载</LoadingButton>
     </section>
 
     <template v-else>
@@ -390,7 +391,13 @@ function goBack(): void {
         @action="hasFilters ? clearFilters() : openEntry()"
       />
     </template>
-  <button v-if="summary && summary.entries.length < summary.totalCount" type="button" class="secondary-button" :disabled="isLoading" @click="loadEntries(true)">加载更多（已显示 {{ summary.entries.length }} / {{ summary.totalCount }}）</button>
+  <LoadingButton
+    v-if="summary && summary.entries.length < summary.totalCount"
+    class="secondary-button"
+    :loading="isLoading"
+    loading-label="加载中…"
+    @click="loadEntries(true)"
+  >加载更多（已显示 {{ summary.entries.length }} / {{ summary.totalCount }}）</LoadingButton>
     </template>
 
     <template v-else>
@@ -402,7 +409,7 @@ function goBack(): void {
       <LoadingState v-if="statsLoading && !stats" variant="chart" compact label="正在读取图表" />
       <section v-else-if="statsError" class="state">
         <p>{{ statsError }}</p>
-        <button type="button" class="secondary-button" @click="loadStats">重新加载</button>
+        <LoadingButton class="secondary-button" :loading="statsLoading" loading-label="加载中…" @click="loadStats">重新加载</LoadingButton>
       </section>
 
       <template v-else-if="stats">

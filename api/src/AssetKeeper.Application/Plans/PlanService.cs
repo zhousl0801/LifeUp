@@ -209,8 +209,9 @@ public sealed class PlanService
             }
             else
             {
-                var generationFloor = plan.Cycle == AutoPlanCycle.TradingDay
-                    && _dates.ToBusinessInstant(_dates.Today, request.Time) > now ? _dates.Today : _dates.Today.AddDays(1);
+                var generationFloor = _dates.ToBusinessInstant(_dates.Today, request.Time) > now
+                    ? _dates.Today
+                    : _dates.Today.AddDays(1);
                 plan.Update(
                     request.Type,
                     name,

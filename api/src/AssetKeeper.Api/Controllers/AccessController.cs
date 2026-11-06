@@ -20,8 +20,8 @@ public sealed class AccessController(AccessCredential credential, PasskeyService
         {
             required = credential.IsConfigured,
             authenticated = User.Identity?.IsAuthenticated == true,
-            passkeyEnabled = passkeys.Enabled,
-            passkeyAvailable = passkeys.Enabled && await passkeys.HasCredentialsAsync(cancellationToken)
+            passkeyEnabled = credential.IsConfigured && passkeys.Enabled,
+            passkeyAvailable = credential.IsConfigured && passkeys.Enabled && await passkeys.HasCredentialsAsync(cancellationToken)
         });
     }
 

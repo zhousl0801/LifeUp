@@ -8,6 +8,7 @@ import { fetchLedger, updateAssetCoverage } from '../api/ledger'
 import AppNav from '../components/AppNav.vue'
 import AnimatedMoney from '../components/AnimatedMoney.vue'
 import BackButton from '../components/BackButton.vue'
+import LoadingButton from '../components/LoadingButton.vue'
 import LoadingState from '../components/LoadingState.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import {
@@ -480,8 +481,17 @@ async function submit(): Promise<void> {
     }
   } catch (error) {
     if (error instanceof ApiError && error.status === 409) {
+      const positionId = selectedPosition.value?.id
       await loadOverview()
-      expectedVersion.value = selectedPosition.value?.version ?? expectedVersion.value
+      const refreshed = positionId
+        ? overview.value?.positions.find((position) => position.id === positionId) ?? null
+        : null
+
+      if (refreshed) {
+        selectedPosition.value = refreshed
+      }
+
+      expectedVersion.value = refreshed?.version ?? expectedVersion.value
       requestId.value = createRequestId()
     }
 
@@ -712,7 +722,7 @@ function goBack(): void {
 
     <section v-else-if="errorMessage && !overview" class="state">
       <p>{{ errorMessage }}</p>
-      <button type="button" class="secondary-button" @click="loadOverview">重新加载</button>
+      <LoadingButton class="secondary-button" :loading="isLoading" loading-label="加载中…" @click="loadOverview">重新加载</LoadingButton>
     </section>
 
     <template v-else-if="overview">
@@ -753,9 +763,9 @@ function goBack(): void {
       <div v-if="overview.positions.length > 0" class="stock-actions">
         <button type="button" class="action-primary" @click="openSheet('buy')">买入</button>
         <button type="button" class="action-secondary" @click="openSheet('holding')">录入 / 核对</button>
-        <button type="button" class="action-secondary" :disabled="isRefreshing" @click="refreshQuotes">
-          {{ isRefreshing ? '刷新中…' : '刷新行情' }}
-        </button>
+        <LoadingButton class="action-secondary" :loading="isRefreshing" loading-label="刷新中…" @click="refreshQuotes">
+          刷新行情
+        </LoadingButton>
       </div>
 
       <p v-if="notice" class="notice" role="status">{{ notice }}</p>
@@ -767,9 +777,9 @@ function goBack(): void {
           <button type="button" class="primary-button" @click="openSheet('buy')">买入第一只股票</button>
           <button type="button" class="secondary-button" @click="openSheet('holding')">录入已有持仓</button>
         </div>
-        <button type="button" class="text-button empty-link" :disabled="isSaving" @click="markNotHeld">
+        <LoadingButton class="text-button empty-link" :loading="isSaving" loading-label="处理中…" @click="markNotHeld">
           没有股票，标记为不持有
-        </button>
+        </LoadingButton>
       </section>
       <p v-if="!overview.historyConfirmed || !overview.hasEffectiveQuotes" class="hint">
         部分持仓的日期或行情依据不足，当前估值为缓存值。
@@ -966,9 +976,9 @@ function goBack(): void {
                   @keyup.enter="runSearch"
                   @input="formError = ''"
                 />
-                <button type="button" class="search-button" :disabled="searching" @click="runSearch">
-                  {{ searching ? '搜索中…' : '搜索' }}
-                </button>
+                <LoadingButton class="search-button" :loading="searching" loading-label="搜索中…" @click="runSearch">
+                  搜索
+                </LoadingButton>
               </div>
             </label>
             <p v-if="searching" class="form-note">正在搜索股票 / ETF…</p>
@@ -1059,7 +1069,7 @@ function goBack(): void {
             <b v-if="quoteLoading">正在获取…</b>
             <b v-else-if="form.price && form.priceDate">{{ formatUnitPrice(Number(form.price)) }} 元 · {{ formatBusinessDate(form.priceDate) }}</b>
             <b v-else>未获取到行情</b>
-            <button type="button" class="text-button" :disabled="quoteLoading" @click="retryQuote">重新获取</button>
+            <LoadingButton class="text-button" :loading="quoteLoading" loading-label="获取中…" @click="retryQuote">重新获取</LoadingButton>
           </div>
           <p v-if="quoteError" class="form-note error-note">{{ quoteError }}</p>
           <label class="form-field">
@@ -1089,7 +1099,9 @@ function goBack(): void {
 
         <div class="form-actions">
           <button type="button" class="secondary-button" :disabled="isSaving" @click="closeSheet">取消</button>
-          <button type="submit" class="primary-button" :disabled="!canSubmit">{{ isSaving ? '保存中…' : '保存' }}</button>
+          <LoadingButton class="primary-button" type="submit" :loading="isSaving" :disabled="!canSubmit" loading-label="保存中…">
+            保存
+          </LoadingButton>
         </div>
       </form>
     </BottomSheet>
