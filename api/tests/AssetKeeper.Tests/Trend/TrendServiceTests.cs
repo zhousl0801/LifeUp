@@ -69,6 +69,23 @@ public sealed class TrendServiceTests
         Assert.Equal(61, quarter.Points.Count);
     }
 
+    [Fact]
+    public async Task RepeatedRange_ReusesCacheAndInvalidatesAfterWrite()
+    {
+        await using var context = await CreateAsync();
+        var first = await context.Trend.GetAsync(TrendRange.All, CancellationToken.None);
+        var second = await context.Trend.GetAsync(TrendRange.All, CancellationToken.None);
+
+        Assert.Same(first, second);
+
+        await new ProvidentFundService(context.Repository, context.Dates).DepositAsync(
+            new(100m, Today, "缓存失效验证", Guid.NewGuid()),
+            CancellationToken.None);
+        var third = await context.Trend.GetAsync(TrendRange.All, CancellationToken.None);
+
+        Assert.NotSame(first, third);
+    }
+
     private static async Task<TestContext> CreateAsync()
     {
         var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -101,10 +118,14 @@ public sealed class TrendServiceTests
             new(2000m, Today.AddDays(-10), "缴存", Guid.NewGuid()),
             CancellationToken.None);
 
-        return new TestContext(db, new TrendService(repository, dates));
+        return new TestContext(db, repository, dates, new TrendService(repository, dates));
     }
 
-    private sealed record TestContext(AppDbContext Db, TrendService Trend) : IAsyncDisposable
+    private sealed record TestContext(
+        AppDbContext Db,
+        LedgerRepository Repository,
+        BusinessDateProvider Dates,
+        TrendService Trend) : IAsyncDisposable
     {
         public ValueTask DisposeAsync() => Db.DisposeAsync();
     }

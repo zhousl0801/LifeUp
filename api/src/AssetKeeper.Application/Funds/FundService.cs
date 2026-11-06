@@ -719,7 +719,8 @@ public sealed class FundService
                 request.BusinessDate,
                 request.NetValueDate,
                 null,
-                cancellationToken);
+                cancellationToken,
+                replayData);
 
             return AssetOperationResult<FundMutationResultDto>.Created(
                 new FundMutationResultDto(
@@ -955,7 +956,8 @@ public sealed class FundService
                 request.BusinessDate,
                 request.NetValueDate,
                 null,
-                cancellationToken);
+                cancellationToken,
+                replayData);
 
             return AssetOperationResult<FundMutationResultDto>.Created(
                 new FundMutationResultDto(
@@ -1090,7 +1092,8 @@ public sealed class FundService
                 request.BusinessDate,
                 null,
                 null,
-                cancellationToken);
+                cancellationToken,
+                replayData);
 
             return AssetOperationResult<FundMutationResultDto>.Created(
                 new FundMutationResultDto(
@@ -1111,7 +1114,8 @@ public sealed class FundService
     public async Task<AssetOperationResult<FundQuoteRefreshDto>> RefreshQuoteAsync(
         Guid positionId,
         CancellationToken cancellationToken,
-        bool confirmDueBuys = true)
+        bool confirmDueBuys = true,
+        ExternalFundQuote? prefetchedQuote = null)
     {
         var ledger = await _ledgerRepository.GetForUpdateAsync(cancellationToken);
 
@@ -1141,7 +1145,7 @@ public sealed class FundService
 
         try
         {
-            var quote = await _quoteProvider.GetLatestAsync(position.Code, cancellationToken);
+            var quote = prefetchedQuote ?? await _quoteProvider.GetLatestAsync(position.Code, cancellationToken);
             var dateErrors = AssetValidation.ValidateValueDate(quote.EffectiveDate, _businessDateProvider.Today);
 
             if (dateErrors.Count > 0 || quote.NetValue <= 0)

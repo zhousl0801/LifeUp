@@ -1,9 +1,13 @@
+using System.Collections.Concurrent;
 using AssetKeeper.Application.History;
 
 namespace AssetKeeper.Application.Ledgers;
 
 public sealed class TrendService
 {
+    private static readonly ConcurrentDictionary<string, CacheEntry> Cache = new();
+    private static readonly TimeSpan CacheLifetime = TimeSpan.FromSeconds(20);
+
     private readonly ILedgerRepository _ledgerRepository;
     private readonly BusinessDateProvider _dates;
 
@@ -24,10 +28,17 @@ public sealed class TrendService
             return null;
         }
 
+        var today = _dates.Today;
+        var cacheKey = $"{ledger.Id:N}:{ledger.Version}:{range}:{today:yyyyMMdd}";
+
+        if (TryGetCached(cacheKey, out var cached))
+        {
+            return cached;
+        }
+
         var data = await _ledgerRepository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
         var facts = BusinessFact.From(data);
         var calculator = new LedgerReplayCalculator();
-        var today = _dates.Today;
         var from = range switch
         {
             TrendRange.Week => today.AddDays(-6),
@@ -95,6 +106,38 @@ public sealed class TrendService
             notes.Add("部分日期资产或行情依据不足，完整总资产留空；部分资产合计不作为完整总额。");
         }
 
-        return new AssetTrendDto(range, from, today, points, notes);
+        var trend = new AssetTrendDto(range, from, today, points, notes);
+        Store(cacheKey, trend);
+        return trend;
     }
+
+    private static bool TryGetCached(string key, out AssetTrendDto value)
+    {
+        if (Cache.TryGetValue(key, out var entry) && entry.ExpiresAt > DateTimeOffset.UtcNow)
+        {
+            value = entry.Data;
+            return true;
+        }
+
+        Cache.TryRemove(key, out _);
+        value = null!;
+        return false;
+    }
+
+    private static void Store(string key, AssetTrendDto value)
+    {
+        if (Cache.Count >= 64)
+        {
+            var now = DateTimeOffset.UtcNow;
+
+            foreach (var pair in Cache.Where(pair => pair.Value.ExpiresAt <= now).ToList())
+            {
+                Cache.TryRemove(pair.Key, out _);
+            }
+        }
+
+        Cache[key] = new CacheEntry(DateTimeOffset.UtcNow.Add(CacheLifetime), value);
+    }
+
+    private sealed record CacheEntry(DateTimeOffset ExpiresAt, AssetTrendDto Data);
 }

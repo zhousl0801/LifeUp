@@ -29,7 +29,15 @@ public interface IPlanRepository
         int take,
         CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<PlanOccurrence>> GetPendingOccurrencesAsync(Guid ledgerId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<PlanOccurrence>> GetPendingOccurrencesAsync(
+        Guid ledgerId,
+        DateOnly? dueThrough,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyDictionary<Guid, HashSet<string>>> GetOccurrenceKeysAsync(
+        Guid ledgerId,
+        IReadOnlyCollection<Guid> planIds,
+        CancellationToken cancellationToken);
 
     Task<IReadOnlyList<PlanOccurrence>> GetActionableOccurrencesAsync(Guid ledgerId, CancellationToken cancellationToken);
 

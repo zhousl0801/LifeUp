@@ -55,10 +55,19 @@ public sealed class PlanExecutionService
             var today = _dates.Today;
             var plans = await _planRepository.GetPlansAsync(ledger.Id, cancellationToken);
             var activePlans = plans.Where(plan => plan.IsActive).ToList();
+            var activeIds = activePlans.Select(plan => plan.Id).ToHashSet();
+            var existingKeys = new Dictionary<Guid, HashSet<string>>(
+                await _planRepository.GetOccurrenceKeysAsync(ledger.Id, activeIds, cancellationToken));
             var created = 0;
 
             foreach (var plan in activePlans)
             {
+                if (!existingKeys.TryGetValue(plan.Id, out var planKeys))
+                {
+                    planKeys = new HashSet<string>(StringComparer.Ordinal);
+                    existingKeys[plan.Id] = planKeys;
+                }
+
                 foreach (var period in PlanSchedule.GetDuePeriods(plan, plan.GenerateFrom, today))
                 {
                     if (_dates.ToBusinessInstant(period.DueDate, period.DueTime) > now)
@@ -66,7 +75,7 @@ public sealed class PlanExecutionService
                         continue;
                     }
 
-                    if (await _planRepository.FindOccurrenceAsync(plan.Id, period.PeriodKey, cancellationToken) is not null)
+                    if (!planKeys.Add(period.PeriodKey))
                     {
                         continue;
                     }
@@ -83,8 +92,7 @@ public sealed class PlanExecutionService
                 await _planRepository.SaveChangesAsync(cancellationToken);
             }
 
-            var activeIds = activePlans.Select(plan => plan.Id).ToHashSet();
-            var pending = (await _planRepository.GetPendingOccurrencesAsync(ledger.Id, cancellationToken))
+            var pending = (await _planRepository.GetPendingOccurrencesAsync(ledger.Id, today, cancellationToken))
                 .Where(occurrence => activeIds.Contains(occurrence.PlanId)
                     && (occurrence.Status == PlanOccurrenceStatus.Pending || occurrence.CanAutoRetry(today))
                     && _dates.ToBusinessInstant(occurrence.DueDate, occurrence.DueTime) <= now)

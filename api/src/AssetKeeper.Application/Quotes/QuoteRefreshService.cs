@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using AssetKeeper.Application.Assets;
 using AssetKeeper.Application.Funds;
 using AssetKeeper.Application.Gold;
@@ -19,6 +20,9 @@ public sealed class QuoteRefreshService
     private readonly QuoteRefreshMonitor _monitor;
     private readonly QuoteRefreshOptions _options;
     private readonly ILogger<QuoteRefreshService> _logger;
+    private readonly IFundQuoteProvider? _fundQuoteProvider;
+    private readonly IGoldQuoteProvider? _goldQuoteProvider;
+    private readonly IStockQuoteProvider? _stockQuoteProvider;
 
     public QuoteRefreshService(
         ILedgerRepository ledgerRepository,
@@ -28,7 +32,10 @@ public sealed class QuoteRefreshService
         BusinessDateProvider dates,
         QuoteRefreshMonitor monitor,
         IOptions<QuoteRefreshOptions> options,
-        ILogger<QuoteRefreshService> logger)
+        ILogger<QuoteRefreshService> logger,
+        IFundQuoteProvider? fundQuoteProvider = null,
+        IGoldQuoteProvider? goldQuoteProvider = null,
+        IStockQuoteProvider? stockQuoteProvider = null)
     {
         _ledgerRepository = ledgerRepository;
         _fundService = fundService;
@@ -38,6 +45,9 @@ public sealed class QuoteRefreshService
         _monitor = monitor;
         _options = options.Value;
         _logger = logger;
+        _fundQuoteProvider = fundQuoteProvider;
+        _goldQuoteProvider = goldQuoteProvider;
+        _stockQuoteProvider = stockQuoteProvider;
     }
 
     public async Task<QuoteRefreshRunDto?> RefreshAsync(
@@ -75,6 +85,22 @@ public sealed class QuoteRefreshService
                 ? await _ledgerRepository.GetStockPositionsAsync(ledger.Id, cancellationToken)
                 : [];
 
+            // HTTP 预取先并行完成，落库仍按持仓顺序串行，避免多个请求争抢同一账本版本。
+            var fundQuotesTask = PrefetchFundQuotesAsync(positions, cancellationToken);
+            var goldQuoteTask = gold is null || _goldQuoteProvider is null
+                ? Task.FromResult<ExternalGoldQuote?>(null)
+                : TryFetchAsync(
+                    () => _goldQuoteProvider.GetLatestAsync(cancellationToken),
+                    "积存金",
+                    cancellationToken);
+            var stockQuotesTask = PrefetchStockQuotesAsync(stocks, cancellationToken);
+
+            await Task.WhenAll(fundQuotesTask, goldQuoteTask, stockQuotesTask);
+
+            var fundQuotes = await fundQuotesTask;
+            var goldQuote = await goldQuoteTask;
+            var stockQuotes = await stockQuotesTask;
+
             _logger.LogInformation(
                 "行情批量刷新开始：范围 {Scope}，触发 {Trigger}，基金 {FundCount} 只，积存金 {HasGold}，股票 {StockCount} 只。",
                 scope,
@@ -85,11 +111,15 @@ public sealed class QuoteRefreshService
 
             foreach (var position in positions)
             {
+                var prefetchedQuote = string.IsNullOrWhiteSpace(position.Code)
+                    ? null
+                    : fundQuotes.GetValueOrDefault(position.Code);
                 var (result, attempts) = await RefreshFundWithRetryAsync(
                     position,
                     retryCount,
                     retryDelay,
-                    cancellationToken);
+                    cancellationToken,
+                    prefetchedQuote);
                 var success = result.Status is AssetOperationStatus.Success or AssetOperationStatus.Created;
                 var error = success ? null : string.Join(" ", result.Errors);
                 var item = new QuoteRefreshItemDto(
@@ -119,7 +149,8 @@ public sealed class QuoteRefreshService
                 var (result, attempts) = await RefreshGoldWithRetryAsync(
                     retryCount,
                     retryDelay,
-                    cancellationToken);
+                    cancellationToken,
+                    goldQuote);
                 var success = result.Status is AssetOperationStatus.Success or AssetOperationStatus.Created;
                 var error = success ? null : string.Join(" ", result.Errors);
                 var item = new QuoteRefreshItemDto(
@@ -146,11 +177,13 @@ public sealed class QuoteRefreshService
 
             foreach (var stock in stocks)
             {
+                var prefetchedQuote = stockQuotes.GetValueOrDefault((stock.Market, stock.Code));
                 var (result, attempts) = await RefreshStockWithRetryAsync(
                     stock.Id,
                     retryCount,
                     retryDelay,
-                    cancellationToken);
+                    cancellationToken,
+                    prefetchedQuote);
                 var success = result.Status is AssetOperationStatus.Success or AssetOperationStatus.Created;
                 var error = success ? null : string.Join(" ", result.Errors);
                 var item = new QuoteRefreshItemDto(
@@ -317,11 +350,128 @@ public sealed class QuoteRefreshService
 
     public TimeSpan RetryDelay => TimeSpan.FromSeconds(Math.Clamp(_options.RetryDelaySeconds, 0, 60));
 
+    private async Task<IReadOnlyDictionary<string, ExternalFundQuote>> PrefetchFundQuotesAsync(
+        IReadOnlyList<FundPosition> positions,
+        CancellationToken cancellationToken)
+    {
+        var result = new ConcurrentDictionary<string, ExternalFundQuote>(StringComparer.Ordinal);
+
+        if (_fundQuoteProvider is null)
+        {
+            return result;
+        }
+
+        var codes = positions
+            .Select(position => position.Code)
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Select(code => code!)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        if (codes.Count == 0)
+        {
+            return result;
+        }
+
+        using var gate = new SemaphoreSlim(4, 4);
+
+        await Task.WhenAll(codes.Select(async code =>
+        {
+            await gate.WaitAsync(cancellationToken);
+
+            try
+            {
+                var quote = await TryFetchAsync(
+                    () => _fundQuoteProvider.GetLatestAsync(code, cancellationToken),
+                    $"基金 {code}",
+                    cancellationToken);
+
+                if (quote is not null)
+                {
+                    result[code] = quote;
+                }
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }));
+
+        return result;
+    }
+
+    private async Task<IReadOnlyDictionary<(StockMarket Market, string Code), ExternalStockQuote>> PrefetchStockQuotesAsync(
+        IReadOnlyList<StockPosition> positions,
+        CancellationToken cancellationToken)
+    {
+        var result = new ConcurrentDictionary<(StockMarket Market, string Code), ExternalStockQuote>();
+
+        if (_stockQuoteProvider is null)
+        {
+            return result;
+        }
+
+        var keys = positions
+            .Select(position => (position.Market, position.Code))
+            .Where(key => !string.IsNullOrWhiteSpace(key.Code))
+            .Distinct()
+            .ToList();
+
+        if (keys.Count == 0)
+        {
+            return result;
+        }
+
+        using var gate = new SemaphoreSlim(4, 4);
+
+        await Task.WhenAll(keys.Select(async key =>
+        {
+            await gate.WaitAsync(cancellationToken);
+
+            try
+            {
+                var quote = await TryFetchAsync(
+                    () => _stockQuoteProvider.GetLatestAsync(key.Market, key.Code, cancellationToken),
+                    $"股票 {key.Code}",
+                    cancellationToken);
+
+                if (quote is not null)
+                {
+                    result[key] = quote;
+                }
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }));
+
+        return result;
+    }
+
+    private async Task<T?> TryFetchAsync<T>(
+        Func<Task<T>> fetch,
+        string label,
+        CancellationToken cancellationToken) where T : class
+    {
+        try
+        {
+            return await fetch();
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // 预取失败不直接判定整项失败；后续串行刷新仍会按原重试策略再尝试并记录状态。
+            _logger.LogDebug(exception, "行情预取失败，回退到串行刷新：{Label}", label);
+            return null;
+        }
+    }
+
     private async Task<(AssetOperationResult<FundQuoteRefreshDto> Result, int Attempts)> RefreshFundWithRetryAsync(
         FundPosition position,
         int retryCount,
         TimeSpan retryDelay,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ExternalFundQuote? prefetchedQuote = null)
     {
         var attempts = 0;
         var maxAttempts = Math.Clamp(retryCount, 0, 5) + 1;
@@ -333,7 +483,11 @@ public sealed class QuoteRefreshService
 
             try
             {
-                result = await _fundService.RefreshQuoteAsync(position.Id, cancellationToken, confirmDueBuys: false);
+                result = await _fundService.RefreshQuoteAsync(
+                    position.Id,
+                    cancellationToken,
+                    confirmDueBuys: false,
+                    prefetchedQuote);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -378,7 +532,8 @@ public sealed class QuoteRefreshService
     private async Task<(AssetOperationResult<GoldQuoteRefreshDto> Result, int Attempts)> RefreshGoldWithRetryAsync(
         int retryCount,
         TimeSpan retryDelay,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ExternalGoldQuote? prefetchedQuote = null)
     {
         var attempts = 0;
         var maxAttempts = Math.Clamp(retryCount, 0, 5) + 1;
@@ -390,7 +545,7 @@ public sealed class QuoteRefreshService
 
             try
             {
-                result = await _goldService.RefreshQuoteAsync(cancellationToken);
+                result = await _goldService.RefreshQuoteAsync(cancellationToken, prefetchedQuote);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -434,7 +589,8 @@ public sealed class QuoteRefreshService
         Guid positionId,
         int retryCount,
         TimeSpan retryDelay,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ExternalStockQuote? prefetchedQuote = null)
     {
         var attempts = 0;
         var maxAttempts = Math.Clamp(retryCount, 0, 5) + 1;
@@ -446,7 +602,7 @@ public sealed class QuoteRefreshService
 
             try
             {
-                result = await _stockService.RefreshQuoteAsync(positionId, cancellationToken);
+                result = await _stockService.RefreshQuoteAsync(positionId, cancellationToken, prefetchedQuote);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {

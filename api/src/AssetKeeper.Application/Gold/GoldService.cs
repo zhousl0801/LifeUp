@@ -415,7 +415,9 @@ public sealed class GoldService
         }
     }
 
-    public async Task<AssetOperationResult<GoldQuoteRefreshDto>> RefreshQuoteAsync(CancellationToken cancellationToken)
+    public async Task<AssetOperationResult<GoldQuoteRefreshDto>> RefreshQuoteAsync(
+        CancellationToken cancellationToken,
+        ExternalGoldQuote? prefetchedQuote = null)
     {
         var ledger = await _ledgerRepository.GetForUpdateAsync(cancellationToken);
 
@@ -434,7 +436,7 @@ public sealed class GoldService
 
         try
         {
-            var quote = await _quoteProvider.GetLatestAsync(cancellationToken);
+            var quote = prefetchedQuote ?? await _quoteProvider.GetLatestAsync(cancellationToken);
             var dateErrors = AssetValidation.ValidateValueDate(quote.EffectiveDate, _businessDateProvider.Today);
 
             if (dateErrors.Count > 0 || quote.Quote <= 0)

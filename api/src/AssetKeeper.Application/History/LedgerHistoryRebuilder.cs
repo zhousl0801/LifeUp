@@ -17,10 +17,16 @@ public sealed class LedgerHistoryRebuilder
         _dates = dates;
     }
 
-    public async Task StageAsync(Ledger ledger, AssetTransaction transaction, DateOnly date, DateOnly? priceDate,
-        Guid? adjustmentId, CancellationToken cancellationToken)
+    public async Task StageAsync(
+        Ledger ledger,
+        AssetTransaction transaction,
+        DateOnly date,
+        DateOnly? priceDate,
+        Guid? adjustmentId,
+        CancellationToken cancellationToken,
+        LedgerReplayData? replayData = null)
     {
-        var data = await _repository.GetReplayDataAsync(ledger.Id, cancellationToken);
+        var data = replayData ?? await _repository.GetReplayDataAsync(ledger.Id, cancellationToken);
         var isQuote = transaction.Kind is AssetTransactionKind.FundQuote or AssetTransactionKind.GoldQuote
             or AssetTransactionKind.StockQuote;
 
@@ -33,23 +39,46 @@ public sealed class LedgerHistoryRebuilder
         transaction.SetHistoryMetadata(date, priceDate, ledger.AllocateFactSequence());
         transaction.LinkCashAdjustment(adjustmentId);
         await _repository.AddAssetTransactionAsync(transaction, cancellationToken);
-        await AddPriceAsync(ledger, transaction, cancellationToken);
-        await RebuildAsync(ledger.Id, transaction.Id, cancellationToken);
+        var price = await AddPriceAsync(ledger, transaction, cancellationToken);
+
+        // 复用本次已经加载的账本快照，把新事实和行情补进去，避免 RebuildAsync 再读一遍全账本。
+        var transactions = data.Transactions.Any(item => item.Id == transaction.Id)
+            ? data.Transactions
+            : data.Transactions.Append(transaction).ToList();
+        var prices = price is null || data.Prices.Any(item => item.Id == price.Id)
+            ? data.Prices
+            : data.Prices.Append(price).ToList();
+        var stagedData = data with
+        {
+            Transactions = transactions,
+            Prices = prices
+        };
+
+        await RebuildAsync(ledger.Id, transaction.Id, cancellationToken, replayData: stagedData);
     }
 
-    public async Task AddPriceAsync(Ledger ledger, AssetTransaction transaction, CancellationToken cancellationToken)
+    public async Task<PriceObservation?> AddPriceAsync(Ledger ledger, AssetTransaction transaction, CancellationToken cancellationToken)
     {
         if (transaction.Price is decimal price && transaction.PriceDate is DateOnly priceDate && !transaction.IsReversed)
         {
-            await _repository.AddPriceObservationAsync(PriceObservation.Create(ledger.Id, transaction.AssetType,
+            var observation = PriceObservation.Create(ledger.Id, transaction.AssetType,
                 transaction.PositionId, transaction.Id, price, priceDate, _dates.UtcNow, ledger.AllocateFactSequence(),
-                transaction.QuoteSource), cancellationToken);
+                transaction.QuoteSource);
+            await _repository.AddPriceObservationAsync(observation, cancellationToken);
+            return observation;
         }
+
+        return null;
     }
 
-    public async Task<ReplayResult> RebuildAsync(Guid ledgerId, Guid changedId, CancellationToken cancellationToken, bool confirmedImpact = false)
+    public async Task<ReplayResult> RebuildAsync(
+        Guid ledgerId,
+        Guid changedId,
+        CancellationToken cancellationToken,
+        bool confirmedImpact = false,
+        LedgerReplayData? replayData = null)
     {
-        var data = await _repository.GetReplayDataAsync(ledgerId, cancellationToken);
+        var data = replayData ?? await _repository.GetReplayDataAsync(ledgerId, cancellationToken);
         var facts = BusinessFact.From(data);
         var changed = facts.SingleOrDefault(fact => fact.Id == changedId);
 

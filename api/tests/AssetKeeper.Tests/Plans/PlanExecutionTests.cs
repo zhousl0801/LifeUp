@@ -128,7 +128,7 @@ public sealed class PlanExecutionTests
         Assert.Equal(1, first.Waiting);
         Assert.Equal(100m, (await context.Ledger.GetOverviewAsync(CancellationToken.None))!.Cash.Amount);
         Assert.Equal(200m, (await context.Provident.GetOverviewAsync(CancellationToken.None))!.Balance);
-        var waiting = (await context.PlanRepo.GetPendingOccurrencesAsync(context.LedgerId, CancellationToken.None));
+        var waiting = (await context.PlanRepo.GetPendingOccurrencesAsync(context.LedgerId, null, CancellationToken.None));
         Assert.Empty(waiting);
         var all = await context.PlanRepo.GetOccurrencesAsync(context.LedgerId, null, null, 10, CancellationToken.None);
         var sipOccurrence = all.Single(occurrence => occurrence.Type == AutoPlanType.FundSip);

@@ -101,18 +101,51 @@ public sealed class PlanRepository : IPlanRepository
         return (items, total);
     }
 
-    public async Task<IReadOnlyList<PlanOccurrence>> GetPendingOccurrencesAsync(Guid ledgerId, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<PlanOccurrence>> GetPendingOccurrencesAsync(
+        Guid ledgerId,
+        DateOnly? dueThrough,
+        CancellationToken cancellationToken)
     {
         // 同时取回失败的期次：当天内的失败可以在后续运行里自动重试，是否重试由服务层判定。
-        return await _dbContext.PlanOccurrences
+        var query = _dbContext.PlanOccurrences
             .Where(occurrence => occurrence.LedgerId == ledgerId
                 && (occurrence.Status == PlanOccurrenceStatus.Pending
-                    || occurrence.Status == PlanOccurrenceStatus.Failed))
+                    || occurrence.Status == PlanOccurrenceStatus.Failed));
+
+        if (dueThrough is not null)
+        {
+            query = query.Where(occurrence => occurrence.DueDate <= dueThrough);
+        }
+
+        return await query
             .OrderBy(occurrence => occurrence.DueDate)
             .ThenBy(occurrence => occurrence.DueTime)
             .ThenBy(occurrence => occurrence.Type)
             .ThenBy(occurrence => occurrence.PlanId)
             .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, HashSet<string>>> GetOccurrenceKeysAsync(
+        Guid ledgerId,
+        IReadOnlyCollection<Guid> planIds,
+        CancellationToken cancellationToken)
+    {
+        if (planIds.Count == 0)
+        {
+            return new Dictionary<Guid, HashSet<string>>();
+        }
+
+        var rows = await _dbContext.PlanOccurrences
+            .AsNoTracking()
+            .Where(occurrence => occurrence.LedgerId == ledgerId && planIds.Contains(occurrence.PlanId))
+            .Select(occurrence => new { occurrence.PlanId, occurrence.PeriodKey })
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .GroupBy(row => row.PlanId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Select(row => row.PeriodKey).ToHashSet(StringComparer.Ordinal));
     }
 
     public async Task<IReadOnlyList<PlanOccurrence>> GetActionableOccurrencesAsync(Guid ledgerId, CancellationToken cancellationToken)
