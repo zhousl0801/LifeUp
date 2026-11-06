@@ -2,7 +2,7 @@
 import { storeToRefs } from 'pinia'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
-import { fetchAssetTrend, fetchMonthChange } from '../api/ledger'
+import { fetchAssetTrend, fetchDayChange, fetchMonthChange } from '../api/ledger'
 import { fetchPlanOverview } from '../api/plans'
 import { refreshQuotes } from '../api/quotes'
 import { getApiErrorMessage } from '../api/client'
@@ -57,7 +57,10 @@ const trendRange = ref<TrendRange>('week')
 const trendSelection = ref<AssetTrendPoint | null>(null)
 const trendLoading = ref(false)
 const trendError = ref('')
+const dayChange = ref<MonthChange | null>(null)
 const monthChange = ref<MonthChange | null>(null)
+const changeScope = ref<'day' | 'month'>('day')
+const dayChangeError = ref('')
 const monthChangeError = ref('')
 const planOverview = ref<PlanOverview | null>(null)
 const planError = ref('')
@@ -95,9 +98,13 @@ const selectedPoint = computed(() => {
 
   return scoped.points.find((point) => point.date === date) ?? scoped.latest
 })
-const addedRecords = computed(() => monthChange.value?.addedRecords ?? 0)
+const activeChange = computed(() => changeScope.value === 'day' ? dayChange.value : monthChange.value)
+const activeChangeError = computed(() =>
+  changeScope.value === 'day' ? dayChangeError.value : monthChangeError.value)
+const changeSheetTitle = computed(() => changeScope.value === 'day' ? '当日变化构成' : '本月变化构成')
+const addedRecords = computed(() => activeChange.value?.addedRecords ?? 0)
 const changePercent = computed(() => {
-  const change = monthChange.value
+  const change = activeChange.value
 
   if (!change?.hasComparableData || change.comparableChange === null || !change.comparableBase) {
     return null
@@ -213,7 +220,7 @@ function selectPoint(point: AssetTrendPoint): void {
 
 async function loadLedger(): Promise<void> {
   const statusPromise = ledgerStore.load()
-  const detailPromise = Promise.all([loadTrend(trendRange.value), loadMonthChange(), loadPlans()])
+  const detailPromise = Promise.all([loadTrend(trendRange.value), loadChanges(), loadPlans()])
   const status = await statusPromise
 
   if (status === 'missing') {
@@ -240,6 +247,21 @@ async function loadTrend(range: TrendRange): Promise<void> {
   } finally {
     trendSelection.value = null
     trendLoading.value = false
+  }
+}
+
+async function loadChanges(): Promise<void> {
+  await Promise.all([loadDayChange(), loadMonthChange()])
+}
+
+async function loadDayChange(): Promise<void> {
+  dayChangeError.value = ''
+
+  try {
+    dayChange.value = await fetchDayChange()
+  } catch {
+    dayChange.value = null
+    dayChangeError.value = '当日变化暂时无法读取，请稍后重试。'
   }
 }
 
@@ -286,7 +308,7 @@ async function syncQuotes(): Promise<void> {
       ? `行情同步完成：成功 ${succeeded} 项，失败 ${failed} 项。`
       : `行情已同步：更新 ${run.updated} 项。`
 
-    await Promise.all([ledgerStore.load(), loadTrend(trendRange.value), loadMonthChange()])
+    await Promise.all([ledgerStore.load(), loadTrend(trendRange.value), loadChanges()])
   } catch (error) {
     quoteError.value = getApiErrorMessage(error, '行情同步失败，请稍后重试。')
   } finally {
@@ -320,7 +342,6 @@ onBeforeUnmount(() => {
     <section class="home-hero">
       <header class="hero-top">
         <div class="hero-brand">
-          <p class="brand">资产管家</p>
           <h1>总览</h1>
         </div>
         <div class="hero-actions">
@@ -369,15 +390,15 @@ onBeforeUnmount(() => {
 
           <div class="hero-change-row">
             <button
-              v-if="monthChange?.hasComparableData"
+              v-if="activeChange?.hasComparableData"
               type="button"
               class="hero-change"
               :aria-expanded="changeSheetOpen"
               @click="changeSheetOpen = true"
             >
-              <span class="change-arrow" :class="amountTone(monthChange.comparableChange)">▲</span>
-              <b :class="amountTone(monthChange.comparableChange)">
-                {{ formatSignedMoney(monthChange.comparableChange ?? 0) }}
+              <span class="change-arrow" :class="amountTone(activeChange.comparableChange)">▲</span>
+              <b :class="amountTone(activeChange.comparableChange)">
+                {{ formatSignedMoney(activeChange.comparableChange ?? 0) }}
               </b>
               <span v-if="changePercent !== null" class="change-percent" :class="amountTone(changePercent)">
                 {{ percentLabel(changePercent) }}
@@ -391,11 +412,24 @@ onBeforeUnmount(() => {
               :aria-expanded="changeSheetOpen"
               @click="changeSheetOpen = true"
             >
-              <span>本月变化</span>
+              <span>{{ changeScope === 'day' ? '当日变化' : '本月变化' }}</span>
               <b>暂无可比数据</b>
               <span class="info-mark">ⓘ</span>
             </button>
-            <span class="change-caption">本月</span>
+            <div class="change-scope" role="group" aria-label="资产变化范围">
+              <button
+                type="button"
+                :class="{ active: changeScope === 'day' }"
+                :aria-pressed="changeScope === 'day'"
+                @click="changeScope = 'day'"
+              >当日</button>
+              <button
+                type="button"
+                :class="{ active: changeScope === 'month' }"
+                :aria-pressed="changeScope === 'month'"
+                @click="changeScope = 'month'"
+              >本月</button>
+            </div>
           </div>
         </div>
 
@@ -445,7 +479,7 @@ onBeforeUnmount(() => {
       </template>
     </section>
 
-    <p v-if="monthChangeError" class="home-error">{{ monthChangeError }}</p>
+    <p v-if="activeChangeError" class="home-error">{{ activeChangeError }}</p>
 
     <template v-if="!isLoading && !errorMessage && overview">
       <section class="metric-grid">
@@ -474,8 +508,9 @@ onBeforeUnmount(() => {
 
       <AssetDistribution
         :overview="overview"
-        :changes="monthChange?.assetChanges"
-        :comparable="monthChange?.hasComparableData ?? false"
+        :changes="activeChange?.assetChanges"
+        :comparable="activeChange?.hasComparableData ?? false"
+        :change-scope="changeScope"
         manage-to="/assets"
         hide-fund-count
       />
@@ -513,30 +548,38 @@ onBeforeUnmount(() => {
 
     <AppNav />
 
-    <BottomSheet :open="changeSheetOpen" title="本月变化构成" @close="changeSheetOpen = false">
-      <div v-if="monthChange" class="breakdown">
-        <template v-if="monthChange.hasComparableData">
+    <BottomSheet :open="changeSheetOpen" :title="changeSheetTitle" @close="changeSheetOpen = false">
+      <div v-if="activeChange" class="breakdown">
+        <template v-if="activeChange.hasComparableData">
           <div class="breakdown-row">
             <span>市值变动</span>
-            <b :class="amountTone(monthChange.marketValueChange)">{{ formatSignedMoney(monthChange.marketValueChange ?? 0) }}</b>
+            <b :class="amountTone(activeChange.marketValueChange)">{{ formatSignedMoney(activeChange.marketValueChange ?? 0) }}</b>
           </div>
           <div class="breakdown-row">
             <span>净存入·转账</span>
-            <b :class="amountTone(monthChange.netDeposit)">{{ formatSignedMoney(monthChange.netDeposit ?? 0) }}</b>
+            <b :class="amountTone(activeChange.netDeposit)">{{ formatSignedMoney(activeChange.netDeposit ?? 0) }}</b>
           </div>
           <div class="breakdown-total">
-            <span>本月变化</span>
-            <b :class="amountTone(monthChange.comparableChange)">{{ formatSignedMoney(monthChange.comparableChange ?? 0) }}</b>
+            <span>{{ changeScope === 'day' ? '当日变化' : '本月变化' }}</span>
+            <b :class="amountTone(activeChange.comparableChange)">{{ formatSignedMoney(activeChange.comparableChange ?? 0) }}</b>
           </div>
         </template>
-        <p v-else class="hint">账本起始日晚于本月月初，暂无可比基线。记录满一个完整月份后即可看到同口径变化。</p>
+        <p v-else class="hint">
+          {{ changeScope === 'day'
+            ? '账本从今天开始，暂无可比基线。记录满一天后即可看到当日变化。'
+            : '账本起始日晚于本月月初，暂无可比基线。记录满一个完整月份后即可看到同口径变化。' }}
+        </p>
         <div v-if="addedRecords > 0" class="breakdown-row new-record">
           <span>新增记录（不计入变化）</span>
           <b>{{ formatSignedMoney(addedRecords) }}</b>
         </div>
-        <p class="sheet-note">只比较月初和今天都已记录的类别；现金和公积金只叫余额变化，基金和积存金的市值变化才叫收益。</p>
+        <p class="sheet-note">
+          {{ changeScope === 'day'
+            ? '只比较昨天和今天都已记录的类别；现金和公积金只叫余额变化，基金和积存金的市值变化才叫收益。'
+            : '只比较月初和今天都已记录的类别；现金和公积金只叫余额变化，基金和积存金的市值变化才叫收益。' }}
+        </p>
       </div>
-      <p v-else class="hint">{{ monthChangeError || '本月变化暂时无法读取。' }}</p>
+      <p v-else class="hint">{{ activeChangeError || '资产变化暂时无法读取。' }}</p>
     </BottomSheet>
   </main>
 </template>
@@ -560,14 +603,6 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
-}
-
-.brand {
-  margin: 0 0 3px;
-  color: var(--color-hero-text-secondary);
-  font-size: var(--text-caption);
-  font-weight: 500;
-  letter-spacing: 0.2px;
 }
 
 .hero-brand h1 {
@@ -761,9 +796,29 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
 }
 
-.change-caption {
-  color: var(--color-hero-text-muted);
+.change-scope {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--color-hero-surface);
+}
+
+.change-scope button {
+  min-height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-hero-text-secondary);
   font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.change-scope button.active {
+  background: var(--color-hero-surface-strong);
+  color: var(--color-hero-text);
+  font-weight: 600;
 }
 
 .info-mark {

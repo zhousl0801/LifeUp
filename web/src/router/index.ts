@@ -34,11 +34,6 @@ const router = createRouter({
       component: () => import('../views/MineView.vue')
     },
     {
-      path: '/security',
-      name: 'security',
-      component: () => import('../views/SecurityView.vue')
-    },
-    {
       path: '/backup',
       name: 'backup',
       component: () => import('../views/BackupView.vue')

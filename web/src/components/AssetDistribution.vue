@@ -25,6 +25,7 @@ const props = defineProps<{
   overview: LedgerOverview
   changes?: AssetChange[]
   comparable?: boolean
+  changeScope?: 'day' | 'month'
   editable?: boolean
   manageTo?: string
   hideFundCount?: boolean
@@ -111,6 +112,8 @@ const barSegments = computed(() => rows.value
   .filter((row) => row.configured && !row.notHeld && row.amount !== null && row.amount > 0)
   .map((row) => ({ key: row.key, width: row.percent ?? 0 })))
 
+const changePrefix = computed(() => props.changeScope === 'day' ? '较昨日' : '较上月')
+
 const barLabel = computed(() => {
   const parts = rows.value
     .filter((row) => row.configured && !row.notHeld && row.percent !== null)
@@ -151,14 +154,14 @@ function changeLabel(row: DistributionRow): string {
   }
 
   if (row.change?.isNew) {
-    return '本月新增'
+    return `${props.changeScope === 'day' ? '当日' : '本月'}新增`
   }
 
   if (props.comparable === false || row.change?.change == null) {
-    return '较上月 —'
+    return `${changePrefix.value} —`
   }
 
-  return `较上月 ${formatSignedMoney(row.change.change)}`
+  return `${changePrefix.value} ${formatSignedMoney(row.change.change)}`
 }
 
 function changeTone(row: DistributionRow): string {

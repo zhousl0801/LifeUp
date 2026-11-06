@@ -9,8 +9,8 @@ export default defineConfig({
       registerType: 'prompt',
       injectRegister: null,
       manifest: {
-        name: '资产管家',
-        short_name: '资产管家',
+        name: 'LifeUp',
+        short_name: 'LifeUp',
         description: '个人资产观察与日常记账',
         lang: 'zh-CN',
         id: '/',

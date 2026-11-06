@@ -10,6 +10,7 @@ import type { AssetTrend } from '../types/trend'
 const mocks = vi.hoisted(() => ({
   ledger: vi.fn(),
   trend: vi.fn(),
+  dayChange: vi.fn(),
   change: vi.fn(),
   plans: vi.fn(),
   quotes: vi.fn()
@@ -18,6 +19,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../api/ledger', () => ({
   fetchLedger: mocks.ledger,
   fetchAssetTrend: mocks.trend,
+  fetchDayChange: mocks.dayChange,
   fetchMonthChange: mocks.change,
   updateAssetCoverage: vi.fn(),
   initializeLedger: vi.fn()
@@ -140,6 +142,7 @@ const monthChange: MonthChange = {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.plans.mockResolvedValue({ plans: [], pendingOccurrences: [] })
+  mocks.dayChange.mockResolvedValue(structuredClone(monthChange))
   mocks.change.mockResolvedValue(structuredClone(monthChange))
 })
 
@@ -284,11 +287,11 @@ test('adds the other active plans to a pending row so the type total stays visib
   view.unmount()
 })
 
-test('shows the same-scope change and percentage when a comparable baseline exists', async () => {
+test('defaults to today change and switches to month change', async () => {
   const start = shift(today, -30)
   mocks.ledger.mockResolvedValue(overview(start))
   mocks.trend.mockResolvedValue(trend(start))
-  mocks.change.mockResolvedValue({
+  mocks.dayChange.mockResolvedValue({
     ...structuredClone(monthChange),
     hasComparableData: true,
     comparableChange: 1000,
@@ -297,11 +300,27 @@ test('shows the same-scope change and percentage when a comparable baseline exis
     marketValueChange: 600,
     netDeposit: 400
   })
+  mocks.change.mockResolvedValue({
+    ...structuredClone(monthChange),
+    hasComparableData: true,
+    comparableChange: 2000,
+    comparableBase: 40000,
+    totalChange: 2000,
+    marketValueChange: 1200,
+    netDeposit: 800
+  })
 
   const view = mount(HomeView, { global: { plugins: [createPinia()] } })
   await flushPromises()
 
+  expect(view.find('.change-scope button.active').text()).toBe('当日')
   expect(view.find('.hero-change').text()).toContain('+1,000.00')
+  expect(view.find('.hero-change').text()).toContain('+5.00%')
+
+  await view.findAll('.change-scope button').find((button) => button.text() === '本月')!.trigger('click')
+
+  expect(view.find('.change-scope button.active').text()).toBe('本月')
+  expect(view.find('.hero-change').text()).toContain('+2,000.00')
   expect(view.find('.hero-change').text()).toContain('+5.00%')
   view.unmount()
 })

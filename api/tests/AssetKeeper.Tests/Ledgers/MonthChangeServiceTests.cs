@@ -58,6 +58,31 @@ public sealed class MonthChangeServiceTests
     }
 
     [Fact]
+    public async Task GetAsync_DayScope_ComparesTodayWithYesterday()
+    {
+        await using var context = await CreateAsync(Today.AddDays(-31));
+        await TestFundQuotes.RefreshAsync(new LedgerRepository(context.Db), new BusinessDateProvider(new FixedTimeProvider(Now)), context.FundPositionId, 12m, new DateOnly(2026, 10, 15));
+        await context.Gold.UpdateQuoteAsync(
+            new UpdateGoldQuoteRequest(950m, new DateOnly(2026, 10, 16), Guid.NewGuid()),
+            CancellationToken.None);
+        await context.Entries.CreateAsync(
+            new CreateLedgerEntryRequest(LedgerEntryKind.Income, "工资", 500m, Today, null, Guid.NewGuid()),
+            CancellationToken.None);
+
+        var dates = new BusinessDateProvider(new FixedTimeProvider(Now));
+        var change = await new MonthChangeService(new LedgerRepository(context.Db), dates)
+            .GetAsync(ChangeScope.Day, CancellationToken.None);
+
+        Assert.NotNull(change);
+        Assert.Equal(Today, change.From);
+        Assert.Equal(Today, change.To);
+        Assert.True(change.HasComparableData);
+        Assert.Equal(500m, change.LivingSurplus);
+        Assert.Equal(500m, change.ComparableChange);
+        Assert.Equal(0m, change.ReconciliationDifference);
+    }
+
+    [Fact]
     public async Task GetAsync_WhenLedgerStartsThisMonth_HasNoComparableBaseline()
     {
         var startDate = new DateOnly(2026, 10, 10);

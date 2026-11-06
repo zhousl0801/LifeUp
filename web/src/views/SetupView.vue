@@ -102,7 +102,7 @@ function clearErrors(): void {
   <main class="page">
     <header class="app-header">
       <div>
-        <p class="app-name">资产管家</p>
+        <p class="app-name">LifeUp</p>
         <p class="app-sub">建立起始账本</p>
       </div>
       <span class="currency-tag">CNY</span>

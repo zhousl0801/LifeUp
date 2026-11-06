@@ -91,11 +91,6 @@ export async function readOnlyRequest<T>(path: string, init?: RequestInit): Prom
     })
 
     if (!response.ok) {
-      if (response.status === 401) {
-        clearReadCache()
-        const { markAccessLost } = await import('./access')
-        markAccessLost()
-      }
       const problem = await readProblem(response)
       const firstFieldError = problem?.errors
         ? Object.values(problem.errors).flat()[0]

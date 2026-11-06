@@ -1,5 +1,11 @@
 namespace AssetKeeper.Application.Ledgers;
 
+public enum ChangeScope
+{
+    Day,
+    Month
+}
+
 public sealed record AssetChangeDto(string AssetType, decimal? Change, bool IsNew);
 
 public sealed record MonthChangeDto(
