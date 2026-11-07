@@ -114,12 +114,14 @@
   --color-on-danger: var(--palette-white);
 
   /* 财务：保留红盈绿亏，薄荷绿只承担品牌和图表强调。 */
-  --color-finance-gain: var(--palette-red);
-  --color-finance-loss: var(--palette-green);
+  --color-finance-gain: #C23838;
+  --color-finance-gain-on-hero: #FF9292;
+  --color-finance-loss-on-hero: #7CE7B1;
+  --color-finance-loss: #237A58;
   --color-finance-gain-bg: var(--palette-red-soft);
   --color-finance-loss-bg: var(--palette-green-soft);
   --color-finance-flat: var(--palette-lilac-600);
-  --color-finance-income: var(--palette-green);
+  --color-finance-income: #237A58;
   --color-finance-expense: var(--palette-ink-text);
   --color-finance-transfer: var(--palette-violet-500);
   --color-finance-net-change: var(--palette-ink-text);

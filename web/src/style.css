@@ -101,6 +101,12 @@ summary:focus-visible {
   font-size: var(--text-caption);
 }
 
+/* Hero 内的财务数字使用适合深色背景的文字色。 */
+:is(.home-hero, .cash-hero, .funds-hero, .stock-hero, .gold-hero, .provident-hero, .hero) {
+  --color-finance-gain: var(--color-finance-gain-on-hero);
+  --color-finance-loss: var(--color-finance-loss-on-hero);
+}
+
 /* 金额方向：红增绿减，只用于带正负方向的收益、收益率、余额变化与结余。
  * 组件内会给金额元素设置默认文字色，工具类需覆盖它，因此使用 !important。 */
 .amount-gain {

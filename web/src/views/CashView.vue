@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { navigateBack } from '../utils/navigation'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchCashOverview, reconcileCash } from '../api/cash'
 import { ApiError, getApiErrorMessage } from '../api/client'
 import AppNav from '../components/AppNav.vue'
 import AnimatedMoney from '../components/AnimatedMoney.vue'
 import BackButton from '../components/BackButton.vue'
+import BottomSheet from '../components/BottomSheet.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import LoadingState from '../components/LoadingState.vue'
 import { amountTone, formatMoney, formatSignedMoney, parseAmount, subtractAmounts } from '../utils/format'
@@ -35,7 +37,6 @@ const formError = ref('')
 const isSaving = ref(false)
 const requestId = ref(createRequestId())
 const expectedVersion = ref(0)
-const actualBalanceInput = ref<HTMLInputElement | null>(null)
 
 const filters: Array<{ value: CashFilter; label: string }> = [
   { value: 'all', label: '全部' },
@@ -80,17 +81,12 @@ const canSave = computed(() =>
   previewDifference.value !== null && !isSaving.value)
 
 onMounted(async () => {
-  document.addEventListener('keydown', handleKeydown)
   await loadCash()
 
   if (route.query.action === 'reconcile' && overview.value) {
     openReconcile()
     void router.replace({ name: 'cash' })
   }
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('keydown', handleKeydown)
 })
 
 async function loadCash(): Promise<void> {
@@ -135,7 +131,7 @@ function openActivity(activity: CashActivity): void {
 
   const routeName = activity.assetType === 'providentFund'
     ? 'provident'
-    : activity.assetType === 'fund' ? 'funds' : 'gold'
+    : activity.assetType === 'fund' ? 'funds' : activity.assetType === 'stock' ? 'stocks' : 'gold'
 
   void router.push({ name: routeName })
 }
@@ -199,11 +195,6 @@ function openReconcile(): void {
   reason.value = ''
   formError.value = ''
   isReconcileOpen.value = true
-
-  void nextTick(() => {
-    actualBalanceInput.value?.focus()
-    actualBalanceInput.value?.select()
-  })
 }
 
 function closeReconcile(): void {
@@ -261,19 +252,12 @@ async function submitReconcile(): Promise<void> {
     isSaving.value = false
   }
 }
-
-function handleKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape' && isReconcileOpen.value) {
-    event.preventDefault()
-    closeReconcile()
-  }
-}
 </script>
 
 <template>
   <main class="page cash-page with-nav">
     <header class="cash-header">
-      <BackButton @back="router.push({ name: 'home' })" />
+      <BackButton @back="navigateBack(router)" />
       <h1>现金</h1>
       <button type="button" class="reconcile-link" @click="openReconcile">核对余额</button>
     </header>
@@ -375,29 +359,15 @@ function handleKeydown(event: KeyboardEvent): void {
       </div>
     </template>
 
-    <Teleport to="body">
-      <div
-        v-if="isReconcileOpen && overview"
-        class="sheet-backdrop"
-        @click.self="closeReconcile"
-      >
-        <section
-          class="sheet"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="reconcile-title"
-        >
-          <header class="sheet-head">
-            <div>
-              <h2 id="reconcile-title">核对现金余额</h2>
-              <p>按实际可用现金修正差额</p>
-            </div>
-            <button type="button" class="sheet-close" :disabled="isSaving" @click="closeReconcile">
-              关闭
-            </button>
-          </header>
-
-          <div class="sheet-body">
+    <BottomSheet
+      :open="isReconcileOpen && overview !== null"
+      title="核对现金余额"
+      subtitle="按实际可用现金修正差额"
+      :close-disabled="isSaving"
+      @close="closeReconcile"
+    >
+      <template v-if="overview">
+          <div class="reconcile-fields">
             <div class="balance-row">
               <span>当前账面余额</span>
               <b>¥{{ formatMoney(overview.balance) }}</b>
@@ -406,7 +376,6 @@ function handleKeydown(event: KeyboardEvent): void {
             <label class="field">
               <span>核对后的实际余额（元）</span>
               <input
-                ref="actualBalanceInput"
                 v-model="actualBalance"
                 type="text"
                 inputmode="decimal"
@@ -450,14 +419,19 @@ function handleKeydown(event: KeyboardEvent): void {
               保存核对
             </LoadingButton>
           </div>
-        </section>
-      </div>
-    </Teleport>
+      </template>
+    </BottomSheet>
     <AppNav />
   </main>
 </template>
 
 <style scoped>
+.reconcile-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
 .cash-page {
   padding-bottom: calc(97px + env(safe-area-inset-bottom));
 }
@@ -788,63 +762,6 @@ function handleKeydown(event: KeyboardEvent): void {
   text-align: center;
 }
 
-.sheet-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: flex;
-  justify-content: center;
-  align-items: flex-end;
-  background: var(--color-overlay);
-}
-
-.sheet {
-  box-sizing: border-box;
-  width: min(100%, 430px);
-  max-height: 88dvh;
-  overflow-y: auto;
-  padding: 20px var(--page-gutter) calc(24px + env(safe-area-inset-bottom));
-  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
-  background: var(--color-bg-surface);
-  box-shadow: 0 -8px 30px var(--color-shadow);
-}
-
-.sheet-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 18px;
-}
-
-.sheet-head h2 {
-  margin: 0;
-  font-size: 1.0625rem;
-  font-weight: 600;
-  letter-spacing: -0.3px;
-}
-
-.sheet-head p {
-  margin: 5px 0 0;
-  color: var(--color-text-secondary);
-  font-size: var(--text-footnote);
-}
-
-.sheet-close {
-  min-height: var(--touch-target);
-  padding: 0 6px;
-  border: 0;
-  background: transparent;
-  color: var(--color-brand);
-  font-size: 0.75rem;
-}
-
-.sheet-body {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-}
-
 .balance-row,
 .difference-row {
   display: flex;
@@ -919,13 +836,4 @@ function handleKeydown(event: KeyboardEvent): void {
   width: 100%;
 }
 
-@media (min-width: 600px) {
-  .sheet-backdrop {
-    align-items: center;
-  }
-
-  .sheet {
-    border-radius: var(--radius-card);
-  }
-}
 </style>

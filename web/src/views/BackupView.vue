@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { navigateBack } from '../utils/navigation'
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
@@ -36,7 +37,7 @@ const canRestore = computed(() =>
   && !isRestoring.value)
 
 function goBack(): void {
-  void router.push({ name: 'mine' })
+  navigateBack(router, { name: 'mine' })
 }
 
 async function exportDetails(): Promise<void> {

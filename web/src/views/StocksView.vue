@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { navigateBack } from '../utils/navigation'
 import Decimal from 'decimal.js'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -770,7 +771,7 @@ const activityRows = computed(() => (overview.value?.activities ?? []).map(toAct
 const detailActivityRows = computed(() => detailActivities.value.map(toActivityRow))
 
 function goBack(): void {
-  void router.push({ name: 'home' })
+  navigateBack(router)
 }
 </script>
 

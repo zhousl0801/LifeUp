@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { navigateBack } from '../utils/navigation'
 import Decimal from 'decimal.js'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -481,7 +482,7 @@ function toActivityRow(activity: GoldActivity): InvestmentActivityRow {
 const activityRows = computed(() => (overview.value?.activities ?? []).map(toActivityRow))
 
 function goBack(): void {
-  void router.push({ name: 'home' })
+  navigateBack(router)
 }
 </script>
 
@@ -576,7 +577,7 @@ function goBack(): void {
           <b>{{ overview.hasEffectiveQuote ? `¥${formatMoney(overview.quote)} / 克` : '行情待补' }}</b>
           <small v-if="overview.hasEffectiveQuote && overview.quoteDate">{{ formatBusinessDate(overview.quoteDate) }} · 自动获取</small>
           <small v-else>正在自动获取报价</small>
-          <small v-if="overview.lastQuoteError" class="quote-error">最近获取失败：{{ overview.lastQuoteError }}</small>
+          <small v-if="overview.lastQuoteError" class="quote-error">报价暂时更新失败，当前显示上次有效报价，请稍后重试。</small>
         </div>
         <div>
           <span>持仓成本合计</span>

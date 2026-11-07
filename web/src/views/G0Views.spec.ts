@@ -5,12 +5,12 @@ import LedgerView from './LedgerView.vue'
 import CashView from './CashView.vue'
 import { ApiError } from '../api/client'
 
-const mocks = vi.hoisted(() => ({ provident: vi.fn(), deposit: vi.fn(), withdraw: vi.fn(), opening: vi.fn(), plans: vi.fn(), savePlan: vi.fn(), pausePlan: vi.fn(), resumePlan: vi.fn(), entries: vi.fn(), cash: vi.fn(), reconcile: vi.fn() }))
-vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }), useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }))
+const mocks = vi.hoisted(() => ({ provident: vi.fn(), deposit: vi.fn(), withdraw: vi.fn(), opening: vi.fn(), plans: vi.fn(), savePlan: vi.fn(), pausePlan: vi.fn(), resumePlan: vi.fn(), entries: vi.fn(), stats: vi.fn(), push: vi.fn(), cash: vi.fn(), reconcile: vi.fn() }))
+vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }), useRouter: () => ({ push: mocks.push, replace: vi.fn() }) }))
 vi.mock('../api/provident', () => ({ fetchProvidentOverview: mocks.provident, depositProvident: mocks.deposit, withdrawProvident: mocks.withdraw, setProvidentOpening: mocks.opening }))
 vi.mock('../api/plans', () => ({ fetchPlanOverview: mocks.plans, savePlan: mocks.savePlan, pausePlan: mocks.pausePlan, resumePlan: mocks.resumePlan }))
 vi.mock('../api/cash', () => ({ fetchCashOverview: mocks.cash, reconcileCash: mocks.reconcile }))
-vi.mock('../api/entries', () => ({ fetchEntryPeriod: mocks.entries }))
+vi.mock('../api/entries', () => ({ fetchEntryPeriod: mocks.entries, fetchEntryStats: mocks.stats }))
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -185,5 +185,32 @@ test('cash conflict keeps the draft and requires a new version before confirming
   await flushPromises()
   expect(mocks.reconcile.mock.calls[1]![0].expectedVersion).toBe(1)
   expect(mocks.reconcile.mock.calls[1]![0].requestId).not.toBe(mocks.reconcile.mock.calls[0]![0].requestId)
+  view.unmount()
+})
+
+test('a slower previous period cannot overwrite the latest chart', async () => {
+  mocks.entries.mockResolvedValue({ entries: [], income: 0, expense: 0, surplus: 0 })
+  let resolveOld!: (value: unknown) => void
+  const stats = { points: [], incomeCategories: [], expenseCategories: [], coveredDays: 1, income: 0, expense: 202, expenseDailyAverage: 202, note: 'latest' }
+  mocks.stats.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve }))
+    .mockResolvedValue(stats)
+  const view = mount(LedgerView)
+  await flushPromises()
+  await view.findAll('button').find(b => b.text() === '图表')!.trigger('click')
+  await view.find('[aria-label="上一周期"]').trigger('click')
+  await flushPromises()
+  resolveOld({ ...stats, expense: 101, note: 'old' })
+  await flushPromises()
+  expect(view.find('.stats-note').text()).toBe('latest')
+  expect(view.find('.stats-panel').text()).toContain('202.00')
+  view.unmount()
+})
+
+test('stock cash activity opens stocks rather than gold', async () => {
+  mocks.cash.mockResolvedValue({ balance: 100, activities: [{ id: 'stock', type: 'assetTransfer', assetType: 'stock', title: '股票买入', amount: -10, businessDate: '2026-11-01' }] })
+  const view = mount(CashView)
+  await flushPromises()
+  await view.find('.activity-row').trigger('click')
+  expect(mocks.push).toHaveBeenCalledWith({ name: 'stocks' })
   view.unmount()
 })

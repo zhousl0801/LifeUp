@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { navigateBack } from '../utils/navigation'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { fetchEntryPeriod, fetchEntryStats } from '../api/entries'
@@ -42,6 +43,7 @@ const isLoading = ref(false)
 const errorMessage = ref('')
 let searchTimer: number | undefined
 let loadSequence = 0
+let statsSequence = 0
 
 const periodLabel = computed(() => formatPeriodLabel(anchor.value, period.value))
 const canGoNext = computed(() =>
@@ -132,16 +134,19 @@ function switchView(next: 'list' | 'chart'): void {
 }
 
 async function loadStats(): Promise<void> {
+  const sequence = ++statsSequence
   statsLoading.value = true
   statsError.value = ''
 
   try {
-    stats.value = await fetchEntryStats(period.value, anchor.value)
+    const result = await fetchEntryStats(period.value, anchor.value)
+    if (sequence === statsSequence) stats.value = result
   } catch (error) {
+    if (sequence !== statsSequence) return
     stats.value = null
     statsError.value = getApiErrorMessage(error, '图表数据暂时无法读取，请稍后重试。')
   } finally {
-    statsLoading.value = false
+    if (sequence === statsSequence) statsLoading.value = false
   }
 }
 
@@ -248,7 +253,7 @@ function openEntry(entryId?: string): void {
 }
 
 function goBack(): void {
-  void router.push({ name: 'home' })
+  navigateBack(router)
 }
 </script>
 

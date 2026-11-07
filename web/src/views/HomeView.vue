@@ -396,7 +396,7 @@ onBeforeUnmount(() => {
               :aria-expanded="changeSheetOpen"
               @click="changeSheetOpen = true"
             >
-              <span class="change-arrow" :class="amountTone(activeChange.comparableChange)">▲</span>
+              <span class="change-arrow" aria-hidden="true" :class="amountTone(activeChange.comparableChange)">{{ (activeChange.comparableChange ?? 0) > 0 ? '▲' : (activeChange.comparableChange ?? 0) < 0 ? '▼' : '—' }}</span>
               <b :class="amountTone(activeChange.comparableChange)">
                 {{ formatSignedMoney(activeChange.comparableChange ?? 0) }}
               </b>

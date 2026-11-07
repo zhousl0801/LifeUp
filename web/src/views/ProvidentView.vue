@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { navigateBack } from '../utils/navigation'
 import BackButton from '../components/BackButton.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import AnimatedMoney from '../components/AnimatedMoney.vue'
@@ -351,7 +352,7 @@ function activityNote(activity: ProvidentActivity): string {
 }
 
 function goBack(): void {
-  void router.push({ name: 'home' })
+  navigateBack(router)
 }
 </script>
 

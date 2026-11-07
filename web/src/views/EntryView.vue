@@ -650,7 +650,7 @@ function handleHeaderAction(): void {
 }
 
 function handleKeydown(event: KeyboardEvent): void {
-  if (event.metaKey || event.ctrlKey || event.altKey) {
+  if (event.defaultPrevented || categorySheet.value !== null || event.metaKey || event.ctrlKey || event.altKey) {
     return
   }
 

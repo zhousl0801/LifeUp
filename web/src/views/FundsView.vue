@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { navigateBack } from '../utils/navigation'
 import Decimal from 'decimal.js'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -1788,7 +1789,7 @@ async function cancelPending(transactionId: string): Promise<void> {
 }
 
 function goBack(): void {
-  void router.push({ name: 'home' })
+  navigateBack(router)
 }
 </script>
 

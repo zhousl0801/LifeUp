@@ -107,3 +107,28 @@ test('repeated reads use the short-lived cache until a write invalidates it', as
   expect(refreshed.amount).toBe(300)
   expect(fetch).toHaveBeenCalledTimes(3)
 })
+
+test('concurrent default reads share a fetch but receive independent objects', async () => {
+  let resolve!: (response: Response) => void
+  const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise(r => { resolve = r }))
+  const first = apiRequest<{ amount: number }>('/api/test/concurrent')
+  const second = apiRequest<{ amount: number }>('/api/test/concurrent')
+  resolve(new Response(JSON.stringify({ amount: 100 })))
+  const [a, b] = await Promise.all([first, second])
+  a.amount = 0
+  expect(b.amount).toBe(100)
+  expect(fetch).toHaveBeenCalledTimes(1)
+})
+
+test('cache invalidation prevents an older read from caching stale data', async () => {
+  let resolve!: (response: Response) => void
+  const fetch = vi.spyOn(globalThis, 'fetch')
+    .mockImplementationOnce(() => new Promise(r => { resolve = r }))
+    .mockResolvedValue(new Response(JSON.stringify({ amount: 200 })))
+  const old = apiRequest('/api/test/stale')
+  clearReadCache()
+  resolve(new Response(JSON.stringify({ amount: 100 })))
+  await old
+  expect(await apiRequest('/api/test/stale')).toEqual({ amount: 200 })
+  expect(fetch).toHaveBeenCalledTimes(2)
+})

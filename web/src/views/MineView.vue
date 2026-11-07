@@ -103,6 +103,11 @@ function chooseTheme(value: ThemeMode): void {
       </button>
     </div>
 
+    <h2 class="settings-title data-title">数据管理</h2>
+    <div class="list-box">
+      <RouterLink to="/backup" class="list-row"><span>数据导出与备份</span><b aria-hidden="true">›</b></RouterLink>
+    </div>
+
     <BottomSheet
       :open="profileSheetOpen"
       title="头像与昵称"
@@ -174,6 +179,7 @@ function chooseTheme(value: ThemeMode): void {
 </template>
 
 <style scoped>
+.data-title { margin-top: 24px; }
 .mine-header {
   margin: 4px 0 22px;
 }

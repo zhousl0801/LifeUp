@@ -350,3 +350,14 @@ test('syncs market quotes from the home header and reloads the overview', async 
   expect(mocks.ledger).toHaveBeenCalledTimes(2)
   view.unmount()
 })
+
+test('negative comparable changes show a downward arrow', async () => {
+  const start = shift(today, -30)
+  mocks.ledger.mockResolvedValue(overview(start))
+  mocks.trend.mockResolvedValue(trend(start))
+  mocks.dayChange.mockResolvedValue({ ...monthChange, hasComparableData: true, comparableChange: -100, comparableBase: 1000 })
+  const view = mount(HomeView, { global: { plugins: [createPinia()] } })
+  await flushPromises()
+  expect(view.find('.change-arrow').text()).toBe('▼')
+  view.unmount()
+})

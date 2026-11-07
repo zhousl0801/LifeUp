@@ -25,7 +25,12 @@ const readCache = new Map<string, { at: number; data: unknown }>()
 
 export const activeRequestCount = ref(0)
 
+const inFlightReads = new Map<string, Promise<unknown>>()
+let cacheGeneration = 0
+
 export function clearReadCache(): void {
+  cacheGeneration++
+  inFlightReads.clear()
   readCache.clear()
 }
 
@@ -61,6 +66,23 @@ function writeCached(key: string, data: unknown): void {
 }
 
 export async function readOnlyRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  // Only default reads share work; custom headers and cancellation keep independent semantics.
+  if (init !== undefined) return performRequest<T>(path, init)
+  const key = `${baseUrl}${path}`
+  let pending = inFlightReads.get(key)
+  if (!pending) {
+    pending = performRequest<T>(path)
+    inFlightReads.set(key, pending)
+  }
+  try {
+    return structuredClone(await pending) as T
+  } finally {
+    if (inFlightReads.get(key) === pending) inFlightReads.delete(key)
+  }
+}
+
+async function performRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const generation = cacheGeneration
   const cacheable = isCacheableRead(init)
   const cacheKey = `${baseUrl}${path}`
 
@@ -113,7 +135,7 @@ export async function readOnlyRequest<T>(path: string, init?: RequestInit): Prom
 
     const data = (await response.json()) as T
 
-    if (cacheable) {
+    if (cacheable && generation === cacheGeneration) {
       writeCached(cacheKey, data)
     }
 

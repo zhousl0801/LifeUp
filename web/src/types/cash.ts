@@ -1,7 +1,7 @@
 import type { EntrySource } from './entry'
 
 export type CashActivityType = 'daily' | 'assetTransfer' | 'adjustment'
-export type LinkedAssetType = 'providentFund' | 'fund' | 'gold'
+export type LinkedAssetType = 'providentFund' | 'fund' | 'gold' | 'stock'
 
 export interface CashActivity {
   id: string

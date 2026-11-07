@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { navigateBack } from '../utils/navigation'
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { fetchAssetTrend, fetchMonthChange, updateAssetCoverage } from '../api/ledger'
+import { fetchMonthChange, updateAssetCoverage } from '../api/ledger'
 import { getApiErrorMessage } from '../api/client'
 import AppNav from '../components/AppNav.vue'
 import AnimatedMoney from '../components/AnimatedMoney.vue'
@@ -11,14 +12,12 @@ import BottomSheet from '../components/BottomSheet.vue'
 import LoadingState from '../components/LoadingState.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import { useLedgerStore } from '../stores/ledger'
-import { todayInBusinessTimeZone } from '../utils/format'
 import type { AssetKey, LedgerOverview, MonthChange } from '../types/ledger'
 
 const router = useRouter()
 const ledgerStore = useLedgerStore()
 const overview = ref<LedgerOverview | null>(null)
 const monthChange = ref<MonthChange | null>(null)
-const updateDate = ref(todayInBusinessTimeZone())
 const isLoading = ref(false)
 const coverageBusyKey = ref<AssetKey | null>(null)
 const errorMessage = ref('')
@@ -115,13 +114,6 @@ async function load(): Promise<void> {
     overview.value = ledgerStore.overview
 
     try {
-      const trend = await fetchAssetTrend('month')
-      updateDate.value = trend.to
-    } catch {
-      updateDate.value = todayInBusinessTimeZone()
-    }
-
-    try {
       monthChange.value = await fetchMonthChange()
     } catch {
       monthChange.value = null
@@ -158,7 +150,7 @@ async function toggleNotHeld(key: AssetKey, notHeld: boolean): Promise<void> {
 }
 
 function goHome(): void {
-  void router.push({ name: 'home' })
+  navigateBack(router)
 }
 </script>
 
