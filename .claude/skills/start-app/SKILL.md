@@ -10,7 +10,7 @@ description: 启动 LifeUp 本机 APP：默认连接 Supabase，启动后端 API
 ## 启动前检查
 
 - 仓库根目录下的 `.local/start-supabase-api.sh` 从 macOS 钥匙串读取数据库密码，并使用 `.local/certificates/supabase-ca.crt` 验证服务器证书。两者都在 Git 忽略目录中；不要输出或提交凭据及证书。
-- 检查脚本、证书是否可读，以及钥匙串项目 `lifeup-supabase-rcmnynknaudcpsrqwrss` 是否可用；不要输出密码。如果任一缺失，说明缺少哪一项并请求用户协助，不回退到本地数据库，也不关闭证书校验。
+- 检查脚本、证书是否可读，以及脚本中 `security find-generic-password -s` 指定的钥匙串项目是否可用；不要输出密码。如果任一缺失，说明缺少哪一项并请求用户协助，不回退到本地数据库，也不关闭证书校验。
 - 先检查 5069、5173 端口。已运行的服务应先确认属于本项目；API 还需确认确实连接 Supabase 且本机两个定时任务已关闭，才能直接复用。仅凭健康接口或端口占用不能判断数据库。如果无法确认现有进程或端口被其他程序占用，不要擅自终止它；说明情况后再处理。
 - 不需要启动 Colima 或本地 PostgreSQL 容器。
 
