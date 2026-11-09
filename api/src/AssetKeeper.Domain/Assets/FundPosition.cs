@@ -70,6 +70,11 @@ public sealed class FundPosition
 
     public void RestoreProjection(decimal shares, decimal cost, decimal realizedProfit, decimal netValue, DateOnly netValueDate, DateTimeOffset now)
     {
+        if (Shares == shares && Cost == cost && RealizedProfit == realizedProfit && NetValue == netValue && NetValueDate == netValueDate)
+        {
+            return;
+        }
+
         Shares = shares;
         Cost = cost;
         RealizedProfit = realizedProfit;

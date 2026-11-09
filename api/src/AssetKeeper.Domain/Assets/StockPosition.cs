@@ -64,6 +64,11 @@ public sealed class StockPosition
 
     public void RestoreProjection(decimal shares, decimal cost, decimal realizedProfit, decimal price, DateOnly priceDate, DateTimeOffset now)
     {
+        if (Shares == shares && Cost == cost && RealizedProfit == realizedProfit && Price == price && PriceDate == priceDate)
+        {
+            return;
+        }
+
         Shares = shares;
         Cost = cost;
         RealizedProfit = realizedProfit;

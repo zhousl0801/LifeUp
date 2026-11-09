@@ -70,7 +70,7 @@ public sealed class LedgerService
         var notHeld = new AssetOverviewDto(false, 0m, "不持有", true);
         var fundIsNotHeld = ledger.FundNotHeld && fundPositions.Count == 0;
         var providentIsNotHeld = ledger.ProvidentFundNotHeld && providentAccount is null;
-        var goldIsNotHeld = ledger.GoldNotHeld && (goldHolding is null || goldHolding.Grams == 0);
+        var goldIsNotHeld = ledger.GoldNotHeld && (goldHolding is null || goldHolding.Grams == 0) && pendingGoldArrival == 0m;
         var stockIsNotHeld = ledger.StockNotHeld && stockPositions.Count == 0;
         var fund = fundIsNotHeld
             ? notHeld

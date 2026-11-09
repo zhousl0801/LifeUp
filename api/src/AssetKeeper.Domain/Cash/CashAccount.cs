@@ -36,6 +36,11 @@ public sealed class CashAccount
 
     public void RestoreProjection(decimal balance, DateOnly asOfDate, DateTimeOffset now)
     {
+        if (Balance == balance && AsOfDate == asOfDate)
+        {
+            return;
+        }
+
         Balance = balance;
         AsOfDate = asOfDate;
         UpdatedAt = now;

@@ -111,11 +111,15 @@ public sealed class LedgerReplayCalculator
 
         var observations = (priceOverride ?? data.Prices).Where(price => !price.IsSuperseded && price.EffectiveDate <= asOfDate
             && (price.SourceTransactionId is null || activeIds.Contains(price.SourceTransactionId.Value))).ToList();
+        // 一次按资产归集行情，避免每个持仓都扫描并排序全部历史报价。
+        var latestPrices = observations.GroupBy(price => (price.AssetType, price.PositionId))
+            .ToDictionary(group => group.Key, group => group.OrderByDescending(price => price.EffectiveDate)
+                .ThenByDescending(price => price.RevisionOrder).First());
         var funds = data.Positions.Select(position =>
         {
             var state = fundStates[position.Id];
             var known = !unknownFunds.Contains(position.Id);
-            var quote = Latest(observations, AssetType.Fund, position.Id);
+            var quote = latestPrices.GetValueOrDefault((AssetType.Fund, (Guid?)position.Id));
             return new HoldingReplay(position.Id, known ? state.Quantity : position.Shares, known ? state.Cost : position.Cost,
                 known ? state.Realized : position.RealizedProfit, known ? state.CoverageFrom : null, known,
                 (known ? state.CoverageFrom is null : asOfDate != currentDate) ? null : quote?.Price, quote?.EffectiveDate, quote?.Source,
@@ -126,7 +130,7 @@ public sealed class LedgerReplayCalculator
         {
             var state = stockStates[position.Id];
             var known = !unknownStocks.Contains(position.Id);
-            var quote = Latest(observations, AssetType.Stock, position.Id);
+            var quote = latestPrices.GetValueOrDefault((AssetType.Stock, (Guid?)position.Id));
             return new HoldingReplay(position.Id, known ? state.Quantity : position.Shares, known ? state.Cost : position.Cost,
                 known ? state.Realized : position.RealizedProfit, known ? state.CoverageFrom : null, known,
                 (known ? state.CoverageFrom is null : asOfDate != currentDate) ? null : quote?.Price, quote?.EffectiveDate, quote?.Source);
@@ -135,7 +139,7 @@ public sealed class LedgerReplayCalculator
 
         if (data.Gold is not null && goldState is not null)
         {
-            var quote = Latest(observations, AssetType.Gold, null);
+            var quote = latestPrices.GetValueOrDefault((AssetType.Gold, (Guid?)null));
             gold = new HoldingReplay(null, unknownGold ? data.Gold.Grams : goldState.Quantity, unknownGold ? data.Gold.Cost : goldState.Cost,
                 unknownGold ? data.Gold.RealizedProfit : goldState.Realized, unknownGold ? null : goldState.CoverageFrom, !unknownGold,
                 // 还没有任何积存金持仓记录时，快照克数（通常为 0）即为准绳，报价仍可用于估值和录入首笔持仓。
@@ -150,12 +154,12 @@ public sealed class LedgerReplayCalculator
             issues.Add("现金起点尚未覆盖该日期");
         }
 
-        if (providentStart is null)
+        if (providentStart is null && !(data.Ledger.ProvidentFundNotHeld && data.Provident is null))
         {
             issues.Add("公积金尚无该日期的起始依据");
         }
 
-        if (funds.Count == 0 || funds.Any(fund => !fund.CanRebuild || fund.CoverageFrom is null || fund.Value is null))
+        if ((funds.Count == 0 && !data.Ledger.FundNotHeld) || funds.Any(fund => !fund.CanRebuild || fund.CoverageFrom is null || fund.Value is null))
         {
             issues.Add("部分基金持仓日期或行情依据不足");
         }
@@ -165,7 +169,10 @@ public sealed class LedgerReplayCalculator
             issues.Add("部分股票持仓日期或行情依据不足");
         }
 
-        if (gold is null || !gold.CanRebuild || gold.CoverageFrom is null || gold.Value is null)
+        var goldNotHeld = data.Ledger.GoldNotHeld
+            && !active.Any(fact => fact.AssetType == AssetType.Gold && fact.Kind != AssetTransactionKind.GoldQuote);
+
+        if (!goldNotHeld && (gold is null || !gold.CanRebuild || gold.CoverageFrom is null || gold.Value is null))
         {
             issues.Add("积存金持仓日期或行情依据不足");
         }
@@ -510,12 +517,6 @@ public sealed class LedgerReplayCalculator
     {
         return fact.RelatedCashAdjustmentId is Guid id && anchors.TryGetValue(id, out var anchor)
             && !anchor.IsReversed && fact.Date == anchor.Date ? anchor.Sequence : fact.Sequence;
-    }
-
-    private static PriceObservation? Latest(IEnumerable<PriceObservation> prices, AssetType assetType, Guid? positionId)
-    {
-        return prices.Where(price => price.AssetType == assetType && price.PositionId == positionId)
-            .OrderByDescending(price => price.EffectiveDate).ThenByDescending(price => price.RevisionOrder).FirstOrDefault();
     }
 
     private static PriceObservation? At(IEnumerable<PriceObservation> prices, AssetType assetType, Guid? positionId, DateOnly date)

@@ -44,6 +44,11 @@ public sealed class GoldHolding
 
     public void RestoreProjection(decimal grams, decimal cost, decimal realizedProfit, decimal quote, DateOnly quoteDate, DateTimeOffset now)
     {
+        if (Grams == grams && Cost == cost && RealizedProfit == realizedProfit && Quote == quote && QuoteDate == quoteDate)
+        {
+            return;
+        }
+
         Grams = grams;
         Cost = cost;
         RealizedProfit = realizedProfit;

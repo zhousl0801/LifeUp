@@ -310,7 +310,7 @@ public sealed class HistoryService
         else if (original.Source == "asset")
         {
             var candidate = AssetTransaction.CreateSnapshot(data.Ledger.Id, original.PositionId, original.AssetType!.Value, original.Kind!.Value,
-                request.Quantity, request.Amount, request.Price, request.Date, request.PriceDate, request.Note, request.RequestId, _dates.UtcNow);
+                request.Quantity, request.Amount, request.Price, request.Date, request.PriceDate, request.Note, request.RequestId, _dates.UtcNow, request.Fee ?? original.Fee);
             cashEffect = candidate.CashEffect;
         }
         else if (original.Source == "adjustment")
@@ -322,6 +322,7 @@ public sealed class HistoryService
         var replacement = original with
         {
             Date = request.Date,
+            FundTradeDate = ResolveFundTradeDate(original.Kind, original.Date, original.FundTradeDate, request.Date),
             Sequence = request.Sequence,
             Amount = request.Amount,
             Quantity = request.Quantity,
@@ -468,21 +469,23 @@ public sealed class HistoryService
     /// </summary>
     private void SyncFundTradeDateAfterCorrection(AssetTransaction transaction, DateOnly previousBusinessDate)
     {
-        if (transaction.Kind != AssetTransactionKind.FundBuyPending || transaction.BusinessDate == previousBusinessDate)
+        var target = ResolveFundTradeDate(transaction.Kind, previousBusinessDate, transaction.FundTradeDate, transaction.BusinessDate);
+
+        if (target is DateOnly tradeDate && target != transaction.FundTradeDate)
         {
-            return;
+            transaction.SyncFundTradeDate(tradeDate);
+        }
+    }
+
+    private DateOnly? ResolveFundTradeDate(AssetTransactionKind? kind, DateOnly previousDate, DateOnly? tradeDate, DateOnly businessDate)
+    {
+        if (kind != AssetTransactionKind.FundBuyPending || businessDate == previousDate)
+        {
+            return tradeDate;
         }
 
-        var businessDate = transaction.BusinessDate;
-        var current = transaction.FundTradeDate ?? businessDate;
-        var target = businessDate == _dates.Today
-            ? (current < businessDate ? businessDate : current)
-            : businessDate;
-
-        if (target != current)
-        {
-            transaction.SyncFundTradeDate(target);
-        }
+        var current = tradeDate ?? businessDate;
+        return businessDate == _dates.Today && current >= businessDate ? current : businessDate;
     }
 
     private static string Sign(HistoryChangeRequest request)

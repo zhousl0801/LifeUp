@@ -266,7 +266,7 @@ public sealed class AssetTransaction
     }
 
     public static AssetTransaction CreateSnapshot(Guid ledgerId, Guid? positionId, AssetType assetType, AssetTransactionKind kind,
-        decimal? quantity, decimal cost, decimal? price, DateOnly date, DateOnly? priceDate, string? note, Guid requestId, DateTimeOffset now)
+        decimal? quantity, decimal cost, decimal? price, DateOnly date, DateOnly? priceDate, string? note, Guid requestId, DateTimeOffset now, decimal fee = 0m)
     {
         var transaction = Create(
             ledgerId,
@@ -283,7 +283,7 @@ public sealed class AssetTransaction
             date,
             now,
             stockPositionId: assetType == AssetType.Stock ? positionId : null);
-        transaction.Correct(quantity, cost, price, date, priceDate, 0, note);
+        transaction.Correct(quantity, cost, price, date, priceDate, 0, note, fee);
         return transaction;
     }
 
