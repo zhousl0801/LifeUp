@@ -1,20 +1,23 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { createEntry, fetchEntry, reverseEntry, updateEntry } from '../api/entries'
 import { createCategory, deleteCategory, fetchCategories, reorderCategories } from '../api/categories'
-import { ApiError, getApiErrorMessage } from '../api/client'
+import { ApiError, clearReadCache, getApiErrorMessage } from '../api/client'
 import AmountKeypad from '../components/AmountKeypad.vue'
 import AppIcon from '../components/AppIcon.vue'
 import LoadingState from '../components/LoadingState.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import BottomSheet from '../components/BottomSheet.vue'
+import ConfirmSheet from '../components/ConfirmSheet.vue'
+import PageHeader from '../components/PageHeader.vue'
 import { categoriesFor } from '../constants/categories'
 import type { EntryCategory } from '../types/category'
 import { applyAmountKey, evaluateAmountExpression, type AmountKey } from '../utils/amount'
-import { todayInBusinessTimeZone } from '../utils/format'
+import { formatBusinessDateWithWeekday, todayInBusinessTimeZone } from '../utils/format'
 import { createRequestId } from '../utils/request'
-import type { EntryKind, EntryStatus, LedgerEntry } from '../types/entry'
+import { returnToLedger } from '../utils/ledgerReturn'
+import type { EntryKind, EntryMutationResult, EntryStatus, LedgerEntry } from '../types/entry'
 
 interface CategoryOption {
   id: string
@@ -32,17 +35,27 @@ const returnRoute = computed(() =>
 const entryStatus = ref<EntryStatus>('active')
 const entrySource = ref<LedgerEntry['source']>('manual')
 const dateInput = ref<HTMLInputElement | null>(null)
+const entryContent = ref<HTMLElement | null>(null)
 const requestId = ref(createRequestId())
 const form = reactive({
-  kind: 'expense' as EntryKind,
-  category: '餐饮',
+  kind: (route.query.kind === 'income' ? 'income' : 'expense') as EntryKind,
+  category: '',
   expression: '',
   businessDate: today,
   note: '',
   relatedCashAdjustmentId: null as string | null
 })
-const isLoading = ref(false)
-const isSaving = ref(false)
+const initialForm = ref({ ...form })
+const selectedCategories: Record<EntryKind, string> = { expense: '', income: '' }
+const showAllCategories = ref(false)
+const editingNote = ref(false)
+const showEntryActions = ref(false)
+const leaveDecision = ref<((leave: boolean) => void) | null>(null)
+let allowLeave = false
+const isLoading = ref(isEditing.value)
+const saveMode = ref<'exit' | 'again' | null>(null)
+const isSaving = computed(() => saveMode.value !== null)
+const savedForNext = ref(false)
 const isReversing = ref(false)
 const loadError = ref('')
 const formError = ref('')
@@ -84,20 +97,42 @@ const categoryOptions = computed<CategoryOption[]>(() => {
     deletable: false
   }))
 })
+const quickCategories = computed(() => categoryOptions.value.slice(0, 5))
+const expandedCategories = computed(() => showAllCategories.value || categoryEditMode.value)
+const visibleCategories = computed(() => expandedCategories.value ? categoryOptions.value : quickCategories.value)
+const hasMoreCategories = computed(() => categoryOptions.value.length > quickCategories.value.length)
+const categoryToggleLabel = computed(() => {
+  if (expandedCategories.value) return '收起分类'
+  return form.category && !quickCategories.value.some(option => option.name === form.category)
+    ? form.category
+    : '全部分类'
+})
 const canManageCategories = computed(() => categoriesLoaded.value && canEdit.value)
-const hasEntryExtras = computed(() =>
-  (isEditing.value && canEdit.value) || entrySource.value === 'automatic')
 const categorySheetTitle = computed(() => categorySheet.value === 'add' ? '新增分类' : '删除分类')
 const amount = computed(() => evaluateAmountExpression(form.expression))
 const canEdit = computed(() => entryStatus.value === 'active')
-const canSubmit = computed(() => amount.value !== null && !isSaving.value && canEdit.value)
-const dateLabel = computed(() => {
-  if (!form.businessDate) {
-    return '日期'
-  }
+const canSubmit = computed(() => amount.value !== null && Boolean(form.category)
+  && Boolean(form.businessDate) && form.businessDate <= today && !isSaving.value && !isReversing.value && canEdit.value)
+const saveLabel = computed(() => isEditing.value ? '保存修改' : form.kind === 'income' ? '保存收入' : '保存支出')
+const isDirty = computed(() => Object.keys(form).some((key) =>
+  form[key as keyof typeof form] !== initialForm.value[key as keyof typeof form]
+))
 
-  return form.businessDate === today ? '今天' : form.businessDate.slice(5).replace('-', '/')
+onBeforeRouteLeave(() => {
+  if (allowLeave) return true
+  if (isSaving.value || isReversing.value || leaveDecision.value) return false
+  if (!isDirty.value) return true
+  return new Promise<boolean>((resolve) => { leaveDecision.value = resolve })
 })
+
+function resolveLeave(leave: boolean): void {
+  const decision = leaveDecision.value
+  leaveDecision.value = null
+  decision?.(leave)
+}
+const dateLabel = computed(() => form.businessDate
+  ? formatBusinessDateWithWeekday(form.businessDate)
+  : '选择日期')
 
 let longPressTimer: ReturnType<typeof setTimeout> | undefined
 let dragArmTimer: ReturnType<typeof setTimeout> | undefined
@@ -117,8 +152,6 @@ onMounted(async () => {
 
   if (entryId.value) {
     await loadEntry()
-  } else {
-    applyKindPreset()
   }
 })
 
@@ -132,20 +165,9 @@ async function loadCategories(): Promise<void> {
   }
 }
 
-function defaultCategory(kind: EntryKind): string {
-  const first = categoryItems.value.find((category) => category.kind === kind && category.isActive)
-
-  return first?.name ?? categoriesFor(kind)[0] ?? ''
-}
-
 function categoryExists(kind: EntryKind, name: string): boolean {
-  if (!categoriesLoaded.value) {
-    return categoriesFor(kind).includes(name)
-  }
-
-  return categoryItems.value.some(
-    (category) => category.kind === kind && category.isActive && category.name === name
-  )
+  const active = categoryItems.value.filter(category => category.kind === kind && category.isActive)
+  return active.length ? active.some(category => category.name === name) : categoriesFor(kind).includes(name)
 }
 
 onBeforeUnmount(() => {
@@ -156,6 +178,7 @@ onBeforeUnmount(() => {
     clearTimeout(suppressClickTimer)
   }
 
+  resolveLeave(false)
   document.removeEventListener('keydown', handleKeydown)
 })
 
@@ -178,17 +201,6 @@ async function loadEntry(): Promise<void> {
   }
 }
 
-function applyKindPreset(): void {
-  const requestedKind = route.query.kind
-
-  if (requestedKind !== 'income' && requestedKind !== 'expense') {
-    return
-  }
-
-  form.kind = requestedKind
-  form.category = defaultCategory(requestedKind)
-}
-
 function applyEntry(entry: LedgerEntry): void {
   entryStatus.value = entry.status
   entrySource.value = entry.source
@@ -198,14 +210,17 @@ function applyEntry(entry: LedgerEntry): void {
   form.businessDate = entry.businessDate
   form.note = entry.note ?? ''
   form.relatedCashAdjustmentId = entry.relatedCashAdjustmentId ?? null
+  selectedCategories[entry.kind] = entry.category
+  initialForm.value = { ...form }
 }
 
 function setKind(kind: EntryKind): void {
-  if (!canEdit.value) {
+  if (!canEdit.value || isSaving.value || form.kind === kind) {
     return
   }
 
   form.kind = kind
+  showAllCategories.value = false
   categoryEditMode.value = false
   categorySheet.value = null
   pendingDeleteCategory.value = null
@@ -216,17 +231,21 @@ function setKind(kind: EntryKind): void {
   dragMoved = false
   clearDragArmTimer()
 
-  if (!categoryExists(kind, form.category)) {
-    form.category = defaultCategory(kind)
-  }
+  const selected = selectedCategories[kind]
+  form.category = categoryExists(kind, selected)
+    || (initialForm.value.kind === kind && selected === initialForm.value.category)
+    ? selected
+    : ''
 }
 
 function chooseCategory(category: string): void {
-  if (!canEdit.value) {
+  if (!canEdit.value || isSaving.value) {
     return
   }
 
   form.category = category
+  selectedCategories[form.kind] = category
+  showAllCategories.value = false
 }
 
 function clearLongPressTimer(): void {
@@ -496,7 +515,7 @@ async function saveCategory(): Promise<void> {
   try {
     const created = await createCategory({ kind: form.kind, name })
     await loadCategories()
-    form.category = created.name
+    chooseCategory(created.name)
     categorySheet.value = null
     categoryEditMode.value = false
   } catch (error) {
@@ -528,7 +547,8 @@ async function confirmDeleteCategory(): Promise<void> {
     await loadCategories()
 
     if (form.category === target.name) {
-      form.category = defaultCategory(form.kind)
+      form.category = ''
+      selectedCategories[form.kind] = ''
     }
 
     categorySheet.value = null
@@ -556,8 +576,9 @@ function pickDate(): void {
   }
 }
 
-async function submit(): Promise<void> {
-  if (amount.value === null || isSaving.value || !canEdit.value) {
+async function submit(mode: 'exit' | 'again' = 'exit'): Promise<void> {
+  if (amount.value === null || isSaving.value || isReversing.value || !canEdit.value
+    || (mode === 'again' && isEditing.value)) {
     return
   }
 
@@ -578,41 +599,47 @@ async function submit(): Promise<void> {
     return
   }
 
-  isSaving.value = true
+  saveMode.value = mode
 
   try {
-    if (entryId.value) {
-      await updateEntry(entryId.value, {
-        requestId: requestId.value,
-        kind: form.kind,
-        category: form.category,
-        relatedCashAdjustmentId: form.relatedCashAdjustmentId,
-        amount: amount.value,
-        businessDate: form.businessDate,
-        note: form.note.trim()
-      })
-    } else {
-      await createEntry({
-        kind: form.kind,
-        category: form.category,
-        relatedCashAdjustmentId: form.relatedCashAdjustmentId,
-        amount: amount.value,
-        businessDate: form.businessDate,
-        note: form.note.trim(),
-        requestId: requestId.value
-      })
+    const input = {
+      requestId: requestId.value,
+      kind: form.kind,
+      category: form.category,
+      relatedCashAdjustmentId: form.relatedCashAdjustmentId,
+      amount: amount.value,
+      businessDate: form.businessDate,
+      note: form.note.trim()
     }
+    const result = entryId.value
+      ? await updateEntry(entryId.value, input)
+      : await createEntry(input)
 
-    await router.replace(returnRoute.value)
+    if (mode === 'again') {
+      clearReadCache()
+      form.category = ''
+      form.expression = ''
+      form.note = ''
+      form.relatedCashAdjustmentId = null
+      selectedCategories.expense = ''
+      selectedCategories.income = ''
+      showAllCategories.value = false
+      requestId.value = createRequestId()
+      initialForm.value = { ...form }
+      savedForNext.value = true
+      if (entryContent.value) entryContent.value.scrollTop = 0
+    } else {
+      await finishSave(result, entryId.value ? 'update' : 'create')
+    }
   } catch (error) {
     formError.value = getApiErrorMessage(error, '保存失败，请重试。')
   } finally {
-    isSaving.value = false
+    saveMode.value = null
   }
 }
 
 async function confirmReverse(): Promise<void> {
-  if (!entryId.value || isReversing.value) {
+  if (!entryId.value || isReversing.value || isSaving.value) {
     return
   }
 
@@ -620,13 +647,34 @@ async function confirmReverse(): Promise<void> {
   formError.value = ''
 
   try {
-    await reverseEntry(entryId.value, reverseReason.value.trim(), requestId.value)
-    await router.replace(returnRoute.value)
+    const result = await reverseEntry(entryId.value, reverseReason.value.trim(), requestId.value)
+    await finishSave(result, 'reverse')
   } catch (error) {
     formError.value = getApiErrorMessage(error, '撤销失败，请重试。')
   } finally {
     isReversing.value = false
   }
+}
+
+async function finishSave(result: EntryMutationResult, action: 'create' | 'update' | 'reverse'): Promise<void> {
+  clearReadCache()
+  allowLeave = true
+  if (returnRoute.value.name === 'cash') {
+    await router.replace(returnRoute.value)
+    return
+  }
+
+  const back = router.options.history.state.back
+  if (typeof back === 'string' && router.resolve(back).name === 'ledger') {
+    returnToLedger({ entry: result.entry, action })
+    router.back()
+    return
+  }
+
+  await router.replace({
+    name: 'ledger',
+    query: action === 'reverse' ? {} : { date: result.entry.businessDate, focus: result.entry.id }
+  })
 }
 
 function goBack(): void {
@@ -640,17 +688,10 @@ function goBack(): void {
   void router.push(returnRoute.value)
 }
 
-function handleHeaderAction(): void {
-  if (categoryEditMode.value) {
-    exitCategoryEdit()
-    return
-  }
-
-  goBack()
-}
-
 function handleKeydown(event: KeyboardEvent): void {
-  if (event.defaultPrevented || categorySheet.value !== null || event.metaKey || event.ctrlKey || event.altKey) {
+  if (event.defaultPrevented || categorySheet.value !== null || leaveDecision.value || isSaving.value
+    || (event.target instanceof Element && event.target.closest('[role="dialog"]'))
+    || event.metaKey || event.ctrlKey || event.altKey) {
     return
   }
 
@@ -703,13 +744,24 @@ function handleKeydown(event: KeyboardEvent): void {
 <template>
   <main class="entry-screen">
     <header class="entry-header">
+      <PageHeader class="entry-heading" :title="isEditing ? '编辑账单' : '记一笔'"
+        :back="!categoryEditMode" @back="goBack">
+        <template #leading>
+          <button v-if="categoryEditMode" type="button" class="header-action"
+            @click="exitCategoryEdit">完成</button>
+        </template>
+        <template #actions>
+          <button v-if="isEditing && canEdit" type="button" class="header-action"
+            :aria-expanded="showEntryActions" @click="showEntryActions = !showEntryActions">更多</button>
+        </template>
+      </PageHeader>
       <div class="kind-tabs" role="tablist" aria-label="收支方向">
         <button
           type="button"
           role="tab"
           :aria-selected="form.kind === 'expense'"
           :class="{ active: form.kind === 'expense' }"
-          :disabled="!canEdit"
+          :disabled="!canEdit || isSaving"
           @click="setKind('expense')"
         >
           支出
@@ -719,15 +771,12 @@ function handleKeydown(event: KeyboardEvent): void {
           role="tab"
           :aria-selected="form.kind === 'income'"
           :class="{ active: form.kind === 'income' }"
-          :disabled="!canEdit"
+          :disabled="!canEdit || isSaving"
           @click="setKind('income')"
         >
           收入
         </button>
       </div>
-      <button type="button" class="header-cancel" @click="handleHeaderAction">
-        {{ categoryEditMode ? '完成' : '取消' }}
-      </button>
     </header>
 
     <div v-if="isLoading" class="state entry-state">
@@ -740,142 +789,142 @@ function handleKeydown(event: KeyboardEvent): void {
     </section>
 
     <template v-else>
-      <div class="category-area">
-        <div class="category-scroll">
-          <div v-if="entryStatus === 'reversed'" class="reversed-banner">
-            该记录已撤销，不能修改。
+      <div ref="entryContent" class="entry-content">
+        <div class="amount-panel">
+          <div class="amount-heading">
+            <span>金额</span>
+            <span v-if="savedForNext && !isDirty" role="status">已保存，可以记下一笔。</span>
           </div>
-
-          <div class="category-grid" role="group" aria-label="选择分类" @touchmove="handleCategoryTouchMove">
-            <button
-              v-for="option in categoryOptions"
-              :key="option.id"
-              type="button"
-              class="category-tile"
-              :class="{
-                active: !categoryEditMode && form.category === option.name,
-                editing: categoryEditMode,
-                dragging: draggingCategoryId === option.id
-              }"
-              :data-category-id="option.id"
-              :disabled="!canEdit"
-              :aria-pressed="form.category === option.name"
-              @pointerdown="startCategoryPress($event, option)"
-              @pointermove="moveCategoryPress"
-              @pointerup="endCategoryPress"
-              @pointercancel="endCategoryPress"
-              @click="handleCategoryClick(option)"
-              @contextmenu.prevent
-            >
-              <span class="category-mark-wrap">
-                <span class="category-mark"><AppIcon :name="option.name" /></span>
-                <span
-                  v-if="categoryEditMode && option.deletable"
-                  class="category-remove"
-                  aria-hidden="true"
-                >×</span>
-              </span>
-              <span class="category-name">{{ option.name }}</span>
-            </button>
-            <button
-              v-if="categoryEditMode && canManageCategories"
-              type="button"
-              class="category-tile category-add"
-              @click="openAddCategory"
-            >
-              <span class="category-mark-wrap">
-                <span class="category-mark"><AppIcon name="plus" /></span>
-              </span>
-              <span class="category-name">添加</span>
-            </button>
-          </div>
-          <p v-if="categoryEditMode && canManageCategories" class="category-hint">
-            长按拖动分类可调整顺序，点分类可删除
-          </p>
-          <p v-if="categoryError" class="form-error category-error" role="alert">{{ categoryError }}</p>
-
-          <div v-if="hasEntryExtras" class="category-extras">
-            <button
-              v-if="isEditing && canEdit"
-              type="button"
-              class="reverse-link"
-              @click="showReverse = true"
-            >
-              撤销这笔记录
-            </button>
-
-            <section v-if="showReverse" class="reverse-panel">
-              <p>撤销会恢复这笔记录对现金的影响，并保留原始记录。</p>
-              <label class="field">
-                <span>撤销原因</span>
-                <input v-model="reverseReason" type="text" maxlength="200" placeholder="选填" />
-              </label>
-              <div class="reverse-actions">
-                <button
-                  type="button"
-                  class="secondary-button"
-                  :disabled="isReversing"
-                  @click="showReverse = false"
-                >
-                  取消
-                </button>
-                <LoadingButton
-                  class="danger-button"
-                  :loading="isReversing"
-                  loading-label="撤销中…"
-                  @click="confirmReverse"
-                >
-                  确认撤销
-                </LoadingButton>
-              </div>
-            </section>
-
-            <p v-if="entrySource === 'automatic'" class="source-note">自动记账记录</p>
+          <div class="amount-display"><span aria-hidden="true">¥</span>
+            <output class="amount-expression" aria-label="输入金额">{{ form.expression || '0' }}</output>
           </div>
         </div>
-        <div class="category-fade" aria-hidden="true" />
+        <p class="category-label">分类<span v-if="!form.category"> · 请选择</span></p>
+        <div v-if="entryStatus === 'reversed'" class="reversed-banner">
+          该记录已撤销，不能修改。
+        </div>
+
+        <div class="category-grid" :class="{ editing: categoryEditMode }" role="group" aria-label="选择分类" @touchmove="handleCategoryTouchMove">
+          <button
+            v-for="option in visibleCategories"
+            :key="option.id"
+            type="button"
+            class="category-tile"
+            :class="{
+              active: !categoryEditMode && form.category === option.name,
+              editing: categoryEditMode,
+              dragging: draggingCategoryId === option.id
+            }"
+            :data-category-id="option.id"
+            :disabled="!canEdit || isSaving"
+            :aria-pressed="form.category === option.name"
+            @pointerdown="startCategoryPress($event, option)"
+            @pointermove="moveCategoryPress"
+            @pointerup="endCategoryPress"
+            @pointercancel="endCategoryPress"
+            @click="handleCategoryClick(option)"
+            @contextmenu.prevent
+          >
+            <span class="category-mark-wrap">
+              <span class="category-mark"><AppIcon :name="option.name" /></span>
+              <span
+                v-if="categoryEditMode && option.deletable"
+                class="category-remove"
+                aria-hidden="true"
+              >×</span>
+            </span>
+            <span class="category-name">{{ option.name }}</span>
+          </button>
+          <button v-if="hasMoreCategories && !categoryEditMode" type="button" class="category-toggle"
+            :aria-expanded="expandedCategories" @click="showAllCategories = !showAllCategories">
+            <span class="category-name">{{ categoryToggleLabel }}</span>
+            <span aria-hidden="true">{{ expandedCategories ? '⌃' : '›' }}</span>
+          </button>
+          <button
+            v-if="categoryEditMode && canManageCategories"
+            type="button"
+            class="category-tile category-add"
+            @click="openAddCategory"
+          >
+            <span class="category-mark-wrap">
+              <span class="category-mark"><AppIcon name="plus" /></span>
+            </span>
+            <span class="category-name">添加</span>
+          </button>
+        </div>
+        <p v-if="categoryEditMode && canManageCategories" class="category-hint">
+          长按拖动分类可调整顺序，点分类可删除
+        </p>
+        <p v-if="categoryError" class="form-error category-error" role="alert">{{ categoryError }}</p>
+
+        <div v-if="showEntryActions || showReverse || entrySource === 'automatic'" class="category-extras">
+          <button
+            v-if="showEntryActions && isEditing && canEdit"
+            type="button"
+            class="reverse-link"
+            @click="showReverse = true"
+          >
+            撤销这笔记录
+          </button>
+
+          <section v-if="showReverse" class="reverse-panel">
+            <p>撤销会恢复这笔记录对现金的影响，并保留原始记录。</p>
+            <label class="field">
+              <span>撤销原因</span>
+              <input v-model="reverseReason" type="text" maxlength="200" placeholder="选填" />
+            </label>
+            <div class="reverse-actions">
+              <button
+                type="button"
+                class="secondary-button"
+                :disabled="isReversing"
+                @click="showReverse = false"
+              >
+                取消
+              </button>
+              <LoadingButton
+                class="danger-button"
+                :loading="isReversing"
+                loading-label="撤销中…"
+                @click="confirmReverse"
+              >
+                确认撤销
+              </LoadingButton>
+            </div>
+          </section>
+
+          <p v-if="entrySource === 'automatic'" class="source-note">自动记账记录</p>
+        </div>
+        <div class="entry-fields">
+          <label class="entry-date">
+            <AppIcon name="calendar" aria-hidden="true" />
+            <span>{{ dateLabel }}</span>
+            <input v-model="form.businessDate" type="date" :max="today" :disabled="!canEdit || isSaving"
+              aria-label="业务日期" @click="pickDate" ref="dateInput" />
+          </label>
+          <label class="note-bar">
+            <input v-model="form.note" type="text" maxlength="200" placeholder="备注（选填）"
+              :disabled="!canEdit || isSaving" aria-label="备注"
+              @focus="editingNote = true" @blur="editingNote = false" />
+          </label>
+        </div>
       </div>
 
-      <section class="amount-panel">
-        <output class="amount-expression" aria-label="输入金额">{{ form.expression || '0.00' }}</output>
-      </section>
-
-      <p v-if="formError" class="form-error entry-error" role="alert">{{ formError }}</p>
-
-      <label class="note-bar">
-        <input
-          v-model="form.note"
-          type="text"
-          maxlength="200"
-          placeholder="备注：点击填写备注"
-          :disabled="!canEdit"
-          aria-label="备注"
-        />
-      </label>
-
-      <input
-        id="entry-date"
-        ref="dateInput"
-        v-model="form.businessDate"
-        class="date-proxy"
-        type="date"
-        :max="today"
-        :disabled="!canEdit"
-        tabindex="-1"
-        aria-label="业务日期"
-      />
-
-      <footer class="entry-footer">
-        <AmountKeypad
-          v-model="form.expression"
-          :can-submit="canSubmit"
-          :disabled="!canEdit"
-          :loading="isSaving"
-          :date-label="dateLabel"
-          @submit="submit"
-          @pick-date="pickDate"
-        />
+      <footer v-if="canEdit" class="entry-footer">
+        <p v-if="formError" class="form-error entry-error" role="alert">{{ formError }}</p>
+        <AmountKeypad v-if="!editingNote" v-model="form.expression" :disabled="isSaving" />
+        <div class="entry-save-actions" :class="{ 'entry-save-actions--new': !isEditing }">
+          <LoadingButton v-if="!isEditing" class="entry-save-again" :loading="saveMode === 'again'"
+            :disabled="!canSubmit" loading-label="保存中…" @click="submit('again')">保存后再记</LoadingButton>
+          <LoadingButton class="entry-save" :loading="saveMode === 'exit'" :disabled="!canSubmit"
+            loading-label="保存中…" @click="submit()">{{ saveLabel }}</LoadingButton>
+        </div>
       </footer>
+
+      <ConfirmSheet :open="leaveDecision !== null" title="这笔账还没保存"
+        :message="isEditing ? '再改一会儿，还是放弃这次修改？' : '要接着记，还是放弃这笔账？'"
+        confirm-label="放弃" cancel-label="继续" close-icon danger
+        @confirm="resolveLeave(true)" @cancel="resolveLeave(false)" />
 
       <BottomSheet
         :open="categorySheet !== null"
@@ -919,140 +968,104 @@ function handleKeydown(event: KeyboardEvent): void {
 .entry-screen {
   display: flex;
   flex-direction: column;
-  box-sizing: border-box;
   width: min(100%, 430px);
   height: 100dvh;
   margin: 0 auto;
   overflow: hidden;
-  background: var(--color-bg-surface);
+  background: var(--color-bg-page);
 }
 
 .entry-header {
-  position: relative;
-  display: flex;
-  justify-content: center;
-  align-items: center;
   flex-shrink: 0;
-  min-height: calc(56px + env(safe-area-inset-top));
-  padding: env(safe-area-inset-top) 72px 0;
-  background: linear-gradient(180deg, var(--color-hero-bg) 0%, var(--color-hero-bg-end) 100%);
-  color: var(--color-hero-text);
+  padding: env(safe-area-inset-top) 16px 0;
+}
+
+.entry-heading {
+  margin-bottom: 4px;
+}
+
+.header-action {
+  min-height: var(--touch-target);
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--color-brand);
 }
 
 .kind-tabs {
   display: flex;
-  align-items: center;
-  gap: 32px;
-  height: 56px;
+  gap: 4px;
+  padding: 3px;
+  border-radius: var(--radius-control);
+  background: var(--color-bg-subtle);
 }
 
 .kind-tabs button {
-  position: relative;
-  min-height: var(--touch-target);
-  padding: 0 6px;
+  flex: 1;
+  min-height: 40px;
   border: 0;
+  border-radius: var(--radius-control);
   background: transparent;
-  color: var(--color-hero-text);
-  font-size: 1.0625rem;
-  font-weight: 500;
-  opacity: 0.62;
+  color: var(--color-text-secondary);
 }
 
 .kind-tabs button.active {
+  background: var(--color-bg-surface);
+  color: var(--color-brand);
   font-weight: 700;
-  opacity: 1;
 }
 
-.kind-tabs button.active::after {
-  content: '';
-  position: absolute;
-  right: 0;
-  bottom: 1px;
-  left: 0;
-  height: 2px;
-  border-radius: var(--radius-pill);
-  background: currentColor;
-}
-
-.kind-tabs button:disabled {
-  opacity: 0.35;
-}
-
-.header-cancel {
-  position: absolute;
-  right: 14px;
-  bottom: 10px;
-  display: inline-flex;
-  justify-content: center;
-  align-items: center;
-  height: 36px;
-  min-height: 36px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-hero-surface);
-  color: var(--color-hero-text);
-  font-size: var(--text-subhead);
-  font-weight: 600;
-}
-
-.header-cancel:hover {
-  background: var(--color-hero-surface-strong);
-}
-
-.category-area {
-  position: relative;
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
-
-.category-scroll {
+.entry-content {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 10px 16px 24px;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
+  overscroll-behavior: contain;
+  padding: 10px 16px 12px;
 }
 
-.category-scroll::-webkit-scrollbar {
-  display: none;
+.category-label {
+  margin: 12px 0 2px;
+  font-weight: 600;
 }
 
-.category-fade {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: 24px;
-  background: linear-gradient(to bottom, transparent, var(--color-bg-surface));
-  pointer-events: none;
+.category-label span {
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+  font-weight: 400;
 }
 
 .category-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  row-gap: 16px;
-  column-gap: 4px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
   padding: 6px 0 0;
 }
 
-.category-tile {
+.category-tile,
+.category-toggle {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
+  justify-content: center;
+  gap: 5px;
   min-width: 0;
-  padding: 0;
+  min-height: var(--touch-target);
+  padding: 4px 6px;
   border: 0;
-  background: transparent;
+  border-radius: var(--radius-control);
+  background: var(--color-bg-surface);
   color: var(--color-text-primary);
   font-size: 0.875rem;
   -webkit-touch-callout: none;
   user-select: none;
   touch-action: manipulation;
+}
+
+.category-tile.active {
+  background: var(--color-brand-soft);
+}
+
+.category-toggle {
+  color: var(--color-brand);
 }
 
 .category-grid.editing .category-tile {
@@ -1074,8 +1087,8 @@ function handleKeydown(event: KeyboardEvent): void {
   justify-content: center;
   align-items: center;
   flex: 0 0 auto;
-  width: 58px;
-  height: 58px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: var(--color-brand-soft);
   color: var(--color-brand);
@@ -1083,8 +1096,8 @@ function handleKeydown(event: KeyboardEvent): void {
 }
 
 .category-mark :deep(.app-icon) {
-  width: 26px;
-  height: 26px;
+  width: 15px;
+  height: 15px;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -1173,63 +1186,86 @@ function handleKeydown(event: KeyboardEvent): void {
 }
 
 .amount-panel {
-  display: flex;
-  justify-content: flex-end;
-  flex-shrink: 0;
-  padding: 10px 20px 4px;
+  padding: 10px 14px;
+  border-radius: var(--radius-card);
   background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  font-size: var(--text-footnote);
+}
+
+.amount-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.amount-heading [role='status'] {
+  color: var(--color-brand);
+}
+
+.amount-display {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  color: var(--color-text-primary);
+  font-size: clamp(1.65rem, 8vw, 2.5rem);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.12;
 }
 
 .amount-expression {
-  max-width: 100%;
-  overflow: hidden;
-  color: var(--color-text-primary);
-  font-size: clamp(2.75rem, 12vw, 3.25rem);
-  font-weight: 700;
-  letter-spacing: -0.05em;
-  line-height: 1.1;
-  font-variant-numeric: tabular-nums;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
-.note-bar {
-  display: block;
-  flex-shrink: 0;
-  margin: 6px 16px 14px;
+.entry-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  margin-top: 10px;
 }
 
-.note-bar input {
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 48px;
-  padding: 0 18px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-bg-subtle);
-  color: var(--color-text-primary);
+.entry-date {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: var(--touch-target);
+  padding: 0 10px;
+  border-radius: var(--radius-control);
+  background: var(--color-bg-surface);
+  color: var(--color-brand);
   font-size: var(--text-body);
 }
 
-.note-bar input::placeholder {
-  color: var(--color-text-secondary);
+.entry-date .app-icon {
+  width: 16px;
+  height: 16px;
 }
 
-.note-bar input:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
-  outline-offset: 2px;
-}
-
-.date-proxy {
-  position: fixed;
-  bottom: 0;
-  left: 50%;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  border: 0;
+.entry-date input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   opacity: 0;
-  pointer-events: none;
+  cursor: pointer;
+}
+
+.entry-date:focus-within {
+  outline: 2px solid var(--color-focus-ring);
+}
+
+.note-bar input {
+  width: 100%;
+  min-height: var(--touch-target);
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: var(--text-body);
 }
 
 .field {
@@ -1342,8 +1378,48 @@ function handleKeydown(event: KeyboardEvent): void {
 
 .entry-footer {
   flex-shrink: 0;
-  padding-bottom: env(safe-area-inset-bottom);
+  padding: 6px 12px max(8px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--color-border-subtle);
   background: var(--color-bg-surface);
+}
+
+.entry-save-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.entry-save-actions--new {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.entry-save,
+.entry-save-again {
+  min-height: var(--touch-target);
+  padding-inline: 6px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--color-brand);
+  color: var(--color-on-brand);
+  font-weight: 700;
+}
+
+.entry-save-again {
+  background: var(--color-brand-soft);
+  color: var(--color-brand);
+}
+
+.entry-save:disabled:not([aria-busy]),
+.entry-save-again:disabled:not([aria-busy]) {
+  background: var(--color-bg-disabled);
+  color: var(--color-text-disabled);
+}
+
+@media (max-height: 700px) {
+  .entry-content { padding-top: 6px; }
+  .amount-panel { padding-block: 6px; }
+  .category-label { margin-top: 7px; }
+  .entry-fields { margin-top: 7px; }
 }
 
 .entry-state {

@@ -1,20 +1,13 @@
 <script setup lang="ts">
-import AppIcon from './AppIcon.vue'
-import LoadingButton from './LoadingButton.vue'
 import { applyAmountKey, type AmountKey } from '../utils/amount'
 
 const props = defineProps<{
   modelValue: string
-  canSubmit: boolean
   disabled: boolean
-  loading?: boolean
-  dateLabel: string
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
-  submit: []
-  pickDate: []
 }>()
 
 function press(key: AmountKey): void {
@@ -25,55 +18,17 @@ function press(key: AmountKey): void {
   emit('update:modelValue', applyAmountKey(props.modelValue, key))
 }
 
-function submit(): void {
-  if (props.disabled || !props.canSubmit) {
-    return
-  }
-
-  emit('submit')
-}
-
-function pickDate(): void {
-  if (props.disabled) {
-    return
-  }
-
-  emit('pickDate')
-}
 </script>
 
 <template>
-  <div class="keypad">
-    <button type="button" :disabled="disabled" @click="press('7')">7</button>
-    <button type="button" :disabled="disabled" @click="press('8')">8</button>
-    <button type="button" :disabled="disabled" @click="press('9')">9</button>
-    <button type="button" class="key-date" :disabled="disabled" @click="pickDate">
-      <AppIcon name="calendar" class="key-date-icon" />
-      <span>{{ dateLabel }}</span>
-    </button>
-
-    <button type="button" :disabled="disabled" @click="press('4')">4</button>
-    <button type="button" :disabled="disabled" @click="press('5')">5</button>
-    <button type="button" :disabled="disabled" @click="press('6')">6</button>
-    <button type="button" :disabled="disabled" aria-label="加" @click="press('+')">＋</button>
-
-    <button type="button" :disabled="disabled" @click="press('1')">1</button>
-    <button type="button" :disabled="disabled" @click="press('2')">2</button>
-    <button type="button" :disabled="disabled" @click="press('3')">3</button>
-    <button type="button" :disabled="disabled" aria-label="减" @click="press('-')">−</button>
-
-    <button type="button" :disabled="disabled" aria-label="小数点" @click="press('.')">.</button>
-    <button type="button" :disabled="disabled" @click="press('0')">0</button>
+  <div class="keypad" role="group" aria-label="金额键盘">
+    <button v-for="key in ['7', '8', '9', '+', '4', '5', '6', '-', '1', '2', '3'] as const"
+      :key="key" type="button" :disabled="disabled"
+      :aria-label="key === '+' ? '加' : key === '-' ? '减' : undefined"
+      @click="press(key)">{{ key === '-' ? '−' : key }}</button>
     <button type="button" :disabled="disabled" aria-label="删除一位" @click="press('back')">⌫</button>
-    <LoadingButton
-      class="key-done"
-      :loading="loading"
-      :disabled="disabled || !canSubmit"
-      loading-label="保存中"
-      @click="submit"
-    >
-      完成
-    </LoadingButton>
+    <button type="button" :disabled="disabled" aria-label="小数点" @click="press('.')">.</button>
+    <button type="button" class="key-zero" :disabled="disabled" @click="press('0')">0</button>
   </div>
 </template>
 
@@ -81,77 +36,28 @@ function pickDate(): void {
 .keypad {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1px;
-  background: var(--color-bg-subtle);
-  border-top: 1px solid var(--color-bg-subtle);
+  gap: 4px;
 }
 
 .keypad button {
-  display: inline-flex;
-  justify-content: center;
-  align-items: center;
-  gap: 5px;
-  min-height: 56px;
+  min-height: clamp(44px, 6dvh, 52px);
   border: 0;
-  border-radius: 0;
-  background: var(--color-bg-surface);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-subtle);
   color: var(--color-text-primary);
-  font-size: 1.5rem;
-  font-weight: 500;
+  font-size: 1.25rem;
   font-variant-numeric: tabular-nums;
-}
-
-.keypad button:hover:not(:disabled) {
-  background: var(--color-bg-hover);
 }
 
 .keypad button:active:not(:disabled) {
   background: var(--color-brand-soft);
 }
 
-.keypad .key-date {
-  background: var(--color-brand-soft);
-  color: var(--color-brand);
-  font-size: var(--text-footnote);
-  font-weight: 600;
-}
-
-.keypad .key-date:hover:not(:disabled) {
-  background: var(--color-brand-soft-hover);
-}
-
-.keypad .key-date-icon {
-  width: 18px;
-  height: 18px;
-}
-
-.keypad .key-done {
-  background: var(--color-accent-mint);
-  color: var(--color-on-accent-mint);
-  font-size: var(--text-subhead);
-  font-weight: 700;
-}
-
-.keypad .key-done:hover:not(:disabled) {
-  background: var(--color-accent-mint-strong);
-}
-
-.keypad .key-done:active:not(:disabled) {
-  background: var(--color-accent-mint-strong);
-}
-
 .keypad button:disabled {
-  background: var(--color-bg-surface);
   color: var(--color-text-disabled);
 }
 
-.keypad .key-date:disabled {
-  background: var(--color-bg-surface);
-  color: var(--color-text-disabled);
-}
-
-.keypad .key-done:disabled {
-  background: var(--color-bg-disabled);
-  color: var(--color-text-disabled);
+.key-zero {
+  grid-column: span 2;
 }
 </style>

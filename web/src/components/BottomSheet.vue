@@ -11,6 +11,7 @@ const props = defineProps<{
   title: string
   subtitle?: string
   closeDisabled?: boolean
+  closeIcon?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -197,8 +198,12 @@ function endDrag(): void {
               <h2 :id="sheetId">{{ title }}</h2>
               <p v-if="subtitle">{{ subtitle }}</p>
             </div>
-            <button type="button" class="sheet-close" :disabled="closeDisabled" @click="close">
-              关闭
+            <button type="button" class="sheet-close" :disabled="closeDisabled" aria-label="关闭" @click="close">
+              <svg v-if="closeIcon" class="sheet-close-icon" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+                <path d="M6 6l12 12M18 6 6 18" />
+              </svg>
+              <template v-else>关闭</template>
             </button>
           </header>
           <div class="sheet-body">
@@ -306,6 +311,13 @@ function endDrag(): void {
   background: transparent;
   color: var(--color-brand);
   font-size: 0.875rem;
+}
+
+.sheet-close-icon {
+  display: block;
+  width: 20px;
+  height: 20px;
+  margin: auto;
 }
 
 .sheet-close:hover:not(:disabled) {

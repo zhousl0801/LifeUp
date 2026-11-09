@@ -6,14 +6,16 @@ import type { EntryCategory } from '../types/category'
 const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   push: vi.fn(),
+  replace: vi.fn(),
   categories: vi.fn(),
   createCategory: vi.fn(),
   deleteCategory: vi.fn(),
   reorder: vi.fn()
 }))
 vi.mock('vue-router', () => ({
+  onBeforeRouteLeave: vi.fn(),
   useRoute: () => ({ query: {} }),
-  useRouter: () => ({ push: mocks.push, replace: vi.fn() })
+  useRouter: () => ({ push: mocks.push, replace: mocks.replace, options: { history: { state: {} } } })
 }))
 vi.mock('../api/categories', () => ({
   fetchCategories: mocks.categories,
@@ -50,16 +52,19 @@ test('Enter on a focused control does not submit an entered amount', async () =>
   view.unmount()
 })
 
-test('switching to income selects an income category and keeps four-per-row layout', async () => {
+test('switching to income requires a category and restores the selected expense category', async () => {
   const view = mount(EntryView, { attachTo: document.body })
   await flushPromises()
 
+  await view.get('.category-tile').trigger('click')
   await view.findAll('.kind-tabs button')[1]!.trigger('click')
 
   const tiles = view.findAll('.category-tile')
   expect(tiles).toHaveLength(3)
   expect(tiles[0]!.text()).toBe('工资')
-  expect(tiles[0]!.classes()).toContain('active')
+  expect(tiles[0]!.classes()).not.toContain('active')
+  await view.findAll('.kind-tabs button')[0]!.trigger('click')
+  expect(view.get('.category-tile').classes()).toContain('active')
   view.unmount()
 })
 
@@ -133,5 +138,58 @@ test('Escape in the category sheet preserves the entry draft', async () => {
   await flushPromises()
   expect(mocks.push).not.toHaveBeenCalled()
   expect(view.get('output[aria-label="输入金额"]').text()).toBe('7')
+  view.unmount()
+})
+
+test('requires explicit category selection and opens the saved business date', async () => {
+  mocks.create.mockResolvedValue({ entry: { id: 'past-entry', businessDate: '2026-10-31' } })
+  const view = mount(EntryView, { attachTo: document.body })
+  await flushPromises()
+  await view.get('.keypad button').trigger('click')
+  expect(view.find('[aria-pressed="true"].category-tile').exists()).toBe(false)
+  await view.get('.category-tile').trigger('click')
+  await view.get('input[type="date"]').setValue('2026-10-31')
+  await view.get('button.entry-save').trigger('click')
+  await flushPromises()
+
+  expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({
+    businessDate: '2026-10-31', amount: 7, category: '餐饮'
+  }))
+  expect(mocks.replace).toHaveBeenCalledWith({
+    name: 'ledger', query: { date: '2026-10-31', focus: 'past-entry' }
+  })
+  view.unmount()
+})
+
+test('save and add another keeps the batch date, clears the draft and uses a fresh request ID', async () => {
+  mocks.create.mockResolvedValue({ entry: { id: 'saved', businessDate: '2026-11-07' } })
+  const view = mount(EntryView, { attachTo: document.body })
+  await flushPromises()
+
+  const date = view.get<HTMLInputElement>('input[type="date"]')
+  const note = view.get<HTMLInputElement>('input[aria-label="备注"]')
+  await date.setValue('2026-11-07')
+  await note.setValue('第一笔')
+  await view.get('.category-tile').trigger('click')
+  await view.get('.keypad button').trigger('click')
+  await view.get('button.entry-save-again').trigger('click')
+  await flushPromises()
+
+  expect(mocks.replace).not.toHaveBeenCalled()
+  expect(view.get('[role="status"]').text()).toBe('已保存，可以记下一笔。')
+  expect(view.get('output').text()).toBe('0')
+  expect(note.element.value).toBe('')
+  expect(date.element.value).toBe('2026-11-07')
+  expect(view.get('.entry-date').text()).toBe('2026年11月7日 星期六')
+  expect(view.find('.category-tile[aria-pressed="true"]').exists()).toBe(false)
+
+  await view.get('.category-tile').trigger('click')
+  await view.get('.keypad button').trigger('click')
+  await view.get('button.entry-save').trigger('click')
+  await flushPromises()
+
+  expect(mocks.create).toHaveBeenCalledTimes(2)
+  expect(mocks.create.mock.calls[0]![0].requestId).not.toBe(mocks.create.mock.calls[1]![0].requestId)
+  expect(mocks.create.mock.calls[1]![0]).toMatchObject({ businessDate: '2026-11-07', note: '' })
   view.unmount()
 })
