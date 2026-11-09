@@ -21,10 +21,10 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - run: dotnet restore api/AssetKeeper.slnx
-      - run: dotnet build api/AssetKeeper.slnx --no-restore -c Release
-      # 真实 PostgreSQL 测试需要显式设置 ASSET_KEEPER_TEST_CONNECTION，CI 中不启用。
-      - run: dotnet test api/AssetKeeper.slnx --no-build -c Release
+      - run: dotnet restore api/LifeUp.slnx
+      - run: dotnet build api/LifeUp.slnx --no-restore -c Release
+      # 真实 PostgreSQL 测试需要显式设置 LIFEUP_TEST_CONNECTION，CI 中不启用。
+      - run: dotnet test api/LifeUp.slnx --no-build -c Release
 
   frontend:
     name: 前端检查、测试与构建

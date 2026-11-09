@@ -152,7 +152,7 @@ async function performRequest<T>(path: string, init?: RequestInit): Promise<T> {
   }
 }
 
-const PendingPrefix = 'asset-keeper.pending.'
+const PendingPrefix = 'lifeup.pending.'
 
 export interface PendingMutation {
   requestId: string

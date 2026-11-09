@@ -61,7 +61,7 @@ export function restoreBackup(
 }
 
 export function downloadBackup(): Promise<void> {
-  return download('/api/ledger/backup', 'asset-keeper-backup.json')
+  return download('/api/ledger/backup', 'lifeup-backup.json')
 }
 
 export function downloadDetails(from: string, to: string): Promise<void> {
@@ -76,7 +76,7 @@ export function downloadDetails(from: string, to: string): Promise<void> {
   }
 
   const suffix = params.toString() ? `?${params.toString()}` : ''
-  return download(`/api/ledger/export/details.csv${suffix}`, 'asset-keeper-details.csv')
+  return download(`/api/ledger/export/details.csv${suffix}`, 'lifeup-details.csv')
 }
 
 async function requestJson<T>(path: string, init: RequestInit): Promise<T> {

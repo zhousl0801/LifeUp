@@ -53,7 +53,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: process.env.ASSET_KEEPER_API_PROXY ?? 'http://localhost:5069',
+        target: process.env.LIFEUP_API_PROXY ?? 'http://localhost:5069',
         changeOrigin: true
       }
     }

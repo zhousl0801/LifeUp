@@ -80,7 +80,7 @@ test('export actions call the download endpoints', async () => {
 test('valid backup shows both summaries and requires confirmation before replacing', async () => {
   const view = mount(BackupView, { attachTo: document.body })
   await flushPromises()
-  await selectBackup(view, '{"format":"asset-keeper-backup"}')
+  await selectBackup(view, '{"format":"lifeup-backup"}')
 
   expect(mocks.validate).toHaveBeenCalledTimes(1)
   expect(view.text()).toContain('校验通过')
@@ -98,7 +98,7 @@ test('valid backup shows both summaries and requires confirmation before replaci
   await flushPromises()
 
   expect(mocks.restore).toHaveBeenCalledWith(
-    { format: 'asset-keeper-backup' },
+    { format: 'lifeup-backup' },
     'token-1',
     true
   )
@@ -131,7 +131,7 @@ test('restore failure keeps the validation and shows the error', async () => {
   mocks.restore.mockRejectedValue(new Error('备份或当前账本已变化，请重新校验后再恢复。'))
   const view = mount(BackupView, { attachTo: document.body })
   await flushPromises()
-  await selectBackup(view, '{"format":"asset-keeper-backup"}')
+  await selectBackup(view, '{"format":"lifeup-backup"}')
   await view.find('.confirm-replace input').setValue(true)
   await view.findAll('button').find((button) => button.text() === '确认恢复并替换当前账本')!.trigger('click')
   await flushPromises()

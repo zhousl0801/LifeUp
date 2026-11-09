@@ -70,7 +70,7 @@ test('known validation failure permits corrected content with the same unused ID
 test('retry uses the persisted original body after a not-yet-found lookup', async () => {
   const { recoverMutation } = await import('./client')
   const original = { requestId: 'e39f2d03-b28b-48cc-af1b-4d8698239082', path: '/api/ledger/entries', method: 'POST', body: JSON.stringify({ requestId: 'e39f2d03-b28b-48cc-af1b-4d8698239082', amount: 100 }) }
-  localStorage.setItem(`asset-keeper.pending.${original.requestId}`, JSON.stringify(original))
+  localStorage.setItem(`lifeup.pending.${original.requestId}`, JSON.stringify(original))
   const fetch = vi.spyOn(globalThis, 'fetch')
     .mockResolvedValueOnce(new Response('{}', { status: 404 }))
     .mockResolvedValueOnce(new Response(JSON.stringify({ cashBalance: 100 }), { status: 200 }))

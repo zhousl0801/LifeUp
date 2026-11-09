@@ -66,7 +66,7 @@ type PortfolioView = 'positions' | 'returns' | 'activities' | 'plans'
 type GroupScope = 'all' | 'ungrouped' | string
 type FundMetricKey = 'daily' | 'value' | 'profit' | 'cumulative' | 'rate' | 'cost' | 'weight' | 'pending'
 
-const metricStorageKey = 'asset-keeper.fund.metrics.v2'
+const metricStorageKey = 'lifeup.fund.metrics.v2'
 const defaultMetrics: FundMetricKey[] = ['daily', 'profit', 'cumulative']
 const metricOptions: { key: FundMetricKey; label: string }[] = [
   { key: 'daily', label: '日收益' },

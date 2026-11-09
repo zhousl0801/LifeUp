@@ -1,0 +1,361 @@
+using System.Globalization;
+using LifeUp.Application.History;
+using LifeUp.Domain.Assets;
+using LifeUp.Domain.Cash;
+using LifeUp.Domain.Ledgers;
+
+namespace LifeUp.Application.Ledgers;
+
+public sealed class LedgerService
+{
+    private readonly ILedgerRepository _ledgerRepository;
+    private readonly BusinessDateProvider _businessDateProvider;
+
+    public LedgerService(ILedgerRepository ledgerRepository, BusinessDateProvider businessDateProvider)
+    {
+        _ledgerRepository = ledgerRepository;
+        _businessDateProvider = businessDateProvider;
+    }
+
+    public async Task<LedgerOverviewDto?> GetOverviewAsync(CancellationToken cancellationToken)
+    {
+        var ledger = await _ledgerRepository.GetAsync(cancellationToken);
+
+        if (ledger is null)
+        {
+            return null;
+        }
+
+        if (ledger.CashAccount is null)
+        {
+            throw new InvalidOperationException("账本缺少现金账户。");
+        }
+
+        var (from, to) = EntryPeriodRange.For(EntryPeriod.Month, _businessDateProvider.Today);
+        var totals = await _ledgerRepository.GetEntryTotalsAsync(ledger.Id, from, to, cancellationToken);
+        var data = await _ledgerRepository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
+        var providentAccount = data.Provident;
+        var fundPositions = data.Positions;
+        var stockPositions = data.Stocks;
+        var goldHolding = data.Gold;
+        IReadOnlyList<AssetTransaction> providentTransactions = providentAccount is null
+            ? Array.Empty<AssetTransaction>()
+            : data.Transactions
+                .Where(transaction => !transaction.IsReversed
+                    && transaction.AssetType == AssetType.ProvidentFund
+                    && transaction.BusinessDate >= from
+                    && transaction.BusinessDate <= to)
+                .ToList();
+        var monthDeposit = providentTransactions
+            .Where(transaction => transaction.Kind == AssetTransactionKind.ProvidentDeposit)
+            .Sum(transaction => transaction.Amount);
+        var snapshot = new LedgerReplayCalculator().Calculate(data, BusinessFact.From(data), _businessDateProvider.Today, currentDate: _businessDateProvider.Today);
+        var pendingFund = snapshot.Funds.Sum(item => item.PendingAmount);
+        var pendingFundValue = snapshot.Funds.Sum(item => item.PendingValue);
+        var pendingArrival = snapshot.Funds.Sum(item => item.PendingArrivalAmount);
+        var pendingGoldArrival = snapshot.Gold?.PendingArrivalAmount ?? 0m;
+        var fundNote = $"持有 {fundPositions.Count} 只基金";
+
+        if (pendingFund > 0)
+        {
+            fundNote += $" · 待确认 {pendingFund.ToString("N2", CultureInfo.InvariantCulture)}";
+        }
+
+        if (pendingArrival > 0)
+        {
+            fundNote += $" · 待到账 {pendingArrival.ToString("N2", CultureInfo.InvariantCulture)}";
+        }
+
+        var notConfigured = new AssetOverviewDto(false, null, "尚未录入");
+        var notHeld = new AssetOverviewDto(false, 0m, "不持有", true);
+        var fundIsNotHeld = ledger.FundNotHeld && fundPositions.Count == 0;
+        var providentIsNotHeld = ledger.ProvidentFundNotHeld && providentAccount is null;
+        var goldIsNotHeld = ledger.GoldNotHeld && (goldHolding is null || goldHolding.Grams == 0) && pendingGoldArrival == 0m;
+        var stockIsNotHeld = ledger.StockNotHeld && stockPositions.Count == 0;
+        var fund = fundIsNotHeld
+            ? notHeld
+            : fundPositions.Count == 0
+                ? notConfigured
+                : new AssetOverviewDto(
+                    true,
+                    fundPositions.Sum(position => position.Value) + pendingFundValue + pendingArrival,
+                    fundNote);
+        var provident = providentIsNotHeld
+            ? notHeld
+            : providentAccount is null
+                ? notConfigured
+                : new AssetOverviewDto(
+                    true,
+                    providentAccount.Balance,
+                    monthDeposit > 0
+                        ? $"本月缴存 +{monthDeposit.ToString("N2", CultureInfo.InvariantCulture)}"
+                        : "本月暂无缴存");
+        var goldNote = goldHolding is null ? string.Empty : $"持有 {goldHolding.Grams:0.####} 克";
+
+        if (pendingGoldArrival > 0)
+        {
+            goldNote += $" · 待到账 {pendingGoldArrival.ToString("N2", CultureInfo.InvariantCulture)}";
+        }
+
+        var gold = goldIsNotHeld
+            ? notHeld
+            : goldHolding is null
+                ? notConfigured
+                : new AssetOverviewDto(
+                    true,
+                    goldHolding.Value + pendingGoldArrival,
+                    goldNote);
+        var stockNote = stockPositions.Count == 0
+            ? string.Empty
+            : $"持有 {stockPositions.Count(position => position.Shares > 0m)} 只股票";
+        var stock = stockIsNotHeld
+            ? notHeld
+            : stockPositions.Count == 0
+                ? notConfigured
+                : new AssetOverviewDto(
+                    true,
+                    stockPositions.Sum(position => position.Value),
+                    stockNote);
+
+        if (fundPositions.Count > 0 && snapshot.Funds.Any(item => item.Value is null))
+        {
+            fund = fund with { Amount = null, Note = "行情或起始依据不足，前往历史核对" };
+        }
+        else if (snapshot.Funds.Any(item => !item.CanRebuild))
+        {
+            fund = fund with { Note = "当前缓存估值，持仓日期待确认" };
+        }
+
+        if (goldHolding is not null && snapshot.Gold?.Value is null)
+        {
+            gold = gold with { Amount = null, Note = "行情或起始依据不足，前往历史核对" };
+        }
+        else if (snapshot.Gold is { CanRebuild: false })
+        {
+            gold = gold with { Note = "当前缓存估值，持仓日期待确认" };
+        }
+
+        if (stockPositions.Count > 0 && snapshot.Stocks.Any(item => item.Value is null))
+        {
+            stock = stock with { Amount = null, Note = "行情或起始依据不足，前往历史核对" };
+        }
+        else if (snapshot.Stocks.Any(item => !item.CanRebuild))
+        {
+            stock = stock with { Note = "当前缓存估值，持仓日期待确认" };
+        }
+
+        var coverageComplete = (fundIsNotHeld || (fundPositions.Count > 0 && fund.Amount is not null))
+            && (providentIsNotHeld || providentAccount is not null)
+            && (goldIsNotHeld || (goldHolding is not null && gold.Amount is not null))
+            && (stockIsNotHeld || (stockPositions.Count > 0 && stock.Amount is not null));
+
+        return Map(
+            ledger,
+            ledger.CashAccount,
+            totals.Income,
+            totals.Expense,
+            totals.Count > 0,
+            fund,
+            provident,
+            gold,
+            stock,
+            fundIsNotHeld,
+            providentIsNotHeld,
+            goldIsNotHeld,
+            stockIsNotHeld,
+            coverageComplete)
+            with
+        { IsComplete = coverageComplete };
+    }
+
+    public async Task<AssetCoverageResult> UpdateCoverageAsync(
+        UpdateAssetCoverageRequest request,
+        CancellationToken cancellationToken)
+    {
+        var ledger = await _ledgerRepository.GetForUpdateAsync(cancellationToken);
+
+        if (ledger is null)
+        {
+            return AssetCoverageResult.NotFound();
+        }
+
+        var fundPositions = await _ledgerRepository.GetFundPositionsAsync(ledger.Id, cancellationToken);
+        var stockPositions = await _ledgerRepository.GetStockPositionsAsync(ledger.Id, cancellationToken);
+        var providentAccount = await _ledgerRepository.GetProvidentFundAccountAsync(ledger.Id, cancellationToken);
+        var goldHolding = await _ledgerRepository.GetGoldHoldingAsync(ledger.Id, cancellationToken);
+        var errors = new List<string>();
+
+        if (request.FundNotHeld && fundPositions.Count > 0)
+        {
+            errors.Add("基金已有持仓，不能标记为不持有。");
+        }
+
+        if (request.ProvidentFundNotHeld && providentAccount is not null)
+        {
+            errors.Add("公积金已有账户记录，不能标记为不持有。");
+        }
+
+        if (request.GoldNotHeld && goldHolding is { Grams: > 0m })
+        {
+            errors.Add("积存金已有持仓，不能标记为不持有。");
+        }
+
+        if (request.StockNotHeld && stockPositions.Count > 0)
+        {
+            errors.Add("股票已有持仓，不能标记为不持有。");
+        }
+
+        if (errors.Count > 0)
+        {
+            return AssetCoverageResult.Invalid([.. errors]);
+        }
+
+        var now = _businessDateProvider.UtcNow;
+        ledger.SetNotHeld(AssetType.Fund, request.FundNotHeld, now);
+        ledger.SetNotHeld(AssetType.ProvidentFund, request.ProvidentFundNotHeld, now);
+        ledger.SetNotHeld(AssetType.Gold, request.GoldNotHeld, now);
+        ledger.SetNotHeld(AssetType.Stock, request.StockNotHeld, now);
+
+        try
+        {
+            await _ledgerRepository.SaveChangesAsync(cancellationToken);
+        }
+        catch (ConcurrencyConflictException)
+        {
+            _ledgerRepository.DiscardChanges();
+            return AssetCoverageResult.Conflict();
+        }
+
+        var overview = await GetOverviewAsync(cancellationToken);
+
+        return overview is null ? AssetCoverageResult.NotFound() : AssetCoverageResult.Updated(overview);
+    }
+
+    public async Task<InitializeLedgerResult> InitializeAsync(InitializeLedgerRequest request, CancellationToken cancellationToken)
+    {
+        var now = _businessDateProvider.UtcNow;
+        var businessToday = _businessDateProvider.Today;
+        var errors = Validate(request, businessToday);
+
+        if (errors.Count > 0)
+        {
+            return InitializeLedgerResult.Invalid(errors);
+        }
+
+        if (await _ledgerRepository.ExistsAsync(cancellationToken))
+        {
+            return InitializeLedgerResult.AlreadyExists();
+        }
+
+        var ledger = Ledger.Create(request.StartDate, businessToday, now);
+        var cashAccount = CashAccount.Create(ledger.Id, request.CashBalance, request.CashAsOfDate ?? request.StartDate, now);
+        ledger.SetCashAccount(cashAccount);
+
+        await _ledgerRepository.AddAsync(ledger, cashAccount, cancellationToken);
+        await _ledgerRepository.AddCategoriesAsync(
+            EntryCategoryDefaults.CreateFor(ledger.Id, now).ToList(),
+            cancellationToken);
+
+        try
+        {
+            await _ledgerRepository.SaveChangesAsync(cancellationToken);
+        }
+        catch (ConcurrencyConflictException)
+        {
+            return InitializeLedgerResult.AlreadyExists();
+        }
+
+        return InitializeLedgerResult.Created(Map(
+            ledger,
+            cashAccount,
+            0m,
+            0m,
+            false,
+            new AssetOverviewDto(false, null, "尚未录入"),
+            new AssetOverviewDto(false, null, "尚未录入"),
+            new AssetOverviewDto(false, null, "尚未录入"),
+            new AssetOverviewDto(false, null, "尚未录入"),
+            false,
+            false,
+            false,
+            false,
+            false));
+    }
+
+    private static List<string> Validate(InitializeLedgerRequest request, DateOnly businessToday)
+    {
+        var errors = new List<string>();
+
+        if (request.StartDate == default)
+        {
+            errors.Add("起始日期无效。");
+        }
+        else if (request.StartDate > businessToday)
+        {
+            errors.Add("起始日期不能晚于今天。");
+        }
+
+        if (request.CashAsOfDate is DateOnly cashDate && (cashDate < request.StartDate || cashDate > businessToday))
+        {
+            errors.Add("起始现金余额日期须在账本起始日期与今天之间。");
+        }
+
+        if (request.CashBalance < 0)
+        {
+            errors.Add("现金余额不能为负数。");
+        }
+        else if (decimal.Round(request.CashBalance, 2) != request.CashBalance)
+        {
+            errors.Add("现金余额最多保留两位小数。");
+        }
+        else if (request.CashBalance > CashAccount.MaximumBalance)
+        {
+            errors.Add("现金余额超出允许范围。");
+        }
+
+        return errors;
+    }
+
+    private static LedgerOverviewDto Map(
+        Ledger ledger,
+        CashAccount cashAccount,
+        decimal income,
+        decimal expense,
+        bool hasRecords,
+        AssetOverviewDto fund,
+        AssetOverviewDto providentFund,
+        AssetOverviewDto gold,
+        AssetOverviewDto stock,
+        bool fundNotHeld,
+        bool providentFundNotHeld,
+        bool goldNotHeld,
+        bool stockNotHeld,
+        bool coverageComplete)
+    {
+        var cash = new AssetOverviewDto(true, cashAccount.Balance, "统一余额");
+        var totalAssets = cashAccount.Balance
+            + (fund.Amount ?? 0m)
+            + (providentFund.Amount ?? 0m)
+            + (gold.Amount ?? 0m)
+            + (stock.Amount ?? 0m);
+
+        return new LedgerOverviewDto(
+            ledger.Id,
+            ledger.Currency,
+            ledger.TimeZone,
+            ledger.StartDate,
+            cashAccount.AsOfDate,
+            totalAssets,
+            cash,
+            fund,
+            providentFund,
+            gold,
+            stock,
+            new MonthSummaryDto(income, expense, income - expense, hasRecords),
+            FundNotHeld: fundNotHeld,
+            ProvidentFundNotHeld: providentFundNotHeld,
+            GoldNotHeld: goldNotHeld,
+            StockNotHeld: stockNotHeld,
+            CoverageComplete: coverageComplete);
+    }
+}

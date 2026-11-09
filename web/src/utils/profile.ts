@@ -3,7 +3,7 @@ export interface UserProfile {
   avatar: string | null
 }
 
-export const profileStorageKey = 'asset-keeper.profile'
+export const profileStorageKey = 'lifeup.profile'
 export const profileNameLimit = 20
 const avatarSize = 256
 const avatarMaxSourceBytes = 10 * 1024 * 1024

@@ -3,7 +3,7 @@ import { computed, readonly, ref } from 'vue'
 export type ThemeMode = 'system' | 'light' | 'dark'
 export type ResolvedTheme = 'light' | 'dark'
 
-export const themeStorageKey = 'asset-keeper.theme'
+export const themeStorageKey = 'lifeup.theme'
 
 const darkMediaQuery = '(prefers-color-scheme: dark)'
 const mode = ref<ThemeMode>(readStoredMode())

@@ -1,0 +1,13 @@
+namespace LifeUp.Application.Funds;
+
+public sealed record PendingFundBuyDto(
+    Guid TransactionId,
+    Guid PositionId,
+    string PositionName,
+    decimal Amount,
+    DateOnly BusinessDate,
+    string? Note,
+    decimal Fee,
+    DateOnly TradeDate,
+    DateOnly ConfirmationDate,
+    bool CanCancel);

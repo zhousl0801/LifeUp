@@ -1,6 +1,6 @@
-# 资产管家 · Web
+# LifeUp · Web
 
-手机端 Web App / PWA 前端。业务范围与验收依据见[产品设计 V1.1](../docs/product/资产管家-产品设计文档-V1.1.md)。
+手机端 Web App / PWA 前端。业务范围与验收依据见[产品设计 V1.1](../docs/product/LifeUp-产品设计文档-V1.1.md)。
 
 ## 本地开发
 
@@ -9,9 +9,9 @@ npm install
 npm run dev
 ```
 
-测试专用后端可通过 `ASSET_KEEPER_API_PROXY` 指定代理地址，默认仍为下述本机服务。
+测试专用后端可通过 `LIFEUP_API_PROXY` 指定代理地址，默认仍为下述本机服务。
 
-Vite 开发服务器把 `/api` 代理到 `http://localhost:5069`，同时启动 `api/src/AssetKeeper.Api` 即可联调。
+Vite 开发服务器把 `/api` 代理到 `http://localhost:5069`，同时启动 `api/src/LifeUp.Api` 即可联调。
 
 ## 检查
 
@@ -21,6 +21,6 @@ npm run test
 npm run build
 ```
 
-同源 API 部署前运行 `npm run build:api`，它会构建前端并同步产物到 `api/src/AssetKeeper.Api/wwwroot`。同步后的文件需随 API 一起提交，Render 的 API 服务会从该目录提供页面。
+同源 API 部署前运行 `npm run build:api`，它会构建前端并同步产物到 `api/src/LifeUp.Api/wwwroot`。同步后的文件需随 API 一起提交，Render 的 API 服务会从该目录提供页面。
 
 配色变量直接引用 `docs/design/ui-color-tokens.css`，不在应用内另存色值。

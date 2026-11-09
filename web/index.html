@@ -8,7 +8,7 @@
     <script>
       (() => {
         try {
-          const stored = localStorage.getItem('asset-keeper.theme')
+          const stored = localStorage.getItem('lifeup.theme')
           const mode = stored === 'light' || stored === 'dark' ? stored : 'system'
           const dark = mode === 'dark'
             || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
