@@ -45,7 +45,8 @@ test('profile name is saved locally and shown in the settings row', async () => 
   await flushPromises()
 
   const profileRow = view.findAll('button').find((button) => button.text().includes('头像与昵称'))!
-  expect(profileRow.text()).toContain('未设置昵称')
+  expect(profileRow.text()).toContain('LifeUp')
+  expect(profileRow.find('.default-avatar').exists()).toBe(true)
 
   await profileRow.trigger('click')
   await flushPromises()
