@@ -15,6 +15,10 @@ public sealed class EntryCategory
 
     public LedgerEntryKind Kind { get; private set; }
 
+    public Guid? ParentId { get; private set; }
+
+    public bool IsGroup { get; private set; }
+
     public string Name { get; private set; } = string.Empty;
 
     public int SortOrder { get; private set; }
@@ -28,6 +32,18 @@ public sealed class EntryCategory
     public DateTimeOffset UpdatedAt { get; private set; }
 
     public int Version { get; private set; }
+
+    public void MoveTo(Guid parentId, DateTimeOffset now)
+    {
+        if (IsGroup || parentId == Guid.Empty || parentId == Id)
+        {
+            throw new ArgumentException("一级分类不能移动到其他分类下。", nameof(parentId));
+        }
+
+        ParentId = parentId;
+        UpdatedAt = now;
+        Version++;
+    }
 
     public void Rename(string name, DateTimeOffset now)
     {
@@ -61,7 +77,9 @@ public sealed class EntryCategory
         string name,
         int sortOrder,
         string? systemKey,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        Guid? parentId = null,
+        bool isGroup = false)
     {
         if (ledgerId == Guid.Empty)
         {
@@ -80,6 +98,8 @@ public sealed class EntryCategory
             Id = Guid.NewGuid(),
             LedgerId = ledgerId,
             Kind = kind,
+            ParentId = parentId,
+            IsGroup = isGroup,
             Name = NormalizeName(name),
             SortOrder = sortOrder,
             IsActive = true,

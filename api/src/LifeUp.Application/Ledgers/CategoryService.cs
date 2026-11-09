@@ -53,18 +53,32 @@ public sealed class CategoryService
 
         var categories = await _ledgerRepository.GetCategoriesAsync(ledger.Id, cancellationToken);
 
-        if (categories.Any(category => category.Kind == request.Kind
+        var parent = request.IsGroup ? null : categories.FirstOrDefault(category =>
+            category.IsGroup && category.Kind == request.Kind && category.IsActive
+            && (request.ParentId is null || request.ParentId == category.Id));
+        if ((request.IsGroup && request.ParentId is not null) || (!request.IsGroup && parent is null))
+        {
+            return CategoryOperationResult.Invalid(["请选择同类型且启用的一级分类。"]);
+        }
+
+        if (categories.Any(category => category.Kind == request.Kind && category.IsGroup == request.IsGroup
             && string.Equals(category.Name, name, StringComparison.Ordinal)))
         {
             return CategoryOperationResult.Conflict("同类型下已存在同名分类。");
         }
 
         var sortOrder = categories
-            .Where(category => category.Kind == request.Kind)
+            .Where(category => category.Kind == request.Kind && category.IsGroup == request.IsGroup && category.ParentId == parent?.Id)
             .Select(category => category.SortOrder)
             .DefaultIfEmpty(-1)
             .Max() + 1;
-        var created = EntryCategory.Create(ledger.Id, request.Kind, name, sortOrder, null, _dates.UtcNow);
+        var now = _dates.UtcNow;
+        if (parent is not null && !await TouchParentAsync(ledger.Id, parent.Id, now, cancellationToken))
+        {
+            return CategoryOperationResult.Conflict("一级分类已变化，请刷新后重试。");
+        }
+
+        var created = EntryCategory.Create(ledger.Id, request.Kind, name, sortOrder, null, now, parent?.Id, request.IsGroup);
         await _ledgerRepository.AddCategoryAsync(created, cancellationToken);
 
         try
@@ -117,19 +131,49 @@ public sealed class CategoryService
         var categories = await _ledgerRepository.GetCategoriesAsync(ledger.Id, cancellationToken);
 
         if (categories.Any(other => other.Id != category.Id
-            && other.Kind == category.Kind
+            && other.Kind == category.Kind && other.IsGroup == category.IsGroup
             && string.Equals(other.Name, name, StringComparison.Ordinal)))
         {
             return CategoryOperationResult.Conflict("同类型下已存在同名分类。");
         }
 
+        if (category.IsGroup && (request.ParentId is not null
+            || (!request.IsActive && categories.Any(child => child.ParentId == category.Id && child.IsActive))))
+        {
+            return CategoryOperationResult.Invalid(["请先移动或停用该分组下仍启用的二级分类。"]);
+        }
+
+        var parentId = request.ParentId ?? category.ParentId;
+        if (!category.IsGroup && (request.IsActive || request.ParentId is not null)
+            && !categories.Any(parent => parent.Id == parentId && parent.IsGroup && parent.IsActive && parent.Kind == category.Kind))
+        {
+            return CategoryOperationResult.Invalid(["请选择同类型且启用的一级分类。"]);
+        }
+
         var previousName = category.Name;
         var now = _dates.UtcNow;
+        if (!category.IsGroup && request.IsActive && parentId is Guid activeParent
+            && !await TouchParentAsync(ledger.Id, activeParent, now, cancellationToken))
+        {
+            return CategoryOperationResult.Conflict("一级分类已变化，请刷新后重试。");
+        }
+
+        if (!category.IsGroup && parentId is Guid target && target != category.ParentId)
+        {
+            category.MoveTo(target, now);
+            var order = categories.Where(child => child.ParentId == target).Select(child => child.SortOrder).DefaultIfEmpty(-1).Max();
+            category.SetSortOrder(order + 1, now);
+        }
+
         category.SetActive(request.IsActive, now);
 
         if (!string.Equals(previousName, name, StringComparison.Ordinal))
         {
             category.Rename(name, now);
+        }
+
+        if (!category.IsGroup && previousName != name)
+        {
             await _ledgerRepository.RenameEntryCategoryAsync(
                 ledger.Id,
                 category.Kind,
@@ -173,18 +217,7 @@ public sealed class CategoryService
             return CategoryOperationResult.Invalid(["工资分类由自动记账使用，不能删除。"]);
         }
 
-        _ledgerRepository.RemoveCategory(category);
-
-        try
-        {
-            await _ledgerRepository.SaveChangesAsync(cancellationToken);
-        }
-        catch (ConcurrencyConflictException)
-        {
-            return CategoryOperationResult.Conflict("分类已变化，请刷新后重试。");
-        }
-
-        return CategoryOperationResult.Success();
+        return await UpdateAsync(categoryId, new UpdateCategoryRequest(category.Name, false), cancellationToken);
     }
 
     public async Task<CategoryOperationResult> ReorderAsync(
@@ -198,8 +231,16 @@ public sealed class CategoryService
             return CategoryOperationResult.NotFound("账本尚未初始化。");
         }
 
-        var categories = (await _ledgerRepository.GetCategoriesAsync(ledger.Id, cancellationToken))
-            .Where(category => category.Kind == request.Kind)
+        var allCategories = await _ledgerRepository.GetCategoriesAsync(ledger.Id, cancellationToken);
+        if (request.ParentId is Guid parentId && (request.IsGroup || !allCategories.Any(category =>
+            category.Id == parentId && category.IsGroup && category.Kind == request.Kind)))
+        {
+            return CategoryOperationResult.Invalid(["排序范围不是有效的一级分类。"]);
+        }
+
+        var categories = allCategories
+            .Where(category => category.Kind == request.Kind && category.IsGroup == request.IsGroup
+                && (request.ParentId is null || category.ParentId == request.ParentId))
             .ToList();
 
         if (request.Ids.Count != categories.Count
@@ -225,6 +266,18 @@ public sealed class CategoryService
         return CategoryOperationResult.Success();
     }
 
+    private async Task<bool> TouchParentAsync(Guid ledgerId, Guid parentId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var parent = await _ledgerRepository.GetCategoryForUpdateAsync(ledgerId, parentId, cancellationToken);
+        if (parent is not { IsGroup: true, IsActive: true })
+        {
+            return false;
+        }
+
+        parent.SetActive(true, now);
+        return true;
+    }
+
     private static EntryCategoryDto Map(EntryCategory category)
     {
         return new EntryCategoryDto(
@@ -233,6 +286,8 @@ public sealed class CategoryService
             category.Name,
             category.SortOrder,
             category.IsActive,
-            category.SystemKey);
+            category.SystemKey,
+            category.ParentId,
+            category.IsGroup);
     }
 }

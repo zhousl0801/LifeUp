@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { navigateBack } from '../utils/navigation'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { fetchEntryPeriod, fetchEntryStats } from '../api/entries'
@@ -8,15 +7,18 @@ import { ApiError, getApiErrorMessage } from '../api/client'
 import { toast } from '../composables/useMessage'
 import AppNav from '../components/AppNav.vue'
 import AppIcon from '../components/AppIcon.vue'
+import CategoryIcon from '../components/CategoryIcon.vue'
 import AnimatedMoney from '../components/AnimatedMoney.vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
 import LoadingButton from '../components/LoadingButton.vue'
-import PageHeader from '../components/PageHeader.vue'
+import LedgerCalendar from '../components/LedgerCalendar.vue'
+import LedgerMonthlyBudget from '../components/LedgerMonthlyBudget.vue'
 import LedgerStatsChart from '../components/LedgerStatsChart.vue'
 import { ExpenseCategories, IncomeCategories } from '../constants/categories'
 import type { EntryCategory } from '../types/category'
-import { amountTone, formatBusinessDateWithWeekday, formatMoney, formatSignedMoney, sumAmounts, todayInBusinessTimeZone } from '../utils/format'
+import { formatBusinessDateWithWeekday, formatMoney, formatSignedMoney, sumAmounts, todayInBusinessTimeZone } from '../utils/format'
+import { groupEntryStats } from '../utils/entryStatsGroups'
 import { takeLedgerReturn } from '../utils/ledgerReturn'
 import { formatPeriodLabel, periodStart, shiftAnchor } from '../utils/period'
 import type { EntryKind, EntryPeriod, EntryPeriodSummary, EntryStats, LedgerEntry } from '../types/entry'
@@ -24,7 +26,8 @@ import type { EntryKind, EntryPeriod, EntryPeriodSummary, EntryStats, LedgerEntr
 interface LedgerContext {
   period: EntryPeriod
   anchor: string
-  view: 'list' | 'chart'
+  view: 'calendar' | 'list' | 'chart'
+  selectedDate: string
   kind: 'all' | EntryKind
   category: string
   search: string
@@ -50,8 +53,14 @@ const periodOptions: Array<{ value: EntryPeriod; label: string }> = [
 
 const period = ref<EntryPeriod>(savedContext?.period ?? 'month')
 const anchor = ref(savedContext?.anchor ?? ledgerDate(route.query.date) ?? today)
-const view = ref<'list' | 'chart'>(savedContext?.view ?? 'list')
+const view = ref<'calendar' | 'list' | 'chart'>(savedContext?.view ?? 'calendar')
+const selectedDate = ref(savedContext?.selectedDate ?? anchor.value)
+const displayTotals = computed(() => {
+  if (view.value !== 'calendar') return summary.value
+  return stats.value ? { ...stats.value, surplus: sumAmounts([stats.value.income, -stats.value.expense]) } : null
+})
 const statsKind = ref<EntryKind>(savedContext?.statsKind ?? 'expense')
+const statsByGroup = ref(false)
 const stats = ref<EntryStats | null>(null)
 const statsLoading = ref(false)
 const statsError = ref('')
@@ -72,12 +81,14 @@ let searchTimer: number | undefined
 let loadSequence = 0
 let statsSequence = 0
 
-const periodLabel = computed(() => formatPeriodLabel(anchor.value, period.value))
+const periodLabel = computed(() => period.value === 'month' && anchor.value.slice(0, 4) === today.slice(0, 4)
+  ? `${Number(anchor.value.slice(5, 7))}月`
+  : formatPeriodLabel(anchor.value, period.value))
 const canGoNext = computed(() =>
   periodStart(anchor.value, period.value) < periodStart(today, period.value))
 const categoryOptions = computed(() => {
   const loaded = categoryItems.value
-    .filter((category) => kindFilter.value === 'all' || category.kind === kindFilter.value)
+    .filter((category) => !category.isGroup && (kindFilter.value === 'all' || category.kind === kindFilter.value))
     .map((category) => category.name)
 
   if (loaded.length) {
@@ -99,7 +110,12 @@ const statsCategories = computed(() => {
     return []
   }
 
-  return statsKind.value === 'income' ? stats.value.incomeCategories : stats.value.expenseCategories
+  const isIncome = statsKind.value === 'income'
+  const leaves = isIncome ? stats.value.incomeCategories : stats.value.expenseCategories
+  if (!statsByGroup.value) return leaves
+
+  const groups = isIncome ? stats.value.incomeGroups : stats.value.expenseGroups
+  return groups?.length ? groups : groupEntryStats(leaves, categoryItems.value, statsKind.value)
 })
 const statsTotal = computed(() => {
   if (!stats.value) {
@@ -136,13 +152,15 @@ const groupedEntries = computed(() => {
 
 if (ledgerChange) {
   const { action, entry } = ledgerChange
-  const matchesPeriod = periodStart(entry.businessDate, period.value) === periodStart(anchor.value, period.value)
+  const matchesMonth = periodStart(entry.businessDate, period.value) === periodStart(anchor.value, period.value)
+  const matchesPeriod = matchesMonth && (view.value !== 'calendar' || selectedDate.value === entry.businessDate)
   const matchesFilter = matchesFilters(entry)
 
   if (action === 'create') {
-    if (!matchesPeriod) anchor.value = entry.businessDate
+    if (!matchesMonth) anchor.value = entry.businessDate
     if (!matchesFilter) clearFilters()
-    view.value = 'list'
+    if (view.value === 'chart') view.value = 'calendar'
+    selectedDate.value = entry.businessDate
     focusEntry = entry.id
     restorePosition = undefined
     restorePages = 1
@@ -163,12 +181,13 @@ if (ledgerChange) {
 }
 
 onBeforeRouteLeave((to) => {
-  if (to.name !== 'entry') return
+  if (to.name !== 'entry' && to.name !== 'categories') return
   const visibleRow = entryRows().find(row => row.getBoundingClientRect().bottom > 0)
   const context: LedgerContext = {
     period: period.value,
     anchor: anchor.value,
     view: view.value,
+    selectedDate: selectedDate.value,
     kind: kindFilter.value,
     category: categoryFilter.value,
     search: search.value,
@@ -198,11 +217,13 @@ function showSavedEntry(): void {
   const entry = noticeEntry.value
   if (!entry) return
 
-  const queryChanges = hasFilters.value || period.value !== 'day' || anchor.value !== entry.businessDate
+  const queryChanges = hasFilters.value || period.value !== 'month' || anchor.value !== entry.businessDate
+    || view.value !== 'calendar' || selectedDate.value !== entry.businessDate
   clearFilters()
-  period.value = 'day'
+  period.value = 'month'
   anchor.value = entry.businessDate
-  view.value = 'list'
+  selectedDate.value = entry.businessDate
+  view.value = 'calendar'
   toast.info('已定位到修改后的账单。')
   noticeEntry.value = null
   focusEntry = entry.id
@@ -214,9 +235,11 @@ watch(() => route.query, (query, previous) => {
 
   const nextAnchor = ledgerDate(query.date) ?? today
   const queryChanges = hasFilters.value || period.value !== 'month' || anchor.value !== nextAnchor
+    || view.value !== 'calendar' || selectedDate.value !== nextAnchor
   period.value = 'month'
   anchor.value = nextAnchor
-  view.value = 'list'
+  selectedDate.value = nextAnchor
+  view.value = 'calendar'
   clearFilters()
   highlightedEntry.value = ''
   noticeEntry.value = null
@@ -227,12 +250,12 @@ watch(() => route.query, (query, previous) => {
   if (!queryChanges) void loadEntries()
 })
 
-watch([period, anchor, kindFilter, categoryFilter], () => {
+watch([period, anchor, kindFilter, categoryFilter, view, selectedDate], () => {
   void loadEntries()
 })
 
 watch([period, anchor, view], () => {
-  if (view.value === 'chart') {
+  if (view.value !== 'list') {
     void loadStats()
   }
 })
@@ -247,16 +270,22 @@ watch(search, () => {
 onMounted(() => {
   void loadCategories()
   void loadEntries()
-  if (view.value === 'chart') void loadStats()
+  if (view.value !== 'list') void loadStats()
 })
 
-function switchView(next: 'list' | 'chart'): void {
+function switchView(next: 'calendar' | 'list' | 'chart'): void {
+  if (next === 'calendar') {
+    period.value = 'month'
+    clearFilters()
+    if (selectedDate.value.slice(0, 7) !== anchor.value.slice(0, 7)) selectedDate.value = anchor.value
+  }
   view.value = next
 }
 
 async function loadStats(): Promise<void> {
   const sequence = ++statsSequence
   statsLoading.value = true
+  stats.value = null
   statsError.value = ''
 
   try {
@@ -296,13 +325,14 @@ async function loadEntries(append: boolean = false): Promise<void> {
 
   try {
     const query = {
-      period: period.value,
-      anchor: anchor.value,
+      period: view.value === 'calendar' ? 'day' as const : period.value,
+      anchor: view.value === 'calendar' ? selectedDate.value : anchor.value,
       kind: kindFilter.value === 'all' ? null : kindFilter.value,
       category: categoryFilter.value,
       search: search.value.trim()
     }
     const firstPage = append ? (summary.value?.page ?? 0) + 1 : 1
+    if (!append) summary.value = null
     let result = await fetchEntryPeriod({ ...query, page: firstPage })
     if (sequence !== loadSequence) return
 
@@ -383,6 +413,9 @@ function shiftPeriod(direction: -1 | 1): void {
   }
 
   anchor.value = shiftAnchor(anchor.value, period.value, direction)
+  if (view.value === 'calendar') {
+    selectedDate.value = anchor.value.slice(0, 7) === today.slice(0, 7) ? today : anchor.value
+  }
 }
 
 function formatEntryAmount(entry: LedgerEntry): string {
@@ -392,71 +425,55 @@ function formatEntryAmount(entry: LedgerEntry): string {
 function openEntry(entryId?: string): void {
   void router.push({
     name: 'entry',
-    query: entryId ? { id: entryId } : {}
+    query: entryId ? { id: entryId } : view.value === 'calendar' ? { date: selectedDate.value } : {}
   })
 }
 
-function goBack(): void {
-  navigateBack(router)
-}
 </script>
 
 <template>
   <main ref="pageElement" class="page ledger-page with-nav">
-    <PageHeader title="我的账本" back @back="goBack" />
-
-
-
-    <section class="period-panel">
-      <div class="period-top">
-        <div class="period-tabs" role="tablist" aria-label="账本周期">
-          <button
-            v-for="item in periodOptions"
-            :key="item.value"
-            type="button"
-            :class="{ active: period === item.value }"
-            @click="setPeriod(item.value)"
-          >
-            {{ item.label }}
-          </button>
-        </div>
-        <div class="period-nav">
-          <button type="button" aria-label="上一周期" @click="shiftPeriod(-1)">‹</button>
-          <strong>{{ periodLabel }}</strong>
-          <button
-            type="button"
-            aria-label="下一周期"
-            :disabled="!canGoNext"
-            @click="shiftPeriod(1)"
-          >
-            ›
-          </button>
-        </div>
+    <header class="ledger-heading">
+      <div class="period-nav">
+        <button type="button" aria-label="上一周期" @click="shiftPeriod(-1)">‹</button>
+        <strong>{{ periodLabel }}</strong>
+        <button type="button" aria-label="下一周期" :disabled="!canGoNext" @click="shiftPeriod(1)">›</button>
       </div>
-      <p v-if="hasFilters && view === 'list'" class="summary-scope">汇总为整个周期的收支</p>
-      <div class="summary-grid">
-        <div>
-          <span>收入</span>
-          <b :class="{ income: (summary?.income ?? 0) > 0 }">{{ formatMoney(summary?.income) }}</b>
-        </div>
-        <div>
-          <span>支出</span>
-          <b>{{ formatMoney(summary?.expense) }}</b>
-        </div>
-        <div>
-          <span>结余</span>
-          <b :class="amountTone(summary?.surplus)">{{ formatSignedMoney(summary?.surplus) }}</b>
-        </div>
+      <RouterLink class="round-tool ledger-settings" :to="{ name: 'categories' }" aria-label="分类设置"><AppIcon name="settings" /></RouterLink>
+    </header>
+
+    <section class="ledger-hero">
+      <div class="ledger-hero-copy">
+        <span class="ledger-hero-label">▣ {{ period === 'month' ? '本月' : period === 'day' ? '当天' : '本年' }}支出</span>
+        <strong>¥{{ formatMoney(displayTotals?.expense) }}</strong>
+        <small>收入 {{ formatMoney(displayTotals?.income) }} · 结余 {{ formatSignedMoney(displayTotals?.surplus) }}</small>
+      </div>
+      <LedgerMonthlyBudget v-if="period === 'month'" :key="anchor.slice(0, 7)"
+        :month="anchor.slice(0, 7)" :expense="displayTotals?.expense ?? null" />
+    </section>
+
+    <section class="ledger-calendar-card">
+      <header class="calendar-heading">
+        <strong><AppIcon :name="view === 'chart' ? 'chart' : view === 'list' ? 'list' : 'calendar'" />
+          {{ view === 'chart' ? '收支图表' : view === 'list' ? '账单列表' : '收支日历' }}
+        </strong>
+        <button type="button" class="round-tool" aria-label="收支图表" :aria-pressed="view === 'chart'" @click="switchView('chart')"><AppIcon name="chart" /></button>
+        <button type="button" class="round-tool" aria-label="账单列表" :aria-pressed="view === 'list'" @click="switchView('list')"><AppIcon name="list" /></button>
+        <button type="button" class="round-tool" aria-label="收支日历" :aria-pressed="view === 'calendar'" @click="switchView('calendar')"><AppIcon name="calendar" /></button>
+      </header>
+      <template v-if="view === 'calendar'">
+        <p v-if="statsError" class="state-inline">{{ statsError }} <button type="button" @click="loadStats">重试</button></p>
+        <LedgerCalendar :month="anchor" :selected="selectedDate" :today="today"
+          :points="stats?.points ?? []" @select="selectedDate = $event" />
+      </template>
+      <div v-else class="period-tabs" role="group" aria-label="账本周期">
+        <button v-for="item in periodOptions" :key="item.value" type="button"
+          :class="{ active: period === item.value }" @click="setPeriod(item.value)">{{ item.label }}</button>
       </div>
     </section>
 
-    <div class="view-tabs ui-segmented" role="tablist" aria-label="账本视图">
-      <button type="button" role="tab" :aria-selected="view === 'list'" :class="{ active: view === 'list' }" @click="switchView('list')">明细</button>
-      <button type="button" role="tab" :aria-selected="view === 'chart'" :class="{ active: view === 'chart' }" @click="switchView('chart')">图表</button>
-    </div>
-
-    <template v-if="view === 'list'">
-    <details class="filter-disclosure ui-disclosure" :open="hasFilters">
+    <template v-if="view !== 'chart'">
+    <details v-if="view === 'list'" class="filter-disclosure ui-disclosure" :open="hasFilters">
       <summary><span><AppIcon name="search" /> 搜索与筛选</span><span v-if="hasFilters" class="filter-label">{{ [
         kindFilter === 'all' ? '' : kindFilter === 'income' ? '收入' : '支出',
         categoryFilter, search.trim()
@@ -528,7 +545,7 @@ function goBack(): void {
             :style="{ '--stagger': Math.min(index, 8) }"
             @click="openEntry(entry.id)"
           >
-            <span class="entry-mark"><AppIcon :name="entry.category" /></span>
+            <span class="entry-mark"><CategoryIcon :name="entry.category" /></span>
             <span class="entry-copy">
               <span class="entry-title">{{ entry.note?.trim() || entry.category }}</span>
               <small v-if="(entry.note?.trim() && entry.note.trim() !== entry.category) || entry.source === 'automatic'">
@@ -541,9 +558,10 @@ function goBack(): void {
         </div>
       </section>
 
+      <p v-if="view === 'calendar' && !groupedEntries.length" class="day-header">{{ formatBusinessDateWithWeekday(selectedDate) }}</p>
       <EmptyState
         v-if="!groupedEntries.length"
-        :title="hasFilters ? '没有符合条件的记录' : '这个周期还没有记录'"
+        :title="hasFilters ? '没有符合条件的记录' : view === 'calendar' ? '这天还没有账单' : '这个周期还没有记录'"
         :description="hasFilters ? '清除筛选，查看这段时间的全部收支。' : '记下第一笔收入或支出，让日常收支更清楚。'"
         :action-label="hasFilters ? '清除筛选' : '记一笔'"
         @action="hasFilters ? clearFilters() : openEntry()"
@@ -562,6 +580,11 @@ function goBack(): void {
       <div class="stats-direction" role="tablist" aria-label="图表方向">
         <button type="button" :class="{ active: statsKind === 'expense' }" @click="statsKind = 'expense'">支出</button>
         <button type="button" :class="{ active: statsKind === 'income' }" @click="statsKind = 'income'">收入</button>
+      </div>
+
+      <div class="stats-direction" role="group" aria-label="分类汇总层级">
+        <button type="button" :class="{ active: statsByGroup }" @click="statsByGroup = true">一级分类</button>
+        <button type="button" :class="{ active: !statsByGroup }" @click="statsByGroup = false">二级分类</button>
       </div>
 
       <LoadingState v-if="statsLoading && !stats" variant="chart" compact label="正在读取图表" />
@@ -608,7 +631,7 @@ function goBack(): void {
             :key="category.category"
             type="button"
             class="rank-row"
-            @click="selectStatsCategory(category.category)"
+            :disabled="statsByGroup" @click="selectStatsCategory(category.category)"
           >
             <span class="rank-top">
               <span>{{ category.category }}</span>
@@ -642,6 +665,39 @@ function goBack(): void {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+.ledger-page {
+  --ledger-accent: #086ee4;
+  background: radial-gradient(ellipse at top left, #f0cfa95c, transparent 40%),
+    radial-gradient(ellipse at top right, #eeafba75, transparent 40%), var(--color-bg-page);
+}
+:global([data-color-scheme='dark']) .ledger-page {
+  background: radial-gradient(ellipse at top right, #602f4d55, transparent 43%), var(--color-bg-page);
+  --ledger-accent: #2579d8;
+}
+.ledger-heading, .calendar-heading { display: flex; align-items: center; gap: 8px; }
+.ledger-heading { justify-content: space-between; margin-bottom: 14px; }
+.ledger-heading .period-nav strong { font-size: var(--text-title3); }
+.round-tool {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-width: var(--touch-target); min-height: var(--touch-target); border: 0;
+  border-radius: var(--radius-pill); background: var(--color-bg-surface); color: var(--color-text-primary);
+  text-decoration: none; font-weight: 650;
+}
+.round-tool .app-icon, .calendar-heading strong .app-icon { width: 17px; height: 17px; }
+.ledger-settings { background: color-mix(in srgb, var(--color-bg-surface) 68%, transparent); }
+.ledger-hero, .ledger-calendar-card { background: var(--color-bg-surface); border-radius: 24px; padding: 16px; }
+.ledger-hero { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; }
+.ledger-hero > * { min-width: 0; }
+.ledger-hero-copy { display: grid; gap: 5px; }
+.ledger-hero-copy strong { font-size: clamp(1.5rem, 7vw, 2.15rem); line-height: 1.12; overflow-wrap: anywhere; }
+.ledger-hero small { color: var(--color-text-secondary); font-size: var(--text-caption); }
+.ledger-hero-label { font-weight: 650; }
+.ledger-calendar-card { padding: 12px; margin-bottom: 16px; }
+.calendar-heading { margin-bottom: 8px; }
+.calendar-heading strong { display: flex; gap: 6px; align-items: center; margin-right: auto; }
+.calendar-heading .round-tool { background: var(--color-bg-subtle); }
+.calendar-heading .round-tool[aria-pressed='true'] { background: color-mix(in srgb, var(--ledger-accent) 15%, var(--color-bg-surface)); }
 
 .back-link {
   min-height: var(--touch-target);

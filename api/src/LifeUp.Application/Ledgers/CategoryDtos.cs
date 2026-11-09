@@ -8,13 +8,15 @@ public sealed record EntryCategoryDto(
     string Name,
     int SortOrder,
     bool IsActive,
-    string? SystemKey);
+    string? SystemKey,
+    Guid? ParentId = null,
+    bool IsGroup = false);
 
-public sealed record CreateCategoryRequest(LedgerEntryKind Kind, string Name);
+public sealed record CreateCategoryRequest(LedgerEntryKind Kind, string Name, Guid? ParentId = null, bool IsGroup = false);
 
-public sealed record UpdateCategoryRequest(string Name, bool IsActive);
+public sealed record UpdateCategoryRequest(string Name, bool IsActive, Guid? ParentId = null);
 
-public sealed record ReorderCategoriesRequest(LedgerEntryKind Kind, IReadOnlyList<Guid> Ids);
+public sealed record ReorderCategoriesRequest(LedgerEntryKind Kind, IReadOnlyList<Guid> Ids, Guid? ParentId = null, bool IsGroup = false);
 
 public enum CategoryOperationStatus
 {

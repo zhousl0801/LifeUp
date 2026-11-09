@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.Json;
 using LifeUp.Domain.Assets;
 using LifeUp.Domain.Cash;
 
@@ -37,6 +39,71 @@ public sealed class Ledger
     public bool GoldNotHeld { get; private set; }
 
     public bool StockNotHeld { get; private set; }
+
+    public string? MonthlyBudgetsJson { get; private set; }
+
+    public static bool TryParseBudgetMonth(string month, out DateOnly date)
+    {
+        return DateOnly.TryParseExact(month + "-01", "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date);
+    }
+
+    public static bool IsValidBudgetAmount(decimal? amount)
+    {
+        return amount is null || (amount > 0m && amount <= LedgerEntry.MaximumAmount
+            && decimal.Round(amount.Value, 2) == amount.Value);
+    }
+
+    public decimal? GetMonthlyBudget(string month)
+    {
+        return ReadMonthlyBudgets().TryGetValue(month, out var amount) ? amount : null;
+    }
+
+    public bool SetMonthlyBudget(string month, decimal? amount, DateTimeOffset now)
+    {
+        if (!TryParseBudgetMonth(month, out _) || !IsValidBudgetAmount(amount))
+        {
+            throw new ArgumentException("预算月份或金额无效。");
+        }
+
+        var budgets = ReadMonthlyBudgets();
+        if (amount is decimal value)
+        {
+            if (budgets.TryGetValue(month, out var current) && current == value)
+            {
+                return false;
+            }
+
+            budgets[month] = value;
+        }
+        else if (!budgets.Remove(month))
+        {
+            return false;
+        }
+
+        MonthlyBudgetsJson = budgets.Count == 0 ? null : JsonSerializer.Serialize(budgets);
+        Touch(now);
+        return true;
+    }
+
+    public bool HasValidMonthlyBudgets()
+    {
+        try
+        {
+            return ReadMonthlyBudgets().All(budget => TryParseBudgetMonth(budget.Key, out _) && IsValidBudgetAmount(budget.Value));
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private Dictionary<string, decimal> ReadMonthlyBudgets()
+    {
+        return MonthlyBudgetsJson is null
+            ? []
+            : JsonSerializer.Deserialize<Dictionary<string, decimal>>(MonthlyBudgetsJson)
+                ?? throw new JsonException("月度预算格式无效。");
+    }
 
     public bool IsNotHeld(AssetType assetType)
     {

@@ -17,6 +17,29 @@ public sealed class LedgerService
         _businessDateProvider = businessDateProvider;
     }
 
+    public async Task<MonthlyBudgetDto?> GetMonthlyBudgetAsync(string month, CancellationToken cancellationToken)
+    {
+        var ledger = await _ledgerRepository.GetAsync(cancellationToken);
+        return ledger is null ? null : new MonthlyBudgetDto(month, ledger.GetMonthlyBudget(month));
+    }
+
+    public async Task<MonthlyBudgetDto?> UpdateMonthlyBudgetAsync(string month, decimal? amount, CancellationToken cancellationToken)
+    {
+        var ledger = await _ledgerRepository.GetForUpdateAsync(cancellationToken);
+
+        if (ledger is null)
+        {
+            return null;
+        }
+
+        if (ledger.SetMonthlyBudget(month, amount, _businessDateProvider.UtcNow))
+        {
+            await _ledgerRepository.SaveChangesAsync(cancellationToken);
+        }
+
+        return new MonthlyBudgetDto(month, amount);
+    }
+
     public async Task<LedgerOverviewDto?> GetOverviewAsync(CancellationToken cancellationToken)
     {
         var ledger = await _ledgerRepository.GetAsync(cancellationToken);

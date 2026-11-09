@@ -46,6 +46,12 @@ public sealed class EntryStatsService
         var points = BuildPoints(period, from, dataTo, entries);
         var note = BuildNote(from, dataFrom, dataTo, ledger.StartDate);
 
+        var categories = await _ledgerRepository.GetCategoriesAsync(ledger.Id, cancellationToken);
+        var groupNames = categories.Where(category => category.IsGroup).ToDictionary(category => category.Id, category => category.Name);
+        var groupsByCategory = categories.Where(category => !category.IsGroup).ToDictionary(
+            category => (category.Kind, category.Name),
+            category => category.ParentId is Guid parent && groupNames.TryGetValue(parent, out var name) ? name : "未归类");
+
         return new EntryStatsDto(
             period,
             anchorDate,
@@ -59,7 +65,11 @@ public sealed class EntryStatsService
             points,
             BuildCategories(entries, LedgerEntryKind.Income, income),
             BuildCategories(entries, LedgerEntryKind.Expense, expense),
-            note);
+            note,
+            BuildCategories(entries, LedgerEntryKind.Income, income, GroupName),
+            BuildCategories(entries, LedgerEntryKind.Expense, expense, GroupName));
+
+        string GroupName(LedgerEntry entry) => groupsByCategory.GetValueOrDefault((entry.Kind, entry.Category), "未归类");
     }
 
     private static IReadOnlyList<EntryStatsPointDto> BuildPoints(
@@ -95,7 +105,8 @@ public sealed class EntryStatsService
                     date,
                     $"{date.Day}日",
                     Round(dayEntries.Where(entry => entry.Kind == LedgerEntryKind.Income).Sum(entry => entry.Amount)),
-                    Round(dayEntries.Where(entry => entry.Kind == LedgerEntryKind.Expense).Sum(entry => entry.Amount))));
+                    Round(dayEntries.Where(entry => entry.Kind == LedgerEntryKind.Expense).Sum(entry => entry.Amount)),
+                    dayEntries.OrderByDescending(entry => entry.Amount).ThenBy(entry => entry.Id).FirstOrDefault()?.Category));
             }
 
             return points;
@@ -121,11 +132,12 @@ public sealed class EntryStatsService
     private static IReadOnlyList<EntryStatsCategoryDto> BuildCategories(
         IReadOnlyList<LedgerEntry> entries,
         LedgerEntryKind kind,
-        decimal total)
+        decimal total,
+        Func<LedgerEntry, string>? categoryName = null)
     {
         return entries
             .Where(entry => entry.Kind == kind)
-            .GroupBy(entry => entry.Category)
+            .GroupBy(entry => categoryName?.Invoke(entry) ?? entry.Category)
             .Select(group => new EntryStatsCategoryDto(
                 group.Key,
                 Round(group.Sum(entry => entry.Amount)),

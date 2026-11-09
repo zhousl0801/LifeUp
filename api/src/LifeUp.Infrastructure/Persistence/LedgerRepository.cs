@@ -268,7 +268,7 @@ public sealed class LedgerRepository : ILedgerRepository
         return _dbContext.EntryCategories
             .AsNoTracking()
             .SingleOrDefaultAsync(
-                category => category.LedgerId == ledgerId && category.Kind == kind && category.Name == normalized,
+                category => category.LedgerId == ledgerId && category.Kind == kind && !category.IsGroup && category.Name == normalized,
                 cancellationToken);
     }
 

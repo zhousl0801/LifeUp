@@ -38,6 +38,28 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
+test('shows distinct color artwork for group, leaf and custom categories', async () => {
+  mocks.categories.mockResolvedValue([
+    { id: 'g1', kind: 'expense', name: '必要', sortOrder: 0, isActive: true, isGroup: true, systemKey: null },
+    { id: 'g2', kind: 'expense', name: '自定义组', sortOrder: 1, isActive: true, isGroup: true, systemKey: null },
+    { id: 'c1', kind: 'expense', name: '餐饮', sortOrder: 0, isActive: true, parentId: 'g1', systemKey: null },
+    { id: 'c2', kind: 'expense', name: '自定义项', sortOrder: 1, isActive: true, parentId: 'g1', systemKey: null }
+  ] satisfies EntryCategory[])
+
+  const view = mount(EntryView)
+  await flushPromises()
+  await view.get('.category-groups button').trigger('click')
+
+  const groups = view.findAll('.category-groups img')
+  const leaves = view.findAll('.category-tile img')
+  expect(groups).toHaveLength(2)
+  expect(leaves).toHaveLength(2)
+  const icons = [...groups, ...leaves]
+  expect(new Set(icons.map(icon => icon.attributes('src'))).size).toBe(4)
+  expect(icons.every(icon => icon.attributes('alt') === '')).toBe(true)
+  view.unmount()
+})
+
 test('Enter on a focused control does not submit an entered amount', async () => {
   const view = mount(EntryView, { attachTo: document.body })
   await flushPromises()

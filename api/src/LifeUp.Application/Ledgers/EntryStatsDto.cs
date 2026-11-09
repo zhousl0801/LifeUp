@@ -13,13 +13,16 @@ public sealed record EntryStatsDto(
     IReadOnlyList<EntryStatsPointDto> Points,
     IReadOnlyList<EntryStatsCategoryDto> IncomeCategories,
     IReadOnlyList<EntryStatsCategoryDto> ExpenseCategories,
-    string? Note);
+    string? Note,
+    IReadOnlyList<EntryStatsCategoryDto>? IncomeGroups = null,
+    IReadOnlyList<EntryStatsCategoryDto>? ExpenseGroups = null);
 
 public sealed record EntryStatsPointDto(
     DateOnly Date,
     string Label,
     decimal Income,
-    decimal Expense);
+    decimal Expense,
+    string? Category = null);
 
 public sealed record EntryStatsCategoryDto(
     string Category,

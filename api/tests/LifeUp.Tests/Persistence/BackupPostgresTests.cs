@@ -58,7 +58,8 @@ public sealed class BackupPostgresTests
             var entry = await readback.LedgerEntries.SingleAsync();
             Assert.Equal("工资", entry.Category);
             Assert.Equal(11000m, (await readback.CashAccounts.SingleAsync()).Balance);
-            Assert.Equal(18, await readback.EntryCategories.CountAsync());
+            Assert.Equal(18, await readback.EntryCategories.CountAsync(category => !category.IsGroup));
+            Assert.Equal(6, await readback.EntryCategories.CountAsync(category => category.IsGroup));
         }
     }
 }

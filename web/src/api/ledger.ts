@@ -31,3 +31,19 @@ export function initializeLedger(input: InitializeLedgerInput): Promise<LedgerOv
     body: JSON.stringify(input)
   })
 }
+
+interface MonthlyBudget {
+  month: string
+  amount: number | null
+}
+
+export function fetchMonthlyBudget(month: string): Promise<MonthlyBudget> {
+  return apiRequest<MonthlyBudget>(`/api/ledger/monthly-budget?month=${encodeURIComponent(month)}`)
+}
+
+export function updateMonthlyBudget(month: string, amount: number | null): Promise<MonthlyBudget> {
+  return apiRequest<MonthlyBudget>(`/api/ledger/monthly-budget?month=${encodeURIComponent(month)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ amount })
+  })
+}

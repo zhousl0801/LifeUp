@@ -28,6 +28,7 @@ const router = createRouter({
       name: 'ledger',
       component: () => import('../views/LedgerView.vue')
     },
+    { path: '/categories', name: 'categories', component: () => import('../views/CategoriesView.vue') },
     {
       path: '/mine',
       name: 'mine',

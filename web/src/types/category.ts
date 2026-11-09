@@ -7,9 +7,13 @@ export interface EntryCategory {
   sortOrder: number
   isActive: boolean
   systemKey: string | null
+  parentId?: string | null
+  isGroup?: boolean
 }
 
 export interface CreateCategoryInput {
   kind: EntryKind
   name: string
+  parentId?: string
+  isGroup?: boolean
 }

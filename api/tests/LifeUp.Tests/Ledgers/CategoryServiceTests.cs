@@ -17,9 +17,10 @@ public sealed class CategoryServiceTests
         var categories = await context.Categories.GetAsync(CancellationToken.None);
 
         Assert.NotNull(categories);
-        Assert.Equal(18, categories.Count);
-        Assert.Equal(15, categories.Count(category => category.Kind == LedgerEntryKind.Expense));
-        Assert.Equal(3, categories.Count(category => category.Kind == LedgerEntryKind.Income));
+        Assert.Equal(15, categories.Count(category => !category.IsGroup && category.Kind == LedgerEntryKind.Expense));
+        Assert.Equal(3, categories.Count(category => !category.IsGroup && category.Kind == LedgerEntryKind.Income));
+        var necessary = Assert.Single(categories, category => category.IsGroup && category.Name == "必要");
+        Assert.Contains(categories, category => category.Name == "餐饮" && category.ParentId == necessary.Id);
         Assert.Contains(categories, category => category.Kind == LedgerEntryKind.Income
             && category.Name == "工资"
             && category.SystemKey == "salary");
@@ -30,14 +31,18 @@ public sealed class CategoryServiceTests
     {
         var context = await CreateAsync();
 
+        var categories = (await context.Categories.GetAsync(CancellationToken.None))!;
+        var flexible = Assert.Single(categories, category => category.IsGroup && category.Name == "弹性");
+        var lastOrder = categories.Where(category => category.ParentId == flexible.Id).Max(category => category.SortOrder);
         var created = await context.Categories.CreateAsync(
-            new CreateCategoryRequest(LedgerEntryKind.Expense, "咖啡"),
+            new CreateCategoryRequest(LedgerEntryKind.Expense, "咖啡", flexible.Id),
             CancellationToken.None);
 
         Assert.Equal(CategoryOperationStatus.Created, created.Status);
         Assert.NotNull(created.Category);
         Assert.Equal("咖啡", created.Category.Name);
-        Assert.Equal(15, created.Category.SortOrder);
+        Assert.Equal(flexible.Id, created.Category.ParentId);
+        Assert.Equal(lastOrder + 1, created.Category.SortOrder);
 
         var duplicate = await context.Categories.CreateAsync(
             new CreateCategoryRequest(LedgerEntryKind.Expense, "餐饮"),
@@ -116,7 +121,7 @@ public sealed class CategoryServiceTests
     }
 
     [Fact]
-    public async Task Delete_RemovesCategoryAndKeepsHistoricalEntriesEditable()
+    public async Task Delete_ArchivesCategoryAndKeepsHistoricalEntriesEditable()
     {
         var context = await CreateAsync();
         var entry = await context.Entries.CreateAsync(
@@ -129,7 +134,7 @@ public sealed class CategoryServiceTests
 
         Assert.Equal(CategoryOperationStatus.Success, deleted.Status);
         var remaining = (await context.Categories.GetAsync(CancellationToken.None))!;
-        Assert.DoesNotContain(remaining, item => item.Id == category.Id);
+        Assert.False(Assert.Single(remaining, item => item.Id == category.Id).IsActive);
 
         var updated = await context.Entries.UpdateAsync(
             entry.Result!.Entry.Id,
@@ -154,25 +159,50 @@ public sealed class CategoryServiceTests
     }
 
     [Fact]
-    public async Task Reorder_UpdatesSortOrderForAllCategoriesOfKind()
+    public async Task Reorder_UpdatesSiblingSortOrderOnly()
     {
         var context = await CreateAsync();
-        var expense = (await context.Categories.GetAsync(CancellationToken.None))!
-            .Where(category => category.Kind == LedgerEntryKind.Expense)
-            .ToList();
+        var categories = (await context.Categories.GetAsync(CancellationToken.None))!;
+        var necessary = Assert.Single(categories, category => category.IsGroup && category.Name == "必要");
+        var expense = categories.Where(category => category.ParentId == necessary.Id).ToList();
+        var otherOrders = categories.Where(category => category.ParentId != necessary.Id)
+            .ToDictionary(category => category.Id, category => category.SortOrder);
         var reversed = expense.Select(category => category.Id).Reverse().ToList();
 
         var result = await context.Categories.ReorderAsync(
-            new ReorderCategoriesRequest(LedgerEntryKind.Expense, reversed),
+            new ReorderCategoriesRequest(LedgerEntryKind.Expense, reversed, necessary.Id),
             CancellationToken.None);
 
         Assert.Equal(CategoryOperationStatus.Success, result.Status);
-        var reordered = (await context.Categories.GetAsync(CancellationToken.None))!
-            .Where(category => category.Kind == LedgerEntryKind.Expense)
+        var after = (await context.Categories.GetAsync(CancellationToken.None))!;
+        Assert.All(after.Where(category => category.ParentId != necessary.Id),
+            category => Assert.Equal(otherOrders[category.Id], category.SortOrder));
+        var reordered = after.Where(category => category.ParentId == necessary.Id)
             .OrderBy(category => category.SortOrder)
             .Select(category => category.Id)
             .ToList();
         Assert.Equal(reversed, reordered);
+    }
+
+    [Fact]
+    public async Task Group_RejectsDirectBookingCrossKindChildAndArchivingWithActiveChildren()
+    {
+        var context = await CreateAsync();
+        var categories = (await context.Categories.GetAsync(CancellationToken.None))!;
+        var necessary = Assert.Single(categories, category => category.IsGroup && category.Name == "必要");
+        var direct = await context.Entries.CreateAsync(
+            new CreateLedgerEntryRequest(LedgerEntryKind.Expense, "必要", 10m, Today, null, Guid.NewGuid()),
+            CancellationToken.None);
+        var crossKind = await context.Categories.CreateAsync(
+            new CreateCategoryRequest(LedgerEntryKind.Income, "测试", necessary.Id),
+            CancellationToken.None);
+        var archive = await context.Categories.UpdateAsync(
+            necessary.Id, new UpdateCategoryRequest(necessary.Name, false), CancellationToken.None);
+
+        Assert.Equal(EntryOperationStatus.Invalid, direct.Status);
+        Assert.Equal(CategoryOperationStatus.Invalid, crossKind.Status);
+        Assert.Equal(CategoryOperationStatus.Invalid, archive.Status);
+        Assert.Empty(context.Repository.Entries);
     }
 
     private static async Task<TestContext> CreateAsync()

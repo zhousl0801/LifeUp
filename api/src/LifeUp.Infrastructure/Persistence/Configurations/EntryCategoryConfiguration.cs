@@ -26,6 +26,14 @@ internal sealed class EntryCategoryConfiguration : IEntityTypeConfiguration<Entr
             .HasMaxLength(16)
             .IsRequired();
 
+        builder.Property(category => category.ParentId).HasColumnName("parent_id");
+        builder.Property(category => category.IsGroup).HasColumnName("is_group");
+
+        builder.HasOne<EntryCategory>()
+            .WithMany()
+            .HasForeignKey(category => category.ParentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.Property(category => category.Name)
             .HasColumnName("name")
             .HasMaxLength(EntryCategory.MaximumNameLength)
@@ -59,7 +67,7 @@ internal sealed class EntryCategoryConfiguration : IEntityTypeConfiguration<Entr
             .IsConcurrencyToken()
             .IsRequired();
 
-        builder.HasIndex(category => new { category.LedgerId, category.Kind, category.Name })
+        builder.HasIndex(category => new { category.LedgerId, category.Kind, category.IsGroup, category.Name })
             .IsUnique();
 
         builder.HasIndex(category => new { category.LedgerId, category.Kind, category.SortOrder });
