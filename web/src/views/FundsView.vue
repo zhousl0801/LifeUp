@@ -70,11 +70,11 @@ type GroupScope = 'all' | 'ungrouped' | string
 type FundMetricKey = 'daily' | 'value' | 'cumulative' | 'cumulativeRate' | 'cost' | 'weight' | 'pending'
 
 const metricStorageKey = 'lifeup.fund.metrics.v3'
-const defaultMetrics: FundMetricKey[] = ['daily', 'cumulativeRate', 'cumulative']
+const defaultMetrics: FundMetricKey[] = ['daily', 'cumulative', 'cumulativeRate']
 const metricOptions: { key: FundMetricKey; label: string }[] = [
   { key: 'daily', label: '日收益' },
-  { key: 'cumulativeRate', label: '累计收益率' },
   { key: 'cumulative', label: '累计收益' },
+  { key: 'cumulativeRate', label: '累计收益率' },
   { key: 'value', label: '持仓价值' },
   { key: 'cost', label: '持仓成本' },
   { key: 'weight', label: '占比' },
@@ -889,6 +889,10 @@ function loadMetricKeys(): FundMetricKey[] {
         const valid = keys.filter((key): key is FundMetricKey =>
           metricOptions.some((option) => option.key === key)).slice(0, 3)
 
+        if (valid[0] === 'daily' && valid[1] === 'cumulativeRate' && valid[2] === 'cumulative') {
+          return [...defaultMetrics]
+        }
+
         if (valid.length) {
           return valid
         }
@@ -941,11 +945,10 @@ function metricDisplay(fund: FundSummary): { key: FundMetricKey; label: string; 
         return {
           key,
           label: '日收益',
-          value: !fund.hasDailyProfit
-            ? '—'
-            : fund.dailyProfitRate !== null
-              ? `${formatSignedMoney(fund.dailyProfit)}（${formatSignedMoney(fund.dailyProfitRate)}%）`
-              : formatSignedMoney(fund.dailyProfit),
+          value: fund.hasDailyProfit ? formatSignedMoney(fund.dailyProfit) : '—',
+          sub: fund.hasDailyProfit && fund.dailyProfitRate !== null
+            ? `${formatSignedMoney(fund.dailyProfitRate)}%`
+            : undefined,
           tone: amountTone(fund.hasDailyProfit ? fund.dailyProfit : null)
         }
       case 'cumulative':

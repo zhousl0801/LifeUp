@@ -459,6 +459,7 @@ test('today profit only sums funds disclosed on the latest net value date', asyn
   const bondCard = view.findAll('.fund-card').find((item) => item.text().includes('债券基金'))!
   const dailyMetric = bondCard.findAll('.fund-metric').find((item) => item.text().includes('日收益'))!
   expect(dailyMetric.find('.fund-metric-value b').text()).toBe('—')
+  expect(dailyMetric.find('.fund-metric-sub').exists()).toBe(false)
 
   view.unmount()
 })
@@ -509,15 +510,22 @@ test('shows a warning ring when the last quote refresh had failures', async () =
   view.unmount()
 })
 
-test('fund list shows cumulative rate and daily rate in parentheses', async () => {
+test.each([null, '["daily","cumulativeRate","cumulative"]'])('fund list uses the new default metric order with saved metrics %s', async (storedMetrics) => {
+  if (storedMetrics !== null) {
+    localStorage.setItem('lifeup.fund.metrics.v3', storedMetrics)
+  }
+
   const view = mount(FundsView)
   await flushPromises()
 
   const card = view.findAll('.fund-card').find((item) => item.text().includes('纳指基金'))!
-  expect(card.text()).toContain('累计收益率')
-  expect(card.text()).not.toContain('持有收益')
-  expect(card.text()).toContain('+20.00%')
-  expect(card.text()).toContain('+24.00（+1.35%）')
+  const [dailyMetric, cumulativeMetric, cumulativeRateMetric] = card.findAll('.fund-metric')
+  expect(dailyMetric!.find('.fund-metric-label').text()).toContain('日收益')
+  expect(cumulativeMetric!.find('.fund-metric-label').text()).toBe('累计收益')
+  expect(cumulativeRateMetric!.find('.fund-metric-label').text()).toBe('累计收益率')
+  expect(cumulativeRateMetric!.find('.fund-metric-value b').text()).toBe('+20.00%')
+  expect(dailyMetric!.find('.fund-metric-label .fund-metric-sub').text()).toBe('+1.35%')
+  expect(dailyMetric!.find('.fund-metric-value b').text()).toBe('+24.00')
 
   view.unmount()
 })
