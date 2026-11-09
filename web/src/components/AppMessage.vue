@@ -72,17 +72,17 @@ const toneLabel: Record<MessageTone, string> = {
 <style scoped>
 .message-stack {
   position: fixed;
-  top: calc(env(safe-area-inset-top) + 10px);
+  top: calc(env(safe-area-inset-top) + 56px);
   right: 0;
   left: 0;
   z-index: 70;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   box-sizing: border-box;
   width: 100%;
-  padding: 0 12px;
+  padding: 0 20px;
   pointer-events: none;
 }
 
@@ -94,14 +94,14 @@ const toneLabel: Record<MessageTone, string> = {
   position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 10px;
+  gap: 8px;
   align-items: start;
   overflow: hidden;
   box-sizing: border-box;
-  width: min(100%, 430px);
-  padding: 11px 12px 12px;
+  width: min(100%, 320px);
+  padding: 9px 10px 10px;
   border: 1px solid rgba(255, 255, 255, 0.13);
-  border-radius: 16px;
+  border-radius: 14px;
   background:
     linear-gradient(135deg, var(--message-accent-soft), rgba(10, 14, 22, 0) 58%),
     rgba(10, 13, 20, 0.93);
@@ -179,31 +179,30 @@ const toneLabel: Record<MessageTone, string> = {
 .message-icon {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   margin-top: 1px;
   border: 1px solid var(--message-accent-line);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--message-accent-soft);
-  box-shadow: 0 0 18px var(--message-accent-glow);
+  box-shadow: 0 0 14px var(--message-accent-glow);
   color: var(--message-accent);
 }
 
 .message-icon svg {
-  width: 15px;
-  height: 15px;
+  width: 13px;
+  height: 13px;
 }
 
 .message-copy {
   min-width: 0;
-  padding-top: 1px;
 }
 
 .message-kicker {
   display: block;
-  margin-bottom: 3px;
+  margin-bottom: 2px;
   color: var(--message-accent);
-  font-size: 0.625rem;
+  font-size: 0.5625rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   line-height: 1;
@@ -213,20 +212,20 @@ const toneLabel: Record<MessageTone, string> = {
 .message-text {
   margin: 0;
   color: #f4f7fb;
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   font-weight: 500;
-  line-height: 1.55;
+  line-height: 1.5;
 }
 
 .message-action {
-  min-height: 28px;
-  margin-top: 7px;
-  padding: 0 10px;
+  min-height: 24px;
+  margin-top: 5px;
+  padding: 0 8px;
   border: 1px solid var(--message-accent-line);
-  border-radius: 8px;
+  border-radius: 7px;
   background: var(--message-accent-soft);
   color: var(--message-accent);
-  font-size: 0.6875rem;
+  font-size: 0.625rem;
   font-weight: 600;
   letter-spacing: 0.02em;
 }
@@ -234,19 +233,19 @@ const toneLabel: Record<MessageTone, string> = {
 .message-close {
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
-  margin: 1px -3px 0 0;
+  width: 20px;
+  height: 20px;
+  margin: 0 -2px 0 0;
   padding: 0;
   border: 0;
-  border-radius: 8px;
+  border-radius: 7px;
   background: transparent;
   color: rgba(244, 247, 251, 0.52);
 }
 
 .message-close svg {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
 }
 
 .message-close:hover {
