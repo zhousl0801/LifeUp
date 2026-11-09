@@ -10,8 +10,8 @@
 
 完整分类见[文档索引](docs/README.md)。开始开发前依次阅读：
 
-1. [产品设计 V1.1](docs/product/资产管家-产品设计文档-V1.1.md)：业务范围、数据口径与验收场景。
-2. [应用形态与技术选型 V1.0](docs/architecture/资产管家-应用形态与技术选型-V1.0.md)：前后端框架、云端账本、PWA 和 AI 接入边界。
+1. [产品设计 V1.1](docs/product/LifeUp-产品设计文档-V1.1.md)：业务范围、数据口径与验收场景。
+2. [应用形态与技术选型 V1.0](docs/architecture/LifeUp-应用形态与技术选型-V1.0.md)：前后端框架、云端账本、PWA 和 AI 接入边界。
 3. [UI 设计索引](docs/design/README.md)：配色、整合线框、首页高保真演示及截图。
 
 开发记录先看[功能迭代总览](docs/development/README.md)；分轮详情：[现金闭环与资产流转](docs/development/2026-10-21-开发记录-现金闭环与资产流转.md)、[G0 正确性收口](docs/development/2026-10-21-开发记录-G0正确性收口.md)、[G1 业务事实与历史重算](docs/development/2026-10-22-开发记录-G1业务事实与历史重算.md)、[G2 基金买入待确认](docs/development/2026-10-22-开发记录-G2基金买入待确认.md)、[G2 基金赎回闭环](docs/development/2026-10-22-开发记录-G2基金赎回闭环.md)、[G2 积存金卖出待到账](docs/development/2026-10-22-开发记录-G2积存金卖出待到账.md)、[真实行情接入](docs/development/2026-10-22-开发记录-真实行情接入.md)、[自动记账计划与后台任务](docs/development/2026-10-22-开发记录-自动记账计划与后台任务.md)、[完整趋势图](docs/development/2026-10-22-开发记录-完整趋势图.md)、[首页原型对齐与本月变化](docs/development/2026-10-22-开发记录-首页原型对齐与本月变化.md)、[分类维护与账本图表](docs/development/2026-10-22-开发记录-分类维护与账本图表.md)、[投资分组与组合视角](docs/development/2026-10-22-开发记录-投资分组与组合视角.md)、[投资收益走势与收益日历](docs/development/2026-10-22-开发记录-投资收益走势与收益日历.md)、[数据导出与完整备份恢复](docs/development/2026-10-22-开发记录-数据导出与完整备份恢复.md)、[行情定时刷新与失败重试](docs/development/2026-10-23-开发记录-行情定时刷新与失败重试.md)、[UI 收口与原型对照验收](docs/development/2026-10-23-开发记录-UI收口与原型对照验收.md)、[资产总览口径与首页重构](docs/development/2026-10-23-开发记录-资产总览口径与首页重构.md)、[全量核对与文档同步](docs/development/2026-10-26-开发记录-全量核对与文档同步.md)、[基金交易日历与持仓聚合](docs/development/2026-10-26-开发记录-基金交易日历与持仓聚合.md)、[会话 Cookie 认证](docs/development/2026-10-27-开发记录-会话Cookie认证.md)、[底部导航与计划页重构](docs/development/2026-10-27-开发记录-导航与计划页重构.md)、[股票模块](docs/development/2026-10-30-开发记录-股票模块.md)、[积存金空账本录入](docs/development/2026-10-30-开发记录-积存金空账本录入.md)、[股票录入自动行情](docs/development/2026-10-30-开发记录-股票录入自动行情.md)。
@@ -36,14 +36,14 @@
 
 ```text
 api/
-  AssetKeeper.slnx
+  LifeUp.slnx
   dotnet-tools.json             本地 dotnet-ef 工具清单
   src/
-    AssetKeeper.Api/             ASP.NET Core Web API
-    AssetKeeper.Application/     应用服务
-    AssetKeeper.Domain/          领域规则
-    AssetKeeper.Infrastructure/  数据访问、EF 迁移与外部集成
-  tests/AssetKeeper.Tests/       单元测试与 API 集成测试
+    LifeUp.Api/              ASP.NET Core Web API
+    LifeUp.Application/      应用服务
+    LifeUp.Domain/           领域规则
+    LifeUp.Infrastructure/   数据访问、EF 迁移与外部集成
+  tests/LifeUp.Tests/        单元测试与 API 集成测试
 web/                           Vue 3 + TypeScript + Vite 前端
 docs/
   product/                     产品设计与业务验收依据
@@ -253,23 +253,23 @@ export ConnectionStrings__Default="Host=localhost;Port=5432;Database=asset_keepe
 本机开发可用 PostgreSQL 容器。以下示例只绑定 `127.0.0.1` 并使用本地信任认证，仅适合个人开发环境；共享或生产环境必须配置口令或密钥管理。
 
 ```sh
-docker run -d --name asset-keeper-postgres \
+docker run -d --name lifeup-postgres \
   -p 127.0.0.1:5432:5432 \
   -e POSTGRES_DB=asset_keeper \
   -e POSTGRES_USER=asset_keeper \
   -e POSTGRES_HOST_AUTH_METHOD=trust \
-  -v asset-keeper-pgdata:/var/lib/postgresql/data \
+  -v lifeup-pgdata:/var/lib/postgresql/data \
   postgres:16
 ```
 
 使用 Colima 时，在 Docker 命令中加入 `--context colima`，或先切换到对应 context。
 
-迁移位于 `api/src/AssetKeeper.Infrastructure/Persistence/Migrations`。执行：
+迁移位于 `api/src/LifeUp.Infrastructure/Persistence/Migrations`。执行：
 
 ```sh
 cd api
 dotnet tool restore
-dotnet ef database update --project src/AssetKeeper.Infrastructure --startup-project src/AssetKeeper.Api
+dotnet ef database update --project src/LifeUp.Infrastructure --startup-project src/LifeUp.Api
 ```
 
 原五个迁移已在本机开发库应用。G0 新增第六个迁移 `CloseG0Correctness`，G1 新增第七个迁移 `AddChronologicalHistory`，G2 新增第八个迁移 `AddFundBuyPending`，行情接入新增第九个迁移 `AddQuoteSourcesAndSyncStatus`，自动记账新增第十个迁移 `AddAutoPlans`；第 6 至 10 个迁移已在备份后应用到现有开发库。分类维护新增第十一个迁移 `AddEntryCategories`，投资分组新增第十二个迁移 `AddFundGroups`，资产覆盖新增第十三个迁移 `AddAssetCoverage`，基金确认周期新增第十四个迁移 `AddFundConfirmationDelay`，Passkey 登录新增第十五个迁移 `AddPasskeyCredentials`，自动覆盖口径新增第十六个迁移 `RemoveAssetCoverageConfirmation`，股票模块新增第十七个迁移 `AddStockModule`；现有开发库已在备份后应用至第 17 个迁移，迁移历史读回一致。发现多个历史账本时迁移会主动拒绝，不删除数据。
@@ -283,7 +283,7 @@ dotnet ef database update --project src/AssetKeeper.Infrastructure --startup-pro
 后端（默认 <http://localhost:5069>）：
 
 ```sh
-dotnet run --project api/src/AssetKeeper.Api
+dotnet run --project api/src/LifeUp.Api
 ```
 
 前端（另开终端，默认 <http://localhost:5173>）：
@@ -303,12 +303,12 @@ API 启动后会同时运行自动记账后台任务，默认每 60 秒检查一
 常用检查：
 
 ```sh
-dotnet build api/AssetKeeper.slnx
-dotnet test api/AssetKeeper.slnx
+dotnet build api/LifeUp.slnx
+dotnet test api/LifeUp.slnx
 cd web && npm run type-check && npm run test && npm run build
 ```
 
-2026-10-29 验证：后端 313 项（295 通过 + 18 项真实 PostgreSQL 跳过）、前端 118 项测试、类型检查和生产构建通过；基金持仓与定投主路径已在独立临时库完成浏览器验收；Passkey 注册 / 登录 / 删除已在 Chromium 虚拟验证器上做端到端验收。普通 API 测试使用 InMemory；关系数据库测试显式设置 `ASSET_KEEPER_TEST_CONNECTION`，仅使用本机独立临时库验证迁移、并发、唯一键、恢复事务回滚和数据完整性。**不设置该变量时上述 18 项会被跳过（不是失败），此时后端显示 295 通过 + 18 跳过；当前 CI 也不启用这 18 项。** 执行方法见 [趋势图记录](docs/development/2026-10-22-开发记录-完整趋势图.md)。
+2026-10-29 验证：后端 313 项（295 通过 + 18 项真实 PostgreSQL 跳过）、前端 118 项测试、类型检查和生产构建通过；基金持仓与定投主路径已在独立临时库完成浏览器验收；Passkey 注册 / 登录 / 删除已在 Chromium 虚拟验证器上做端到端验收。普通 API 测试使用 InMemory；关系数据库测试显式设置 `LIFEUP_TEST_CONNECTION`，仅使用本机独立临时库验证迁移、并发、唯一键、恢复事务回滚和数据完整性。**不设置该变量时上述 18 项会被跳过（不是失败），此时后端显示 295 通过 + 18 跳过；当前 CI 也不启用这 18 项。** 执行方法见 [趋势图记录](docs/development/2026-10-22-开发记录-完整趋势图.md)。
 
 趋势验收使用 8 月起始、分批录入基金 / 积存金 / 公积金 / 股票和工资的数据：资产未齐全时只显示“已记录资产”和部分资产合计；每类资产录入或标记不持有后自动显示“总资产”。首页趋势范围为 7 日 / 1 月 / 3 月 / 全部，投资收益走势范围为本月 / 近 3 月 / 今年 / 全部，空白 / 虚线说明均正常。G0/G1/G2、行情、自动记账与历史接口回归继续保留；验收使用独立临时服务和数据库。真实 iPhone/PWA 设备验收尚未执行。
 

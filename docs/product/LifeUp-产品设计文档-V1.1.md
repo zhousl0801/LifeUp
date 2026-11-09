@@ -1,4 +1,4 @@
-# 资产管家 · 产品设计文档
+# LifeUp · 产品设计文档
 
 **版本：V1.2（基于 V1.1）　｜　整理日期：2026-10-26　｜　更新日期：2026-10-30　｜　形态：手机端 Web App**
 
@@ -814,31 +814,31 @@ stateDiagram-v2
 
 | 页面 | 设计证据 |
 |---|---|
-| 首页 | [首页线框稿](../design/wireframes/资产管家-首页线框稿.jpg) |
-| 账本明细 | [鲨鱼参考：账本](../design/wireframes/资产管家-鲨鱼参考-账本.jpg) |
-| 记一笔 | [鲨鱼参考：记一笔](../design/wireframes/资产管家-鲨鱼参考-记一笔.jpg) |
-| 收支分析 | [鲨鱼参考：图表](../design/wireframes/资产管家-鲨鱼参考-图表.jpg) |
-| 投资总览 | [持仓参考：投资总览](../design/wireframes/资产管家-持仓参考-投资总览.jpg) |
-| 基金详情 | [持仓参考：基金明细](../design/wireframes/资产管家-持仓参考-基金明细.jpg) |
-| 现金 | [现金线框](../design/wireframes/资产管家-现金线框.jpg) |
-| 公积金 | [公积金线框](../design/wireframes/资产管家-公积金线框.jpg) |
-| 平台积存金 | [积存金线框](../design/wireframes/资产管家-积存金线框.jpg) |
-| 自动记账 | [自动计划线框](../design/wireframes/资产管家-自动计划线框.jpg) |
-| 异常预览 | [计划余额不足预览](../design/wireframes/资产管家-计划余额不足预览.jpg) |
+| 首页 | [首页线框稿](../design/wireframes/LifeUp-首页线框稿.jpg) |
+| 账本明细 | [鲨鱼参考：账本](../design/wireframes/LifeUp-鲨鱼参考-账本.jpg) |
+| 记一笔 | [鲨鱼参考：记一笔](../design/wireframes/LifeUp-鲨鱼参考-记一笔.jpg) |
+| 收支分析 | [鲨鱼参考：图表](../design/wireframes/LifeUp-鲨鱼参考-图表.jpg) |
+| 投资总览 | [持仓参考：投资总览](../design/wireframes/LifeUp-持仓参考-投资总览.jpg) |
+| 基金详情 | [持仓参考：基金明细](../design/wireframes/LifeUp-持仓参考-基金明细.jpg) |
+| 现金 | [现金线框](../design/wireframes/LifeUp-现金线框.jpg) |
+| 公积金 | [公积金线框](../design/wireframes/LifeUp-公积金线框.jpg) |
+| 平台积存金 | [积存金线框](../design/wireframes/LifeUp-积存金线框.jpg) |
+| 自动记账 | [自动计划线框](../design/wireframes/LifeUp-自动计划线框.jpg) |
+| 异常预览 | [计划余额不足预览](../design/wireframes/LifeUp-计划余额不足预览.jpg) |
 
 ### 18.3 代表性手机端线框
 
 | 账本 | 投资 |
 |---|---|
-| ![鲨鱼参考账本](../design/wireframes/资产管家-鲨鱼参考-账本.jpg) | ![持仓参考投资](../design/wireframes/资产管家-持仓参考-投资总览.jpg) |
+| ![鲨鱼参考账本](../design/wireframes/LifeUp-鲨鱼参考-账本.jpg) | ![持仓参考投资](../design/wireframes/LifeUp-持仓参考-投资总览.jpg) |
 
 | 现金 | 公积金 |
 |---|---|
-| ![现金](../design/wireframes/资产管家-现金线框.jpg) | ![公积金](../design/wireframes/资产管家-公积金线框.jpg) |
+| ![现金](../design/wireframes/LifeUp-现金线框.jpg) | ![公积金](../design/wireframes/LifeUp-公积金线框.jpg) |
 
 | 平台积存金 | 自动记账 |
 |---|---|
-| ![积存金](../design/wireframes/资产管家-积存金线框.jpg) | ![自动记账](../design/wireframes/资产管家-自动计划线框.jpg) |
+| ![积存金](../design/wireframes/LifeUp-积存金线框.jpg) | ![自动记账](../design/wireframes/LifeUp-自动计划线框.jpg) |
 
 ### 18.4 前期研究
 

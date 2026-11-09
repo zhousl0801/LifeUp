@@ -12,7 +12,7 @@
 | [CSS 色彩变量](ui-color-tokens.css) | 当前主题的原始色、语义色与组件变量 |
 | [最终整合线框](wireframes/index.html) | 归档的页面结构和演示交互，包含设计评审说明；历史线框配色不作为当前主题依据 |
 | [首页高保真原型说明](../../prototype/README.md) | 归档的瓷白、克莱因蓝视觉实现及本机启动方式 |
-| [产品设计](../product/资产管家-产品设计文档-V1.1.md) | 业务分类、状态和统计口径的依据 |
+| [产品设计](../product/LifeUp-产品设计文档-V1.1.md) | 业务分类、状态和统计口径的依据 |
 
 GitHub 用于查看 HTML 源码；交互预览请按仓库根 README 启动静态服务。
 
@@ -29,13 +29,13 @@ GitHub 用于查看 HTML 源码；交互预览请按仓库根 README 启动静�
 
 | 页面 | 设计参考 |
 | --- | --- |
-| 首页 | [首页线框](wireframes/资产管家-首页线框稿.jpg) |
-| 账本 | [账本](wireframes/资产管家-鲨鱼参考-账本.jpg)、[记一笔](wireframes/资产管家-鲨鱼参考-记一笔.jpg)、[图表](wireframes/资产管家-鲨鱼参考-图表.jpg) |
-| 投资 | [投资总览](wireframes/资产管家-持仓参考-投资总览.jpg)、[基金明细](wireframes/资产管家-持仓参考-基金明细.jpg) |
-| 现金 | [现金线框](wireframes/资产管家-现金线框.jpg) |
-| 公积金 | [公积金线框](wireframes/资产管家-公积金线框.jpg) |
-| 积存金 | [积存金线框](wireframes/资产管家-积存金线框.jpg) |
-| 自动计划 | [计划线框](wireframes/资产管家-自动计划线框.jpg)、[余额不足预览](wireframes/资产管家-计划余额不足预览.jpg) |
+| 首页 | [首页线框](wireframes/LifeUp-首页线框稿.jpg) |
+| 账本 | [账本](wireframes/LifeUp-鲨鱼参考-账本.jpg)、[记一笔](wireframes/LifeUp-鲨鱼参考-记一笔.jpg)、[图表](wireframes/LifeUp-鲨鱼参考-图表.jpg) |
+| 投资 | [投资总览](wireframes/LifeUp-持仓参考-投资总览.jpg)、[基金明细](wireframes/LifeUp-持仓参考-基金明细.jpg) |
+| 现金 | [现金线框](wireframes/LifeUp-现金线框.jpg) |
+| 公积金 | [公积金线框](wireframes/LifeUp-公积金线框.jpg) |
+| 积存金 | [积存金线框](wireframes/LifeUp-积存金线框.jpg) |
+| 自动计划 | [计划线框](wireframes/LifeUp-自动计划线框.jpg)、[余额不足预览](wireframes/LifeUp-计划余额不足预览.jpg) |
 
 账本和投资分别采用上表对应版本；页面结构与最新细节以整合线框和产品设计为准，最终视觉以配色规范及首页高保真原型为参考。不要从早期截图扩展房产、负债、多现金账户等首版未包含功能。
 
