@@ -625,6 +625,52 @@ public sealed class FundReturnService
         return profits;
     }
 
+    /// <summary>
+    /// 按收益页同一口径计算某个净值日的各持仓当日收益；没有该日净值或缺少前一净值的持仓返回 null。
+    /// </summary>
+    internal static Dictionary<Guid, decimal?> CalculateDailyProfitsForDate(
+        LedgerReplayData data,
+        IReadOnlyList<BusinessFact> facts,
+        IReadOnlyList<FundPosition> positions,
+        DateOnly date,
+        DateOnly today,
+        DateOnly ledgerStart)
+    {
+        var active = facts.Where(fact => !fact.IsReversed).ToList();
+        var activeIds = active.Select(fact => fact.Id).ToHashSet();
+        var calculator = new LedgerReplayCalculator();
+        var replays = new Dictionary<DateOnly, ReplayResult>();
+
+        ReplayResult Replay(DateOnly target)
+        {
+            if (!replays.TryGetValue(target, out var result))
+            {
+                result = calculator.Calculate(data, facts, target, currentDate: today);
+                replays[target] = result;
+            }
+
+            return result;
+        }
+
+        var observations = positions.ToDictionary(
+            position => position.Id,
+            position => BuildObservations(data, activeIds, ledgerStart, date, position.Id));
+        var (corrections, correctionsKnown) = BuildCorrections(data, facts, calculator, positions, date);
+        var profits = new Dictionary<Guid, decimal?>();
+
+        foreach (var position in positions)
+        {
+            var series = observations[position.Id];
+            var observation = series.LastOrDefault(item => item.Date == date);
+            var previous = series.LastOrDefault(item => item.Date < date);
+            profits[position.Id] = observation is null || previous is null
+                ? null
+                : CalculatePositionProfit(position.Id, previous.Date, date, active, Replay, corrections, correctionsKnown);
+        }
+
+        return profits;
+    }
+
     private static decimal? CalculatePositionProfit(
         Guid positionId,
         DateOnly previousDate,

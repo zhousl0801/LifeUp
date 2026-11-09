@@ -34,6 +34,8 @@ export interface FundPosition {
   confirmationDelayDays?: number
   dailyProfit: number
   dailyProfitRate: number | null
+  hasDailyProfit: boolean
+  dailyProfitDate: string | null
 }
 
 export interface FundSearchResult {
@@ -73,6 +75,8 @@ export interface FundPlatformHolding {
   confirmationDelayDays?: number
   dailyProfit: number
   dailyProfitRate: number | null
+  hasDailyProfit: boolean
+  dailyProfitDate: string | null
 }
 
 export interface FundShareClass {
@@ -90,6 +94,8 @@ export interface FundShareClass {
   platforms: FundPlatformHolding[]
   dailyProfit: number
   dailyProfitRate: number | null
+  hasDailyProfit: boolean
+  dailyProfitDate: string | null
 }
 
 export interface FundSummary {
@@ -111,6 +117,8 @@ export interface FundSummary {
   classes: FundShareClass[]
   dailyProfit: number
   dailyProfitRate: number | null
+  hasDailyProfit: boolean
+  dailyProfitDate: string | null
 }
 
 export interface FundQuoteRefreshResult {

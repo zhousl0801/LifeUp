@@ -19,6 +19,7 @@ import {
   sellFund
 } from '../api/funds'
 import { fetchPlanOverview } from '../api/plans'
+import { fetchQuoteStatus, type QuoteStatus } from '../api/quotes'
 import { ApiError, getApiErrorMessage } from '../api/client'
 import { toast } from '../composables/useMessage'
 import AppNav from '../components/AppNav.vue'
@@ -31,6 +32,7 @@ import LoadingButton from '../components/LoadingButton.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import ConfirmSheet from '../components/ConfirmSheet.vue'
 import FundReturnsPanel from '../components/FundReturnsPanel.vue'
+import UpdateRing from '../components/UpdateRing.vue'
 import {
   amountTone,
   formatBusinessDate,
@@ -65,15 +67,14 @@ import type { AutoPlan } from '../types/plan'
 type SheetKind = 'opening' | 'buy' | 'buyConfirm' | 'shares' | 'sell' | 'sellConfirm' | 'sellArrival'
 type PortfolioView = 'positions' | 'returns' | 'activities' | 'plans'
 type GroupScope = 'all' | 'ungrouped' | string
-type FundMetricKey = 'daily' | 'value' | 'profit' | 'cumulative' | 'rate' | 'cost' | 'weight' | 'pending'
+type FundMetricKey = 'daily' | 'value' | 'cumulative' | 'cumulativeRate' | 'cost' | 'weight' | 'pending'
 
-const metricStorageKey = 'lifeup.fund.metrics.v2'
-const defaultMetrics: FundMetricKey[] = ['daily', 'profit', 'cumulative']
+const metricStorageKey = 'lifeup.fund.metrics.v3'
+const defaultMetrics: FundMetricKey[] = ['daily', 'cumulativeRate', 'cumulative']
 const metricOptions: { key: FundMetricKey; label: string }[] = [
   { key: 'daily', label: '日收益' },
-  { key: 'profit', label: '持有收益' },
+  { key: 'cumulativeRate', label: '累计收益率' },
   { key: 'cumulative', label: '累计收益' },
-  { key: 'rate', label: '收益率' },
   { key: 'value', label: '持仓价值' },
   { key: 'cost', label: '持仓成本' },
   { key: 'weight', label: '占比' },
@@ -94,6 +95,8 @@ const today = todayInBusinessTimeZone()
 const overview = ref<FundOverview | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref('')
+const quoteStatus = ref<QuoteStatus | null>(null)
+let quoteStatusTimer: ReturnType<typeof setInterval> | null = null
 const sheet = ref<SheetKind | null>(null)
 const requestId = ref(createRequestId())
 const isSaving = ref(false)
@@ -618,20 +621,48 @@ function cumulativeProfit(fund: FundSummary): number {
 
 const todayProfit = computed(() => {
   const funds = scopedFunds.value
-  const quoted = funds.filter((fund) => fund.hasEffectiveQuotes)
-  const latestDate = funds
-    .map((fund) => fund.latestNetValueDate)
-    .filter((date): date is string => Boolean(date))
-    .sort()
-    .at(-1) ?? null
+  const disclosed = funds.filter((fund) => fund.hasDailyProfit && fund.dailyProfitDate)
+  const latestDate = disclosed.map((fund) => fund.dailyProfitDate!).sort().at(-1) ?? null
+  const onLatest = latestDate === null
+    ? []
+    : disclosed.filter((fund) => fund.dailyProfitDate === latestDate)
 
   return {
-    value: sumAmounts(funds.map((fund) => fund.dailyProfit)),
-    hasValue: quoted.length > 0,
-    complete: quoted.length === funds.length,
+    value: sumAmounts(onLatest.map((fund) => fund.dailyProfit)),
+    hasValue: onLatest.length > 0,
+    complete: funds.length > 0 && onLatest.length === funds.length,
+    covered: onLatest.length,
+    total: funds.length,
     latestDate,
     isToday: latestDate === today
   }
+})
+
+const isUpdating = computed(() => quoteStatus.value?.isRunning ?? false)
+const hasQuoteError = computed(() => {
+  const run = quoteStatus.value?.lastRun
+  return !isUpdating.value && !!run && run.fundAttempted > 0 && run.fundFailed > 0
+})
+const todayProfitStatus = computed(() => {
+  if (!todayProfit.value.hasValue) {
+    return '行情待补'
+  }
+
+  const parts: string[] = []
+
+  if (hasQuoteError.value) {
+    parts.push('更新失败')
+  }
+
+  if (!todayProfit.value.isToday && todayProfit.value.latestDate) {
+    parts.push(`按 ${formatBusinessDate(todayProfit.value.latestDate)} 净值`)
+  }
+
+  if (!todayProfit.value.complete) {
+    parts.push(`仅 ${todayProfit.value.covered}/${todayProfit.value.total} 只基金披露`)
+  }
+
+  return parts.join(' · ')
 })
 
 const scopedPlans = computed(() => {
@@ -750,6 +781,8 @@ watch(
 
 onMounted(async () => {
   await loadOverview()
+  void loadQuoteStatus()
+  startQuoteStatusPolling()
 
   if (activeView.value === 'plans') {
     await loadPlans()
@@ -789,6 +822,41 @@ async function loadOverview(): Promise<void> {
     errorMessage.value = getApiErrorMessage(error, '基金数据加载失败，请重试。')
   } finally {
     isLoading.value = false
+  }
+}
+
+async function loadQuoteStatus(): Promise<void> {
+  try {
+    const wasUpdating = quoteStatus.value?.isRunning ?? false
+    const status = await fetchQuoteStatus()
+    quoteStatus.value = status
+
+    if (wasUpdating && !status.isRunning) {
+      await loadOverview()
+    }
+  } catch {
+    // 行情状态只是辅助信息，读取失败不阻塞基金页。
+  }
+}
+
+function startQuoteStatusPolling(): void {
+  if (quoteStatusTimer !== null) {
+    return
+  }
+
+  quoteStatusTimer = setInterval(() => {
+    if (document.visibilityState === 'hidden') {
+      return
+    }
+
+    void loadQuoteStatus()
+  }, 15000)
+}
+
+function stopQuoteStatusPolling(): void {
+  if (quoteStatusTimer !== null) {
+    clearInterval(quoteStatusTimer)
+    quoteStatusTimer = null
   }
 }
 
@@ -873,18 +941,12 @@ function metricDisplay(fund: FundSummary): { key: FundMetricKey; label: string; 
         return {
           key,
           label: '日收益',
-          value: fund.hasEffectiveQuotes ? formatSignedMoney(fund.dailyProfit) : '—',
-          sub: fund.hasEffectiveQuotes && fund.dailyProfitRate !== null
-            ? `${formatSignedMoney(fund.dailyProfitRate)}%`
-            : undefined,
-          tone: amountTone(fund.hasEffectiveQuotes ? fund.dailyProfit : null)
-        }
-      case 'profit':
-        return {
-          key,
-          label: '持有收益',
-          value: fund.hasEffectiveQuotes ? formatSignedMoney(fund.holdingProfit) : '行情待补',
-          tone: amountTone(fund.hasEffectiveQuotes ? fund.holdingProfit : null)
+          value: !fund.hasDailyProfit
+            ? '—'
+            : fund.dailyProfitRate !== null
+              ? `${formatSignedMoney(fund.dailyProfit)}（${formatSignedMoney(fund.dailyProfitRate)}%）`
+              : formatSignedMoney(fund.dailyProfit),
+          tone: amountTone(fund.hasDailyProfit ? fund.dailyProfit : null)
         }
       case 'cumulative':
         return {
@@ -893,15 +955,21 @@ function metricDisplay(fund: FundSummary): { key: FundMetricKey; label: string; 
           value: fund.historyConfirmed ? formatSignedMoney(cumulativeProfit(fund)) : '待核对',
           tone: amountTone(fund.historyConfirmed ? cumulativeProfit(fund) : null)
         }
-      case 'rate':
+      case 'cumulativeRate': {
+        const cumulative = cumulativeProfit(fund)
+        const rate = fund.cost > 0 ? cumulative / fund.cost * 100 : null
+
         return {
           key,
-          label: '收益率',
-          value: fund.hasEffectiveQuotes && fund.cost > 0
-            ? `${formatSignedMoney(fund.holdingProfit / fund.cost * 100)}%`
-            : '—',
-          tone: amountTone(fund.hasEffectiveQuotes && fund.cost > 0 ? fund.holdingProfit / fund.cost : null)
+          label: '累计收益率',
+          value: !fund.historyConfirmed
+            ? '待核对'
+            : !fund.hasEffectiveQuotes
+              ? '行情待补'
+              : rate === null ? '—' : `${formatSignedMoney(rate)}%`,
+          tone: amountTone(fund.historyConfirmed && fund.hasEffectiveQuotes ? rate : null)
         }
+      }
       case 'cost':
         return { key, label: '成本', value: `¥${formatMoney(fund.cost)}`, tone: '' }
       case 'weight':
@@ -964,6 +1032,17 @@ function buildFallbackFunds(
     for (const [key, classMembers] of byClass) {
       const netValues = [...new Set(classMembers.map((member) => member.netValue))]
       const netValueDates = [...new Set(classMembers.map((member) => member.netValueDate))]
+      const classValue = sumAmounts(classMembers.map(member => member.value))
+      const classDailyDate = classMembers
+        .map((member) => member.dailyProfitDate)
+        .filter((date): date is string => Boolean(date))
+        .sort()
+        .at(-1) ?? null
+      const classDailyMembers = classDailyDate === null
+        ? []
+        : classMembers.filter((member) => member.hasDailyProfit && member.dailyProfitDate === classDailyDate)
+      const hasDailyProfit = classMembers.length > 0 && classDailyMembers.length === classMembers.length
+      const dailyProfit = sumAmounts(classDailyMembers.map((member) => member.dailyProfit))
 
       classes.push({
         key,
@@ -971,13 +1050,17 @@ function buildFallbackFunds(
         shareClass: classMembers[0]?.shareClass || null,
         shares: sumAmounts(classMembers.map(member => member.shares)),
         cost: sumAmounts(classMembers.map(member => member.cost)),
-        value: sumAmounts(classMembers.map(member => member.value)),
+        value: classValue,
         holdingProfit: sumAmounts(classMembers.map(member => member.holdingProfit)),
         realizedProfit: sumAmounts(classMembers.map(member => member.realizedProfit)),
         netValue: netValues.length === 1 ? netValues[0]! : null,
         netValueDate: netValueDates.length === 1 ? netValueDates[0]! : null,
-        dailyProfit: 0,
-        dailyProfitRate: null,
+        dailyProfit,
+        dailyProfitRate: hasDailyProfit && classValue - dailyProfit > 0
+          ? dailyProfit / (classValue - dailyProfit) * 100
+          : null,
+        hasDailyProfit,
+        dailyProfitDate: classDailyDate,
         platforms: classMembers.map((member) => ({
           positionId: member.id,
           platform: member.platform,
@@ -994,7 +1077,9 @@ function buildFallbackFunds(
           hasEffectiveQuote: member.hasEffectiveQuote,
           confirmationDelayDays: member.confirmationDelayDays,
           dailyProfit: member.dailyProfit ?? 0,
-          dailyProfitRate: member.dailyProfitRate ?? null
+          dailyProfitRate: member.dailyProfitRate ?? null,
+          hasDailyProfit: member.hasDailyProfit,
+          dailyProfitDate: member.dailyProfitDate
         }))
       })
     }
@@ -1007,7 +1092,16 @@ function buildFallbackFunds(
       .filter((item) => memberIds.has(item.positionId))
       .map(item => item.amount))
     const value = sumAmounts(members.map(member => member.value))
-    const dailyProfit = sumAmounts(members.map(member => member.dailyProfit ?? 0))
+    const dailyProfitDate = members
+      .map((member) => member.dailyProfitDate)
+      .filter((date): date is string => Boolean(date))
+      .sort()
+      .at(-1) ?? null
+    const dailyMembers = dailyProfitDate === null
+      ? []
+      : members.filter((member) => member.hasDailyProfit && member.dailyProfitDate === dailyProfitDate)
+    const hasDailyProfit = members.length > 0 && dailyMembers.length === members.length
+    const dailyProfit = sumAmounts(dailyMembers.map((member) => member.dailyProfit))
     const groupId = members.find((member) => member.groupId)?.groupId ?? null
 
     return {
@@ -1028,7 +1122,11 @@ function buildFallbackFunds(
       hasEffectiveQuotes: members.every((member) => member.hasEffectiveQuote),
       classes,
       dailyProfit,
-      dailyProfitRate: value - dailyProfit > 0 ? dailyProfit / (value - dailyProfit) * 100 : null
+      dailyProfitRate: hasDailyProfit && value - dailyProfit > 0
+        ? dailyProfit / (value - dailyProfit) * 100
+        : null,
+      hasDailyProfit,
+      dailyProfitDate
     } satisfies FundSummary
   }).sort((left, right) => left.name.localeCompare(right.name, 'zh-Hans-CN'))
 }
@@ -1705,6 +1803,7 @@ onBeforeUnmount(() => {
     clearTimeout(fundSearchTimer)
   }
 
+  stopQuoteStatusPolling()
 })
 
 async function runFundSearch(query: string): Promise<void> {
@@ -1825,12 +1924,20 @@ function goBack(): void {
           <b :class="amountTone(todayProfit.hasValue ? todayProfit.value : null)">
             {{ todayProfit.hasValue ? formatSignedMoney(todayProfit.value) : '—' }}
           </b>
-          <small v-if="!todayProfit.hasValue">行情待补</small>
-          <small v-else-if="!todayProfit.isToday || !todayProfit.complete">
-            <template v-if="!todayProfit.isToday && todayProfit.latestDate">
-              按 {{ formatBusinessDate(todayProfit.latestDate) }} 净值
-            </template>
-            <template v-if="!todayProfit.complete"> · 部分持仓行情待补</template>
+          <small v-if="isUpdating" class="hero-update is-updating">
+            <UpdateRing :value="todayProfit.covered" :total="todayProfit.total" indeterminate />
+            <span>
+              更新中…
+              <template v-if="todayProfit.total > 0"> · {{ todayProfit.covered }}/{{ todayProfit.total }}</template>
+            </span>
+          </small>
+          <small v-else-if="!todayProfit.hasValue" class="hero-update">
+            <UpdateRing :value="0" :total="todayProfit.total" />
+            <span>行情待补</span>
+          </small>
+          <small v-else-if="todayProfitStatus" class="hero-update" :class="{ 'is-warning': hasQuoteError }">
+            <UpdateRing :value="todayProfit.covered" :total="todayProfit.total" />
+            <span>{{ todayProfitStatus }}</span>
           </small>
         </div>
 
@@ -2688,6 +2795,22 @@ function goBack(): void {
   color: var(--color-hero-text-muted);
   font-size: var(--text-caption);
   line-height: 1.4;
+}
+
+.hero-update {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  --update-ring-color: var(--color-hero-line);
+}
+
+.hero-update.is-updating span {
+  color: var(--color-hero-text-secondary);
+}
+
+.hero-update.is-warning {
+  color: var(--color-warning);
+  --update-ring-color: var(--color-warning);
 }
 
 .funds-metrics {

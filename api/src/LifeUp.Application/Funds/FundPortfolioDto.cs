@@ -18,7 +18,9 @@ public sealed record FundSummaryDto(
     bool HasEffectiveQuotes,
     IReadOnlyList<FundShareClassDto> Classes,
     decimal DailyProfit = 0m,
-    decimal? DailyProfitRate = null);
+    decimal? DailyProfitRate = null,
+    bool HasDailyProfit = true,
+    DateOnly? DailyProfitDate = null);
 
 public sealed record FundShareClassDto(
     string? ShareClass,
@@ -34,7 +36,9 @@ public sealed record FundShareClassDto(
     string? Code,
     string IdentityBasis,
     decimal DailyProfit = 0m,
-    decimal? DailyProfitRate = null);
+    decimal? DailyProfitRate = null,
+    bool HasDailyProfit = true,
+    DateOnly? DailyProfitDate = null);
 
 public sealed record FundPlatformHoldingDto(
     Guid PositionId,
@@ -53,4 +57,6 @@ public sealed record FundPlatformHoldingDto(
     int ConfirmationDelayDays = 2,
     decimal DailyProfit = 0m,
     decimal? DailyProfitRate = null,
-    decimal PriorRealizedProfit = 0m);
+    decimal PriorRealizedProfit = 0m,
+    bool HasDailyProfit = true,
+    DateOnly? DailyProfitDate = null);
