@@ -558,7 +558,7 @@ public sealed class FundService
         {
             var now = _businessDateProvider.UtcNow;
             var tradingScope = ResolveTradingScope(position);
-            var tradeDate = request.TradeDate ?? ResolveBuyTradeDate(request.BusinessDate, now, tradingScope);
+            var tradeDate = request.TradeDate ?? ResolveBuyTradeDate(request.BusinessDate, request.OrderTime, now, tradingScope);
             var transaction = AssetTransaction.CreateFundBuyPending(
                 ledger.Id,
                 position.Id,
@@ -1516,8 +1516,26 @@ public sealed class FundService
             : AutoPlanTradingScope.China;
     }
 
-    private DateOnly ResolveBuyTradeDate(DateOnly requestedDate, DateTimeOffset now, AutoPlanTradingScope tradingScope)
+    private DateOnly ResolveBuyTradeDate(
+        DateOnly requestedDate,
+        TimeOnly? orderTime,
+        DateTimeOffset now,
+        AutoPlanTradingScope tradingScope)
     {
+        // 计划执行可能晚于到期时刻，T 日要按计划的下单时间算，不能按实际补跑时刻算。
+        // 到期日不是交易日时，15:00 截止没有意义，直接顺延到下一个交易日。
+        if (orderTime is TimeOnly scheduledTime)
+        {
+            if (!TradingCalendar.Default.IsTradingDay(requestedDate, tradingScope))
+            {
+                return TradingCalendar.Default.NextTradingDay(requestedDate.AddDays(-1), tradingScope);
+            }
+
+            return scheduledTime < new TimeOnly(15, 0)
+                ? requestedDate
+                : TradingCalendar.Default.NextTradingDay(requestedDate, tradingScope);
+        }
+
         var today = _businessDateProvider.Today;
 
         if (requestedDate != today)

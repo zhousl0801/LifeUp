@@ -326,7 +326,14 @@ public sealed class PlanExecutionService
                 }
 
                 var result = await _funds.BuyAsync(
-                    new BuyFundRequest(positionId, occurrence.Amount, occurrence.DueDate, occurrence.PlanName, occurrence.Id, occurrence.Fee),
+                    new BuyFundRequest(
+                        positionId,
+                        occurrence.Amount,
+                        occurrence.DueDate,
+                        occurrence.PlanName,
+                        occurrence.Id,
+                        occurrence.Fee,
+                        OrderTime: occurrence.DueTime),
                     cancellationToken);
 
                 return FromAssetResult(result);

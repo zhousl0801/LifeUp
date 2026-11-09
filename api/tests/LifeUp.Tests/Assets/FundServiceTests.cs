@@ -540,6 +540,35 @@ public sealed class FundServiceTests
     }
 
     [Fact]
+    public async Task BuyAsync_WithOrderTimeOnNonTradingDay_UsesNextTradingDay()
+    {
+        var context = await CreateContextAsync(startDate: new DateOnly(2026, 10, 15));
+        var position = await TestFundQuotes.CreatePositionAsync(
+            context.Repository,
+            new BusinessDateProvider(new FixedTimeProvider(Now)),
+            new CreateFundPositionRequest(
+                "债券基金", "000003", "A", "示例平台", 100m, 1000m, 12m,
+                BusinessToday, "已有持仓", Guid.NewGuid(),
+                HoldingDate: BusinessToday),
+            CancellationToken.None);
+
+        await context.Funds.BuyAsync(
+            new BuyFundRequest(
+                position.Result!.Position.Id,
+                130m,
+                new DateOnly(2026, 10, 18),
+                null,
+                Guid.NewGuid(),
+                OrderTime: new TimeOnly(16, 0)),
+            CancellationToken.None);
+
+        var pending = Assert.Single(
+            context.Repository.AssetTransactions,
+            transaction => transaction.Kind == AssetTransactionKind.FundBuyPending);
+        Assert.Equal(new DateOnly(2026, 10, 19), pending.FundTradeDate);
+    }
+
+    [Fact]
     public async Task BuyAsync_WithTradeDateBeforeBusinessDate_ReturnsInvalid()
     {
         var context = await CreateContextAsync(startDate: new DateOnly(2026, 10, 15));
