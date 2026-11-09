@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import Decimal from 'decimal.js'
 import { fetchMonthlyBudget, updateMonthlyBudget } from '../api/ledger'
 import { getApiErrorMessage } from '../api/client'
 import { toast } from '../composables/useMessage'
@@ -7,7 +8,7 @@ import { formatMoney, parseAmount, sumAmounts } from '../utils/format'
 import BottomSheet from './BottomSheet.vue'
 import LoadingButton from './LoadingButton.vue'
 
-const props = defineProps<{ month: string; expense: number | null }>()
+const props = defineProps<{ month: string; today: string; expense: number | null }>()
 const budget = ref<number | null>(null)
 const loading = ref(true)
 const saving = ref(false)
@@ -22,6 +23,19 @@ const remaining = computed(() => budget.value !== null && props.expense !== null
   : null)
 const percentage = computed(() => budget.value && props.expense !== null ? props.expense / budget.value * 100 : null)
 const progressLabel = computed(() => percentage.value === null ? '' : `${Math.round(percentage.value)}%`)
+const dailyAllowance = computed(() => {
+  if (remaining.value === null || !props.today.startsWith(props.month + '-')) return null
+
+  const [year, month] = props.month.split('-').map(Number)
+  const lastDay = new Date(Date.UTC(year!, month!, 0)).getUTCDate()
+  const daysLeft = lastDay - Number(props.today.slice(-2)) + 1
+  return new Decimal(Math.max(remaining.value, 0)).div(daysLeft)
+})
+const budgetAmount = computed(() => '¥' + formatMoney(budget.value))
+const compactMoney = new Intl.NumberFormat('zh-CN', { notation: 'compact', maximumFractionDigits: 2 })
+const ringAmount = computed(() => budget.value !== null && budget.value >= 100000
+  ? '¥' + compactMoney.format(budget.value)
+  : budgetAmount.value)
 
 async function load(): Promise<void> {
   loading.value = true
@@ -70,21 +84,31 @@ onMounted(load)
 
 <template>
   <div class="monthly-budget">
-    <template v-if="loadError">
-      <small>{{ loadError }}</small>
-      <button type="button" class="budget-action" @click="load">重试预算</button>
-    </template>
-    <template v-else-if="!loading">
-      <div v-if="percentage !== null" class="budget-ring" :class="{ over: remaining !== null && remaining < 0 }"
-        :style="{ '--progress': Math.min(percentage, 100) + '%' }" role="img" :aria-label="'预算已用 ' + progressLabel">
-        <b>{{ progressLabel }}</b>
-      </div>
+    <div class="budget-copy">
+      <slot />
       <small v-if="remaining !== null" class="budget-remaining" :class="{ over: remaining < 0 }">
         {{ remaining < 0 ? '超出预算' : '剩余预算' }} ¥{{ formatMoney(Math.abs(remaining)) }}
       </small>
-      <button type="button" class="budget-action" @click="edit">
-        {{ budget === null ? '设置月度预算' : '预算 ¥' + formatMoney(budget) + ' ›' }}
+      <small v-if="remaining !== null" class="budget-daily">
+        每日可花 {{ dailyAllowance === null ? '—' : '¥' + formatMoney(dailyAllowance) }}
+      </small>
+    </div>
+    <div v-if="loadError" class="budget-retry">
+      <small>{{ loadError }}</small>
+      <button type="button" class="budget-action" @click="load">重试预算</button>
+    </div>
+    <template v-else-if="!loading">
+      <button v-if="budget !== null" type="button" class="budget-ring"
+        :class="{ over: remaining !== null && remaining < 0 }"
+        :style="{ '--progress': Math.min(percentage ?? 0, 100) + '%' }"
+        :aria-label="`更改月度预算，当前 ${budgetAmount}${progressLabel ? '，已用 ' + progressLabel : ''}`" @click="edit">
+        <span class="budget-ring-face">
+          <span>月度预算</span>
+          <b>{{ ringAmount }}</b>
+          <span v-if="progressLabel">已用 {{ progressLabel }}</span>
+        </span>
       </button>
+      <button v-else type="button" class="budget-action" @click="edit">设置月度预算</button>
     </template>
 
     <BottomSheet :open="open" :title="monthLabel + '预算'" subtitle="只应用于这个月。"
@@ -104,19 +128,29 @@ onMounted(load)
 </template>
 
 <style scoped>
-.monthly-budget { min-width: 0; display: grid; justify-items: end; gap: 4px; text-align: right; }
+.monthly-budget {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px;
+}
+.budget-copy { display: grid; min-width: 0; gap: 4px; }
+.budget-retry { display: grid; justify-items: end; max-width: 110px; text-align: right; }
 .budget-ring {
-  display: grid; place-items: center; width: 60px; height: 60px; border-radius: 50%;
+  display: grid; place-items: center; width: clamp(94px, 27vw, 112px); aspect-ratio: 1;
+  padding: 7px; border: 0; border-radius: 50%; color: var(--color-text-primary);
   background: conic-gradient(var(--ledger-accent, var(--color-brand)) var(--progress), var(--color-bg-subtle) 0);
 }
 .budget-ring.over {
   background: conic-gradient(var(--color-danger) var(--progress), var(--color-bg-subtle) 0);
 }
-.budget-ring b {
-  display: grid; place-items: center; width: 47px; height: 47px; border-radius: 50%;
-  background: var(--color-bg-surface); font-size: var(--text-caption); overflow-wrap: anywhere;
+.budget-ring-face {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  width: 100%; height: 100%; border-radius: 50%; background: var(--color-bg-surface);
+  color: var(--color-text-secondary); font-size: var(--text-caption); line-height: 1.15;
 }
-.budget-remaining { color: var(--color-text-secondary); font-size: var(--text-caption); }
+.budget-ring-face b {
+  color: var(--color-text-primary); font-size: clamp(.7rem, 3.3vw, .875rem);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.budget-remaining, .budget-daily, .budget-retry small { color: var(--color-text-secondary); font-size: var(--text-caption); }
 .budget-remaining.over { color: var(--color-danger); }
 .budget-action {
   min-height: var(--touch-target); padding: 0 6px; border: 0; border-radius: var(--radius-control);

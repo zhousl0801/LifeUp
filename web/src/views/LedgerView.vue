@@ -17,7 +17,7 @@ import LedgerMonthlyBudget from '../components/LedgerMonthlyBudget.vue'
 import LedgerStatsChart from '../components/LedgerStatsChart.vue'
 import { ExpenseCategories, IncomeCategories } from '../constants/categories'
 import type { EntryCategory } from '../types/category'
-import { formatBusinessDateWithWeekday, formatMoney, formatSignedMoney, sumAmounts, todayInBusinessTimeZone } from '../utils/format'
+import { formatBusinessDateWithWeekday, formatMoney, sumAmounts, todayInBusinessTimeZone } from '../utils/format'
 import { groupEntryStats } from '../utils/entryStatsGroups'
 import { takeLedgerReturn } from '../utils/ledgerReturn'
 import { formatPeriodLabel, periodStart, shiftAnchor } from '../utils/period'
@@ -55,10 +55,8 @@ const period = ref<EntryPeriod>(savedContext?.period ?? 'month')
 const anchor = ref(savedContext?.anchor ?? ledgerDate(route.query.date) ?? today)
 const view = ref<'calendar' | 'list' | 'chart'>(savedContext?.view ?? 'calendar')
 const selectedDate = ref(savedContext?.selectedDate ?? anchor.value)
-const displayTotals = computed(() => {
-  if (view.value !== 'calendar') return summary.value
-  return stats.value ? { ...stats.value, surplus: sumAmounts([stats.value.income, -stats.value.expense]) } : null
-})
+const displayExpense = computed(() =>
+  period.value === 'month' || view.value !== 'list' ? stats.value?.expense ?? null : summary.value?.expense ?? null)
 const statsKind = ref<EntryKind>(savedContext?.statsKind ?? 'expense')
 const statsByGroup = ref(false)
 const stats = ref<EntryStats | null>(null)
@@ -255,7 +253,7 @@ watch([period, anchor, kindFilter, categoryFilter, view, selectedDate], () => {
 })
 
 watch([period, anchor, view], () => {
-  if (view.value !== 'list') {
+  if (period.value === 'month' || view.value !== 'list') {
     void loadStats()
   }
 })
@@ -270,7 +268,7 @@ watch(search, () => {
 onMounted(() => {
   void loadCategories()
   void loadEntries()
-  if (view.value !== 'list') void loadStats()
+  if (period.value === 'month' || view.value !== 'list') void loadStats()
 })
 
 function switchView(next: 'calendar' | 'list' | 'chart'): void {
@@ -443,13 +441,15 @@ function openEntry(entryId?: string): void {
     </header>
 
     <section class="ledger-hero">
-      <div class="ledger-hero-copy">
-        <span class="ledger-hero-label">▣ {{ period === 'month' ? '本月' : period === 'day' ? '当天' : '本年' }}支出</span>
-        <strong>¥{{ formatMoney(displayTotals?.expense) }}</strong>
-        <small>收入 {{ formatMoney(displayTotals?.income) }} · 结余 {{ formatSignedMoney(displayTotals?.surplus) }}</small>
-      </div>
       <LedgerMonthlyBudget v-if="period === 'month'" :key="anchor.slice(0, 7)"
-        :month="anchor.slice(0, 7)" :expense="displayTotals?.expense ?? null" />
+        :month="anchor.slice(0, 7)" :today="today" :expense="displayExpense">
+        <span class="ledger-hero-label">▣ 本月支出</span>
+        <strong class="ledger-hero-amount">¥{{ formatMoney(displayExpense) }}</strong>
+      </LedgerMonthlyBudget>
+      <div v-else class="ledger-hero-copy">
+        <span class="ledger-hero-label">▣ {{ period === 'day' ? '当天' : '本年' }}支出</span>
+        <strong class="ledger-hero-amount">¥{{ formatMoney(displayExpense) }}</strong>
+      </div>
     </section>
 
     <section class="ledger-calendar-card">
@@ -687,11 +687,9 @@ function openEntry(entryId?: string): void {
 .round-tool .app-icon, .calendar-heading strong .app-icon { width: 17px; height: 17px; }
 .ledger-settings { background: color-mix(in srgb, var(--color-bg-surface) 68%, transparent); }
 .ledger-hero, .ledger-calendar-card { background: var(--color-bg-surface); border-radius: 24px; padding: 16px; }
-.ledger-hero { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; }
-.ledger-hero > * { min-width: 0; }
+.ledger-hero { margin-bottom: 12px; }
 .ledger-hero-copy { display: grid; gap: 5px; }
-.ledger-hero-copy strong { font-size: clamp(1.5rem, 7vw, 2.15rem); line-height: 1.12; overflow-wrap: anywhere; }
-.ledger-hero small { color: var(--color-text-secondary); font-size: var(--text-caption); }
+.ledger-hero-amount { font-size: clamp(1.5rem, 7vw, 2.15rem); line-height: 1.12; overflow-wrap: anywhere; }
 .ledger-hero-label { font-weight: 650; }
 .ledger-calendar-card { padding: 12px; margin-bottom: 16px; }
 .calendar-heading { margin-bottom: 8px; }

@@ -50,18 +50,11 @@ import AppIcon from './AppIcon.vue'
 .nav-add {
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-pill);
-  background: var(--color-bg-surface);
+  background: linear-gradient(160deg,
+    color-mix(in srgb, var(--color-bg-surface) 96%, transparent),
+    color-mix(in srgb, var(--color-bg-surface) 86%, transparent));
   box-shadow: inset 0 1px 1px #ffffff80, var(--shadow-card);
   pointer-events: auto;
-}
-
-@supports (backdrop-filter: blur(16px)) or (-webkit-backdrop-filter: blur(16px)) {
-  .nav-tabs,
-  .nav-add {
-    background: color-mix(in srgb, var(--color-bg-surface) 78%, transparent);
-    -webkit-backdrop-filter: blur(18px) saturate(150%);
-    backdrop-filter: blur(18px) saturate(150%);
-  }
 }
 
 .nav-tabs {
