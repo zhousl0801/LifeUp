@@ -2,6 +2,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { beforeEach, expect, test, vi } from 'vitest'
 import GoldView from './GoldView.vue'
 import { todayInBusinessTimeZone } from '../utils/format'
+import { useMessages } from '../composables/useMessage'
 
 const today = todayInBusinessTimeZone()
 
@@ -46,7 +47,10 @@ const overview = {
   lastQuoteError: null
 }
 
+const { messages, clear } = useMessages()
+
 beforeEach(() => {
+  clear()
   vi.clearAllMocks()
   mocks.overview.mockResolvedValue(structuredClone(overview))
   document.body.innerHTML = ''
@@ -118,7 +122,7 @@ test('gold sale uses grams and quote and records received cash by default', asyn
   })
   expect(mocks.sell.mock.calls[0]![0]).not.toHaveProperty('settlement')
   expect(mocks.sell.mock.calls[0]![0]).not.toHaveProperty('relatedCashAdjustmentId')
-  expect(view.find('.notice').text()).toContain('当前现金 ¥10,898.00')
+  expect(messages.value.at(-1)?.text ?? '').toContain('当前现金 ¥10,898.00')
   view.unmount()
 })
 

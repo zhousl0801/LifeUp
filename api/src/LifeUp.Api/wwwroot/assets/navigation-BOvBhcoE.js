@@ -1,0 +1,1 @@
+function e(e,t={name:`home`}){e.options?.history.state.back?e.back():e.push(t)}export{e as t};

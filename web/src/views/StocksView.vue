@@ -4,6 +4,7 @@ import Decimal from 'decimal.js'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ApiError, getApiErrorMessage } from '../api/client'
+import { toast } from '../composables/useMessage'
 import { buyStock, fetchStockOverview, fetchStockQuote, refreshStockQuote, refreshStockQuotes, saveStockHolding, searchStocks, sellStock } from '../api/stocks'
 import { fetchLedger, updateAssetCoverage } from '../api/ledger'
 import AppNav from '../components/AppNav.vue'
@@ -44,7 +45,6 @@ const overview = ref<StockOverview | null>(null)
 const isLoading = ref(false)
 const isRefreshing = ref(false)
 const errorMessage = ref('')
-const notice = ref('')
 const sheet = ref<SheetKind | null>(null)
 const selectedPosition = ref<StockPosition | null>(null)
 const selectedStock = ref<StockSearchResult | null>(null)
@@ -332,13 +332,14 @@ async function refreshQuotes(): Promise<void> {
 
   isRefreshing.value = true
   errorMessage.value = ''
-  notice.value = ''
 
   try {
     const result = await refreshStockQuotes()
-    notice.value = result.failed > 0
+    const summary = result.failed > 0
       ? `行情刷新完成：成功 ${result.succeeded} 只，失败 ${result.failed} 只${result.errors[0] ? `；${result.errors[0]}` : ''}`
       : `行情刷新完成：更新 ${result.updated} 只股票。`
+    if (result.failed > 0) toast.info(summary)
+    else toast.success(summary)
     await loadOverview()
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error, '行情刷新失败，请稍后重试。')
@@ -525,7 +526,7 @@ async function submitBuy(): Promise<void> {
     note: form.note.trim(),
     requestId: requestId.value
   })
-  notice.value = `已买入 ${formatShares(result.activity.shares)} 股，当前现金 ¥${formatMoney(result.cashBalance)}。`
+  toast.success(`已买入 ${formatShares(result.activity.shares)} 股，当前现金 ¥${formatMoney(result.cashBalance)}。`)
   sheet.value = null
 
   // 当天买入还没有行情记录时，今日盈亏会空着；成交成功后顺手拉一次行情。
@@ -562,7 +563,7 @@ async function submitSell(): Promise<void> {
     note: form.note.trim(),
     requestId: requestId.value
   })
-  notice.value = `已卖出 ${formatShares(result.activity.shares)} 股，当前现金 ¥${formatMoney(result.cashBalance)}。`
+  toast.success(`已卖出 ${formatShares(result.activity.shares)} 股，当前现金 ¥${formatMoney(result.cashBalance)}。`)
   sheet.value = null
   await loadOverview()
 }
@@ -597,7 +598,7 @@ async function submitHolding(): Promise<void> {
     expectedVersion: expectedVersion.value,
     positionId: selectedPosition.value?.id
   })
-  notice.value = '股票持仓已保存。'
+  toast.success('股票持仓已保存。')
   sheet.value = null
   await loadOverview()
 }
@@ -835,7 +836,6 @@ function goBack(): void {
         </LoadingButton>
       </div>
 
-      <p v-if="notice" class="notice" role="status">{{ notice }}</p>
       <p v-if="errorMessage" class="form-error" role="alert">{{ errorMessage }}</p>
 
       <section v-if="overview.positions.length === 0" class="empty-stock">
@@ -1322,16 +1322,6 @@ function goBack(): void {
 .action-secondary:disabled {
   background: var(--color-bg-disabled);
   color: var(--color-text-disabled);
-}
-
-.notice {
-  margin: 14px 0 0;
-  padding: 10px 12px;
-  border-radius: var(--radius-tag);
-  background: var(--color-success-bg);
-  color: var(--color-success);
-  font-size: 0.75rem;
-  line-height: 1.7;
 }
 
 .form-error {

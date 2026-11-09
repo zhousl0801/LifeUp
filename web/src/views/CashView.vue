@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchCashOverview, reconcileCash } from '../api/cash'
 import { ApiError, getApiErrorMessage } from '../api/client'
+import { toast } from '../composables/useMessage'
 import AppNav from '../components/AppNav.vue'
 import AnimatedMoney from '../components/AnimatedMoney.vue'
 import BackButton from '../components/BackButton.vue'
@@ -28,7 +29,6 @@ const router = useRouter()
 const overview = ref<CashOverview | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref('')
-const notice = ref('')
 const filter = ref<CashFilter>('all')
 const isReconcileOpen = ref(false)
 const actualBalance = ref('')
@@ -232,9 +232,9 @@ async function submitReconcile(): Promise<void> {
     })
 
     isReconcileOpen.value = false
-    notice.value = result.isBalanced
+    toast.success(result.isBalanced
       ? '核对一致，无需调整。'
-      : `余额已调整为 ¥${formatMoney(result.cashBalance)}，生活收支保持不变。`
+      : `余额已调整为 ¥${formatMoney(result.cashBalance)}，生活收支保持不变。`)
     await loadCash()
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
@@ -297,8 +297,6 @@ async function submitReconcile(): Promise<void> {
         <button type="button" class="action-primary" @click="openEntry('expense')">记支出</button>
         <button type="button" class="action-secondary" @click="openEntry('income')">记收入</button>
       </div>
-
-      <p v-if="notice" class="notice" role="status">{{ notice }}</p>
 
       <div class="section-head">
         <h2>现金变动</h2>
@@ -577,16 +575,6 @@ async function submitReconcile(): Promise<void> {
 
 .action-secondary:hover {
   background: var(--color-brand-soft);
-}
-
-.notice {
-  margin: 14px 0 0;
-  padding: 10px 12px;
-  border-radius: var(--radius-tag);
-  background: var(--color-success-bg);
-  color: var(--color-success);
-  font-size: 0.75rem;
-  line-height: 1.7;
 }
 
 .section-head {

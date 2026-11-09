@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { navigateBack } from '../utils/navigation'
+import { toast } from '../composables/useMessage'
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
@@ -23,7 +24,6 @@ const isExporting = ref(false)
 const exportingKind = ref<'details' | 'backup' | ''>('')
 const validation = ref<BackupValidation | null>(null)
 const restoreResult = ref<RestoreBackupResult | null>(null)
-const message = ref('')
 const errorMessage = ref('')
 const confirmReplace = ref(false)
 const exportFrom = ref('')
@@ -43,12 +43,11 @@ function goBack(): void {
 async function exportDetails(): Promise<void> {
   isExporting.value = true
   exportingKind.value = 'details'
-  message.value = ''
   errorMessage.value = ''
 
   try {
     await downloadDetails(exportFrom.value, exportTo.value)
-    message.value = '明细 CSV 已生成，浏览器已开始下载。'
+    toast.success('明细 CSV 已生成，浏览器已开始下载。')
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '导出明细失败，请重试。'
   } finally {
@@ -60,12 +59,11 @@ async function exportDetails(): Promise<void> {
 async function exportBackup(): Promise<void> {
   isExporting.value = true
   exportingKind.value = 'backup'
-  message.value = ''
   errorMessage.value = ''
 
   try {
     await downloadBackup()
-    message.value = '完整备份已生成，浏览器已开始下载。'
+    toast.success('完整备份已生成，浏览器已开始下载。')
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '下载备份失败，请重试。'
   } finally {
@@ -87,7 +85,6 @@ async function chooseFile(event: Event): Promise<void> {
   validation.value = null
   restoreResult.value = null
   confirmReplace.value = false
-  message.value = ''
   errorMessage.value = ''
   isReading.value = true
 
@@ -110,15 +107,16 @@ async function validateSelected(): Promise<void> {
 
   isValidating.value = true
   errorMessage.value = ''
-  message.value = ''
   restoreResult.value = null
   confirmReplace.value = false
 
   try {
     validation.value = await validateBackup(backup.value)
-    message.value = validation.value.isValid
-      ? '备份校验通过，请核对摘要后确认恢复。'
-      : '备份校验未通过，未修改当前账本。'
+    if (validation.value.isValid) {
+      toast.success('备份校验通过，请核对摘要后确认恢复。')
+    } else {
+      errorMessage.value = '备份校验未通过，未修改当前账本。'
+    }
   } catch (error) {
     validation.value = null
     errorMessage.value = error instanceof Error ? error.message : '备份校验失败，请重试。'
@@ -136,7 +134,6 @@ async function restore(): Promise<void> {
 
   isRestoring.value = true
   errorMessage.value = ''
-  message.value = ''
 
   try {
     restoreResult.value = await restoreBackup(
@@ -144,9 +141,9 @@ async function restore(): Promise<void> {
       current.validationToken,
       current.willReplace
     )
-    message.value = restoreResult.value.replacedExisting
+    toast.success(restoreResult.value.replacedExisting
       ? '恢复完成，当前账本已按备份替换。'
-      : '恢复完成，已建立账本。'
+      : '恢复完成，已建立账本。')
     validation.value = null
     backup.value = null
     confirmReplace.value = false
@@ -253,7 +250,6 @@ function summaryItems(summary: BackupSummary): { label: string; value: string }[
       </p>
     </section>
 
-    <p v-if="message" class="notice" role="status">{{ message }}</p>
     <p v-if="errorMessage" class="form-error" role="alert">{{ errorMessage }}</p>
 
     <section v-if="restoreResult" class="backup-card success-card">
@@ -452,16 +448,6 @@ function summaryItems(summary: BackupSummary): { label: string; value: string }[
   margin: 8px 0 0;
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
-}
-
-.notice {
-  margin: 12px 0 0;
-  padding: 10px 12px;
-  border-radius: var(--radius-tag);
-  background: var(--color-success-bg);
-  color: var(--color-success);
-  font-size: var(--text-footnote);
-  line-height: 1.7;
 }
 
 .form-error {

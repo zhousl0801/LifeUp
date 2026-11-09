@@ -10,6 +10,7 @@ import { useRouter } from 'vue-router'
 import { depositProvident, fetchProvidentOverview, withdrawProvident, setProvidentOpening } from '../api/provident'
 import { fetchPlanOverview, pausePlan, resumePlan, savePlan } from '../api/plans'
 import { ApiError, getApiErrorMessage } from '../api/client'
+import { toast } from '../composables/useMessage'
 import AppNav from '../components/AppNav.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import { amountTone, formatBusinessDate, formatMoney, formatSignedMoney, parseAmount, todayInBusinessTimeZone } from '../utils/format'
@@ -26,7 +27,6 @@ const overview = ref<ProvidentOverview | null>(null)
 const planOverview = ref<PlanOverview | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref('')
-const notice = ref('')
 const sheet = ref<SheetKind | null>(null)
 const requestId = ref(createRequestId())
 const depositRequestId = ref(createRequestId())
@@ -211,7 +211,7 @@ async function submit(): Promise<void> {
         note: form.note.trim(),
         requestId: requestId.value
       })
-      notice.value = `已录入起始公积金 ¥${formatMoney(result.balance)}。`
+      toast.success(`已录入起始公积金 ¥${formatMoney(result.balance)}。`)
       sheet.value = null
       await loadOverview()
     } catch (error) {
@@ -324,7 +324,7 @@ async function submit(): Promise<void> {
     const balanceNote = deposit > 0 || withdrawal > 0
       ? `；当前余额 ¥${formatMoney(overview.value?.balance ?? 0)}`
       : ''
-    notice.value = `${messages.join('，')}${balanceNote}。`
+    toast.success(`${messages.join('，')}${balanceNote}。`)
   } catch (error) {
     const prefix = messages.length ? `${messages.join('，')}；` : ''
     formError.value = deposited
@@ -402,7 +402,6 @@ function goBack(): void {
         <button type="button" class="action-primary" @click="openSheet('record')">缴存/提取</button>
       </div>
 
-      <p v-if="notice" class="notice" role="status">{{ notice }}</p>
       <p v-if="!overview.isConfigured" class="hint">
         尚未记录公积金，先录入余额或记录缴存。
       </p>
@@ -672,16 +671,6 @@ function goBack(): void {
 
 .action-secondary:hover {
   background: var(--color-brand-soft);
-}
-
-.notice {
-  margin: 14px 0 0;
-  padding: 10px 12px;
-  border-radius: var(--radius-tag);
-  background: var(--color-success-bg);
-  color: var(--color-success);
-  font-size: 0.75rem;
-  line-height: 1.7;
 }
 
 .hint,

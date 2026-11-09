@@ -4,6 +4,7 @@ import ProvidentView from './ProvidentView.vue'
 import LedgerView from './LedgerView.vue'
 import CashView from './CashView.vue'
 import { ApiError } from '../api/client'
+import { useMessages } from '../composables/useMessage'
 
 const mocks = vi.hoisted(() => ({ provident: vi.fn(), deposit: vi.fn(), withdraw: vi.fn(), opening: vi.fn(), plans: vi.fn(), savePlan: vi.fn(), pausePlan: vi.fn(), resumePlan: vi.fn(), entries: vi.fn(), stats: vi.fn(), push: vi.fn(), cash: vi.fn(), reconcile: vi.fn() }))
 vi.mock('vue-router', () => ({ onBeforeRouteLeave: vi.fn(), useRoute: () => ({ query: {} }), useRouter: () => ({ push: mocks.push, replace: vi.fn() }) }))
@@ -12,7 +13,10 @@ vi.mock('../api/plans', () => ({ fetchPlanOverview: mocks.plans, savePlan: mocks
 vi.mock('../api/cash', () => ({ fetchCashOverview: mocks.cash, reconcileCash: mocks.reconcile }))
 vi.mock('../api/entries', () => ({ fetchEntryPeriod: mocks.entries, fetchEntryStats: mocks.stats }))
 
+const { messages, clear } = useMessages()
+
 beforeEach(() => {
+  clear()
   vi.clearAllMocks()
   mocks.provident.mockResolvedValue({ isConfigured: true, balance: 100, asOfDate: '2026-09-15', periodFrom: '2026-10-01', periodTo: '2026-10-31', monthDeposit: 0, monthWithdrawal: 0, netChange: 0, activities: [] })
   mocks.plans.mockResolvedValue({ plans: [], pendingOccurrences: [] })
@@ -97,8 +101,9 @@ test('one provident form records the monthly deposit and withdrawal together', a
   await flushPromises()
   expect(mocks.deposit).toHaveBeenCalledTimes(1)
   expect(mocks.withdraw).toHaveBeenCalledTimes(1)
-  expect(view.find('.notice').text()).toContain('已缴存 ¥200.00')
-  expect(view.find('.notice').text()).toContain('已提取 ¥50.00 至现金')
+  const latest = messages.value.at(-1)?.text ?? ''
+  expect(latest).toContain('已缴存 ¥200.00')
+  expect(latest).toContain('已提取 ¥50.00 至现金')
   view.unmount()
 })
 
@@ -135,7 +140,7 @@ test('provident form sets the monthly deposit inside the deposit and withdrawal 
     dayOfMonth: 15,
     cycle: 'monthly'
   }))
-  expect(view.find('.notice').text()).toContain('已设置每月 15 日缴存 ¥800.00')
+  expect(messages.value.at(-1)?.text ?? '').toContain('已设置每月 15 日缴存 ¥800.00')
   view.unmount()
 })
 

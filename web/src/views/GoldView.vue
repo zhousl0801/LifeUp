@@ -5,6 +5,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { arriveGoldSell, buyGold, fetchGoldOverview, refreshGoldQuote, saveGoldHolding, sellGold } from '../api/gold'
 import { ApiError, getApiErrorMessage } from '../api/client'
+import { toast } from '../composables/useMessage'
 import AppNav from '../components/AppNav.vue'
 import AnimatedMoney from '../components/AnimatedMoney.vue'
 import BackButton from '../components/BackButton.vue'
@@ -37,7 +38,6 @@ const today = todayInBusinessTimeZone()
 const overview = ref<GoldOverview | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref('')
-const notice = ref('')
 const sheet = ref<SheetKind | null>(null)
 const requestId = ref(createRequestId())
 const isSaving = ref(false)
@@ -270,7 +270,7 @@ async function submitBuy(): Promise<void> {
     note: form.note.trim(),
     requestId: requestId.value
   })
-  notice.value = `已买入 ${formatQuantity(result.activity.grams)} 克，当前现金 ¥${formatMoney(result.cashBalance)}。`
+  toast.success(`已买入 ${formatQuantity(result.activity.grams)} 克，当前现金 ¥${formatMoney(result.cashBalance)}。`)
   sheet.value = null
   await loadOverview()
 }
@@ -293,7 +293,7 @@ async function submitSell(): Promise<void> {
     note: form.note.trim(),
     requestId: requestId.value
   })
-  notice.value = `已卖出 ${formatQuantity(result.activity.grams)} 克，当前现金 ¥${formatMoney(result.cashBalance)}。`
+  toast.success(`已卖出 ${formatQuantity(result.activity.grams)} 克，当前现金 ¥${formatMoney(result.cashBalance)}。`)
   sheet.value = null
   await loadOverview()
 }
@@ -329,7 +329,7 @@ async function submitSellArrival(): Promise<void> {
     note: form.note.trim(),
     requestId: requestId.value
   })
-  notice.value = `积存金卖到账 ¥${formatMoney(result.activity.amount)}，当前现金 ¥${formatMoney(result.cashBalance)}。`
+  toast.success(`积存金卖到账 ¥${formatMoney(result.activity.amount)}，当前现金 ¥${formatMoney(result.cashBalance)}。`)
   sheet.value = null
   await loadOverview()
 }
@@ -363,7 +363,7 @@ async function submitHolding(): Promise<void> {
     holdingDate: form.businessDate,
     requestId: requestId.value
   })
-  notice.value = '积存金持仓已保存。'
+  toast.success('积存金持仓已保存。')
   sheet.value = null
   await loadOverview()
 }
@@ -546,8 +546,6 @@ function goBack(): void {
         </button>
         <button type="button" class="action-secondary" @click="openSheet('holding')">录入 / 核对持仓</button>
       </div>
-
-      <p v-if="notice" class="notice" role="status">{{ notice }}</p>
 
       <template v-if="overview.pendingArrivals.length">
         <div class="section-head">
@@ -887,16 +885,6 @@ function goBack(): void {
 .action-secondary:disabled {
   background: var(--color-bg-disabled);
   color: var(--color-text-disabled);
-}
-
-.notice {
-  margin: 14px 0 0;
-  padding: 10px 12px;
-  border-radius: var(--radius-tag);
-  background: var(--color-success-bg);
-  color: var(--color-success);
-  font-size: 0.75rem;
-  line-height: 1.7;
 }
 
 .quote-panel {

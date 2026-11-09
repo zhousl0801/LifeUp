@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import { beforeEach, expect, test, vi } from 'vitest'
 import HomeView from './HomeView.vue'
 import { todayInBusinessTimeZone } from '../utils/format'
+import { useMessages } from '../composables/useMessage'
 import type { MonthChange } from '../types/ledger'
 import type { AutoPlan } from '../types/plan'
 import type { AssetTrend } from '../types/trend'
@@ -139,7 +140,10 @@ const monthChange: MonthChange = {
   hasComparableData: false
 }
 
+const { messages, clear } = useMessages()
+
 beforeEach(() => {
+  clear()
   vi.clearAllMocks()
   mocks.plans.mockResolvedValue({ plans: [], pendingOccurrences: [] })
   mocks.dayChange.mockResolvedValue(structuredClone(monthChange))
@@ -346,7 +350,7 @@ test('syncs market quotes from the home header and reloads the overview', async 
   await flushPromises()
 
   expect(mocks.quotes).toHaveBeenCalledWith('all')
-  expect(view.find('.sync-note').text()).toContain('更新 3 项')
+  expect(messages.value.at(-1)?.text ?? '').toContain('更新 3 项')
   expect(mocks.ledger).toHaveBeenCalledTimes(2)
   view.unmount()
 })

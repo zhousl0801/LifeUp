@@ -5,6 +5,7 @@ import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { fetchEntryPeriod, fetchEntryStats } from '../api/entries'
 import { fetchCategories } from '../api/categories'
 import { ApiError, getApiErrorMessage } from '../api/client'
+import { toast } from '../composables/useMessage'
 import AppNav from '../components/AppNav.vue'
 import AppIcon from '../components/AppIcon.vue'
 import AnimatedMoney from '../components/AnimatedMoney.vue'
@@ -58,7 +59,6 @@ const kindFilter = ref<'all' | EntryKind>(savedContext?.kind ?? 'all')
 const categoryFilter = ref(savedContext?.category ?? '')
 const search = ref(savedContext?.search ?? '')
 const pageElement = ref<HTMLElement | null>(null)
-const notice = ref('')
 const noticeEntry = ref<LedgerEntry | null>(null)
 const highlightedEntry = ref('')
 let focusEntry = !savedContext && typeof route.query.focus === 'string' ? route.query.focus : ''
@@ -146,18 +146,20 @@ if (ledgerChange) {
     focusEntry = entry.id
     restorePosition = undefined
     restorePages = 1
-    notice.value = matchesFilter ? '已保存' : '已保存，已清除筛选以显示新账单。'
+    toast.success(matchesFilter ? '已保存' : '已保存，已清除筛选以显示新账单。')
   } else if (action === 'reverse') {
-    notice.value = '账单已撤销。'
+    toast.success('账单已撤销。')
   } else if (!matchesPeriod || !matchesFilter) {
-    notice.value = !matchesPeriod ? '已保存，账单已移至其他周期。' : '已保存，账单不再符合当前筛选。'
     noticeEntry.value = entry
+    toast.success(!matchesPeriod ? '已保存，账单已移至其他周期。' : '已保存，账单不再符合当前筛选。', {
+      action: { label: '查看账单', run: showSavedEntry }
+    })
   } else {
-    notice.value = '已保存修改。'
+    toast.success('已保存修改。')
     highlightedEntry.value = entry.id
   }
 } else if (focusEntry) {
-  notice.value = '已保存。'
+  toast.success('已保存。')
 }
 
 onBeforeRouteLeave((to) => {
@@ -201,7 +203,7 @@ function showSavedEntry(): void {
   period.value = 'day'
   anchor.value = entry.businessDate
   view.value = 'list'
-  notice.value = '已定位到修改后的账单。'
+  toast.info('已定位到修改后的账单。')
   noticeEntry.value = null
   focusEntry = entry.id
   if (!queryChanges) void loadEntries()
@@ -219,7 +221,9 @@ watch(() => route.query, (query, previous) => {
   highlightedEntry.value = ''
   noticeEntry.value = null
   focusEntry = typeof query.focus === 'string' ? query.focus : ''
-  notice.value = focusEntry ? '已保存。' : ''
+  if (focusEntry) {
+    toast.success('已保存。')
+  }
   if (!queryChanges) void loadEntries()
 })
 
@@ -452,10 +456,6 @@ function goBack(): void {
     </div>
 
     <template v-if="view === 'list'">
-    <div v-if="notice" class="ledger-notice" role="status">
-      <span>{{ notice }}</span>
-      <button v-if="noticeEntry" type="button" class="back-link" @click="showSavedEntry">查看账单</button>
-    </div>
     <details class="filter-disclosure ui-disclosure" :open="hasFilters">
       <summary><span><AppIcon name="search" /> 搜索与筛选</span><span v-if="hasFilters" class="filter-label">{{ [
         kindFilter === 'all' ? '' : kindFilter === 'income' ? '收入' : '支出',
@@ -629,24 +629,6 @@ function goBack(): void {
 .ledger-page {
   padding-bottom: calc(97px + env(safe-area-inset-bottom));
 }
-
-.ledger-notice {
-  position: sticky;
-  top: 8px;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 10px;
-  padding: 8px 12px;
-  border-radius: var(--radius-control);
-  background: var(--color-brand-soft);
-  color: var(--color-text-primary);
-  font-size: var(--text-footnote);
-}
-
-.ledger-notice button { flex-shrink: 0; }
 
 .summary-scope {
   margin: 0 0 8px;

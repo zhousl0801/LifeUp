@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AppMessage from './components/AppMessage.vue'
 import LoadingBar from './components/LoadingBar.vue'
 import PendingMutationNotice from './components/PendingMutationNotice.vue'
 import UpdateBanner from './components/UpdateBanner.vue'
@@ -8,6 +9,7 @@ import UpdateBanner from './components/UpdateBanner.vue'
   <LoadingBar />
   <PendingMutationNotice />
   <UpdateBanner />
+  <AppMessage />
   <RouterView v-slot="{ Component }">
     <Transition name="page" mode="out-in">
       <component :is="Component" />

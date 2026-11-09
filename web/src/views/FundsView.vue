@@ -20,6 +20,7 @@ import {
 } from '../api/funds'
 import { fetchPlanOverview } from '../api/plans'
 import { ApiError, getApiErrorMessage } from '../api/client'
+import { toast } from '../composables/useMessage'
 import AppNav from '../components/AppNav.vue'
 import AppIcon from '../components/AppIcon.vue'
 import AnimatedMoney from '../components/AnimatedMoney.vue'
@@ -93,7 +94,6 @@ const today = todayInBusinessTimeZone()
 const overview = ref<FundOverview | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref('')
-const notice = ref('')
 const sheet = ref<SheetKind | null>(null)
 const requestId = ref(createRequestId())
 const isSaving = ref(false)
@@ -129,7 +129,6 @@ const fundSearching = ref(false)
 const fundSearchError = ref('')
 const selectedFund = ref<FundSearchResult | null>(null)
 let fundSearchTimer: ReturnType<typeof setTimeout> | null = null
-let noticeTimer: ReturnType<typeof setTimeout> | null = null
 const form = reactive({
   positionId: '',
   name: '',
@@ -1121,7 +1120,7 @@ async function submitGroup(): Promise<void> {
   try {
     const created = await createFundGroup(name)
     groupDraft.value = ''
-    notice.value = `已新增投资分组「${name}」，可以继续添加资产。`
+    toast.success(`已新增投资分组「${name}」，可以继续添加资产。`)
     await loadOverview()
     groupDetailId.value = created.id
   } catch (error) {
@@ -1151,7 +1150,7 @@ async function saveGroupName(groupId: string): Promise<void> {
   try {
     await renameFundGroup(groupId, name)
     editingGroupId.value = null
-    notice.value = `分组已更名为「${name}」。`
+    toast.success(`分组已更名为「${name}」。`)
     await loadOverview()
   } catch (error) {
     groupError.value = getApiErrorMessage(error, '分组改名失败，请重试。')
@@ -1185,7 +1184,7 @@ async function confirmRemoveGroup(): Promise<void> {
       groupDetailId.value = null
     }
 
-    notice.value = `已删除分组「${target.name}」，组内基金回到未分组。`
+    toast.success(`已删除分组「${target.name}」，组内基金回到未分组。`)
     pendingGroupRemoval.value = null
     await loadOverview()
   } catch (error) {
@@ -1216,9 +1215,9 @@ async function toggleGroupFund(fund: FundSummary): Promise<void> {
       await assignFundGroup(positionId, isMember ? null : group.id)
     }
 
-    notice.value = isMember
+    toast.success(isMember
       ? `「${fund.name}」已移出「${group.name}」。`
-      : `「${fund.name}」已加入「${group.name}」。`
+      : `「${fund.name}」已加入「${group.name}」。`)
     await loadOverview()
   } catch (error) {
     groupError.value = getApiErrorMessage(error, '调整分组资产失败，请重试。')
@@ -1415,7 +1414,7 @@ async function submitOpening(forceAdd = false): Promise<void> {
     priorRealizedProfit,
     requestId: requestId.value
   })
-  notice.value = `已录入基金「${form.name.trim()}」。`
+  toast.success(`已录入基金「${form.name.trim()}」。`)
   sheet.value = null
   await loadOverview()
 }
@@ -1468,7 +1467,7 @@ async function updateDuplicatePosition(): Promise<void> {
       note: form.note.trim() || '按新录入核对已有持仓',
       requestId: createRequestId()
     })
-    notice.value = `已更新「${prompt.position.name}」持仓为 ${formatQuantity(prompt.shares)} 份、成本 ¥${formatMoney(prompt.cost)}。`
+    toast.success(`已更新「${prompt.position.name}」持仓为 ${formatQuantity(prompt.shares)} 份、成本 ¥${formatMoney(prompt.cost)}。`)
     duplicatePrompt.value = null
     sheet.value = null
     await loadOverview()
@@ -1508,7 +1507,7 @@ async function submitBuy(): Promise<void> {
     note: form.note.trim(),
     requestId: requestId.value
   })
-  notice.value = `已记录买入待确认 ¥${formatMoney(result.activity.amount)}，当前现金 ¥${formatMoney(result.cashBalance)}。`
+  toast.success(`已记录买入待确认 ¥${formatMoney(result.activity.amount)}，当前现金 ¥${formatMoney(result.cashBalance)}。`)
   sheet.value = null
   await loadOverview()
 }
@@ -1528,7 +1527,7 @@ async function submitShareCorrection(): Promise<void> {
     note: form.note.trim() || '持仓份额核对',
     requestId: requestId.value
   })
-  notice.value = `已更新「${position.name}」持仓份额。`
+  toast.success(`已更新「${position.name}」持仓份额。`)
   sheet.value = null
   await loadOverview()
 }
@@ -1555,7 +1554,7 @@ async function submitSell(): Promise<void> {
     note: form.note.trim(),
     requestId: requestId.value
   })
-  notice.value = `已申请赎回 ${formatQuantity(result.activity.shares)} 份，确认后转为待到账。`
+  toast.success(`已申请赎回 ${formatQuantity(result.activity.shares)} 份，确认后转为待到账。`)
   sheet.value = null
   await loadOverview()
 }
@@ -1615,7 +1614,7 @@ async function submitSellConfirm(): Promise<void> {
     note: form.note.trim(),
     requestId: requestId.value
   })
-  notice.value = `已确认赎回 ${formatQuantity(result.activity.shares)} 份，待到账 ¥${formatMoney(result.activity.amount)}。`
+  toast.success(`已确认赎回 ${formatQuantity(result.activity.shares)} 份，待到账 ¥${formatMoney(result.activity.amount)}。`)
   sheet.value = null
   await loadOverview()
 }
@@ -1651,7 +1650,7 @@ async function submitSellArrival(): Promise<void> {
     note: form.note.trim(),
     requestId: requestId.value
   })
-  notice.value = `赎回到账 ¥${formatMoney(result.activity.amount)}，当前现金 ¥${formatMoney(result.cashBalance)}。`
+  toast.success(`赎回到账 ¥${formatMoney(result.activity.amount)}，当前现金 ¥${formatMoney(result.cashBalance)}。`)
   sheet.value = null
   await loadOverview()
 }
@@ -1701,30 +1700,11 @@ watch(fundSearch, (value) => {
   }, 300)
 })
 
-watch(notice, (value) => {
-  if (noticeTimer) {
-    clearTimeout(noticeTimer)
-    noticeTimer = null
-  }
-
-  if (!value) {
-    return
-  }
-
-  noticeTimer = setTimeout(() => {
-    notice.value = ''
-    noticeTimer = null
-  }, 3000)
-})
-
 onBeforeUnmount(() => {
   if (fundSearchTimer) {
     clearTimeout(fundSearchTimer)
   }
 
-  if (noticeTimer) {
-    clearTimeout(noticeTimer)
-  }
 })
 
 async function runFundSearch(query: string): Promise<void> {
@@ -1778,11 +1758,11 @@ async function cancelPending(transactionId: string): Promise<void> {
 
   try {
     await cancelFundPending(transactionId, createRequestId())
-    notice.value = '待处理基金交易已撤销。'
+    toast.success('待处理基金交易已撤销。')
     sheet.value = null
     await loadOverview()
   } catch (error) {
-    notice.value = getApiErrorMessage(error, '撤销失败，请刷新后重试。')
+    formError.value = getApiErrorMessage(error, '撤销失败，请刷新后重试。')
   } finally {
     cancellingPendingId.value = null
   }
@@ -1927,8 +1907,6 @@ function goBack(): void {
         <span>当前仅显示搜索结果</span>
         <button type="button" class="back-link" @click="searchText = ''">清除搜索</button>
       </div>
-
-      <p v-if="notice" class="notice" role="status">{{ notice }}</p>
 
       <template v-if="activeView === 'returns'">
         <FundReturnsPanel
@@ -3732,16 +3710,6 @@ function goBack(): void {
 
 .text-button.danger {
   color: var(--color-finance-loss);
-}
-
-.notice {
-  margin: 14px 0 0;
-  padding: 10px 12px;
-  border-radius: var(--radius-tag);
-  background: var(--color-success-bg);
-  color: var(--color-success);
-  font-size: 0.75rem;
-  line-height: 1.7;
 }
 
 .section-head {

@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, expect, test, vi } from 'vitest'
 import StocksView from './StocksView.vue'
 import { todayInBusinessTimeZone } from '../utils/format'
+import { useMessages } from '../composables/useMessage'
 
 const today = todayInBusinessTimeZone()
 
@@ -91,7 +92,10 @@ const overview = {
   hasEffectiveQuotes: true
 }
 
+const { messages, clear } = useMessages()
+
 beforeEach(() => {
+  clear()
   vi.clearAllMocks()
   mocks.ledger.mockResolvedValue({ startDate: today, fundNotHeld: false, providentFundNotHeld: false, goldNotHeld: false, stockNotHeld: false })
   mocks.quote.mockResolvedValue({ market: 'shenzhen', code: '159915', price: 2.435, priceDate: today, previousClose: 2.5, source: 'eastmoney' })
@@ -187,7 +191,7 @@ test('buying an existing position sends market code and computed amount fields',
     price: 10
   })
   expect(mocks.buy.mock.calls[0]![0]).not.toHaveProperty('fee')
-  expect(view.find('.notice').text()).toContain('当前现金 ¥7,999.00')
+  expect(messages.value.at(-1)?.text ?? '').toContain('当前现金 ¥7,999.00')
   view.unmount()
 })
 

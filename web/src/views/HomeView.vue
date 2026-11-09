@@ -6,6 +6,7 @@ import { fetchAssetTrend, fetchDayChange, fetchMonthChange } from '../api/ledger
 import { fetchPlanOverview } from '../api/plans'
 import { refreshQuotes } from '../api/quotes'
 import { getApiErrorMessage } from '../api/client'
+import { toast } from '../composables/useMessage'
 import AppIcon from '../components/AppIcon.vue'
 import AppNav from '../components/AppNav.vue'
 import AnimatedMoney from '../components/AnimatedMoney.vue'
@@ -67,7 +68,6 @@ const planError = ref('')
 const planLoading = ref(false)
 const changeSheetOpen = ref(false)
 const quoteRefreshing = ref(false)
-const quoteNotice = ref('')
 const quoteError = ref('')
 
 const daysRecorded = computed(() => {
@@ -296,7 +296,6 @@ async function syncQuotes(): Promise<void> {
   }
 
   quoteRefreshing.value = true
-  quoteNotice.value = ''
   quoteError.value = ''
 
   try {
@@ -304,9 +303,11 @@ async function syncQuotes(): Promise<void> {
     const failed = run.fundFailed + run.goldFailed + run.stockFailed
     const succeeded = run.fundSucceeded + run.goldSucceeded + run.stockSucceeded
 
-    quoteNotice.value = failed > 0
+    const summary = failed > 0
       ? `行情同步完成：成功 ${succeeded} 项，失败 ${failed} 项。`
       : `行情已同步：更新 ${run.updated} 项。`
+    if (failed > 0) toast.info(summary)
+    else toast.success(summary)
 
     await Promise.all([ledgerStore.load(), loadTrend(trendRange.value), loadChanges()])
   } catch (error) {
@@ -359,8 +360,7 @@ onBeforeUnmount(() => {
         </div>
       </header>
 
-      <p v-if="quoteNotice" class="sync-note" role="status">{{ quoteNotice }}</p>
-      <p v-else-if="quoteError" class="sync-note error" role="alert">{{ quoteError }}</p>
+      <p v-if="quoteError" class="sync-note error" role="alert">{{ quoteError }}</p>
 
       <LoadingState v-if="isLoading" variant="hero" label="正在读取账本" />
 
