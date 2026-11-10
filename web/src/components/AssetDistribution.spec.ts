@@ -60,7 +60,7 @@ test('lists assets as cash, fund, stock, provident fund and gold', () => {
   })
   const labels = view.findAll('.asset-row .asset-title b').map((node) => node.text())
 
-  expect(labels).toEqual(['现金', '基金', '股票', '公积金', '积存金'])
+  expect(labels).toEqual(['现金', '基金', '股票', '公积金', '贵金属'])
   view.unmount()
 })
 

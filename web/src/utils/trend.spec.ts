@@ -87,5 +87,5 @@ test('new categories are excluded from the line and marked on their first day', 
   expect(scoped.additions).toEqual([{ date: '2026-10-02', types: ['gold'] }])
   expect(option.series[0]!.data).toEqual([1000, 1000])
   expect(option.series[0]!.markLine.data[0]!.xAxis).toBe('2026-10-02')
-  expect(trendTooltip(withAddition.points[1]!, scoped)).toContain('新增记录 积存金')
+  expect(trendTooltip(withAddition.points[1]!, scoped)).toContain('新增记录 贵金属')
 })

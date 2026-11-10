@@ -515,7 +515,8 @@ public sealed class GoldService
                 catch (ConcurrencyConflictException)
                 {
                     _ledgerRepository.DiscardChanges();
-                    return AssetOperationResult<GoldQuoteRefreshDto>.Conflict("数据已被其他操作修改，请刷新后重试。");
+                    // 报价本身没有取到，保存失败尝试时撞版本不应掩盖真正的行情错误。
+                    return AssetOperationResult<GoldQuoteRefreshDto>.Unavailable(exception.Message);
                 }
             }
 

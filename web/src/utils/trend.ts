@@ -28,7 +28,7 @@ export const assetLabels: Record<ScopedAssetKey, string> = {
   cash: '现金',
   providentFund: '公积金',
   fund: '基金',
-  gold: '积存金',
+  gold: '贵金属',
   stock: '股票'
 }
 

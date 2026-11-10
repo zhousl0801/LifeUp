@@ -150,8 +150,28 @@ test('shows stock positions and today profit', async () => {
   expect(view.text()).toContain('贵州茅台')
   expect(view.text()).toContain('今日盈亏')
   expect(view.text()).toContain('+50.00')
+  expect(view.text()).toContain('总收益')
+  expect(view.text()).toContain('总收益率')
+  expect(view.text()).not.toContain('持仓收益')
   expect(view.text()).toContain('沪市')
   expect(mocks.refresh).toHaveBeenCalled()
+  view.unmount()
+})
+
+test('detail shows total profit and total rate instead of holding profit', async () => {
+  const view = mount(StocksView, { attachTo: document.body })
+  await flushPromises()
+
+  await view.find('.position-row').trigger('click')
+  await flushPromises()
+
+  const sheet = document.querySelector('.sheet')!.textContent ?? ''
+  expect(sheet).toContain('总收益')
+  expect(sheet).toContain('+50.00')
+  expect(sheet).toContain('总收益率')
+  expect(sheet).toContain('+5.00%')
+  expect(sheet).not.toContain('持仓收益')
+  expect(sheet).not.toContain('累计收益')
   view.unmount()
 })
 

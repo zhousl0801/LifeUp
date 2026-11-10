@@ -156,6 +156,23 @@ const totalTodayPercent = computed(() => {
   return data.todayProfit / previousValue * 100
 })
 
+// 总收益按持有收益加已实现收益展示，总收益率用剩余持仓成本作分母。
+const totalProfit = computed<number | null>(() => {
+  const data = overview.value
+
+  return data ? data.holdingProfit + data.realizedProfit : null
+})
+
+const totalRate = computed<number | null>(() => {
+  const data = overview.value
+
+  if (!data || data.totalCost <= 0) {
+    return null
+  }
+
+  return (data.holdingProfit + data.realizedProfit) / data.totalCost * 100
+})
+
 const shareMax = computed(() => selectedPosition.value?.shares ?? 0)
 
 // 买卖共用：成交金额即现金变动金额，不再单独录入费用。
@@ -640,6 +657,14 @@ function positionAverageCostText(position: StockPosition): string {
   return position.averageCost === null ? '—' : `¥${formatUnitPrice(position.averageCost)}`
 }
 
+function positionTotalProfit(position: StockPosition): number {
+  return position.holdingProfit + position.realizedProfit
+}
+
+function positionTotalRate(position: StockPosition): number | null {
+  return position.cost > 0 ? positionTotalProfit(position) / position.cost * 100 : null
+}
+
 async function markNotHeld(): Promise<void> {
   try {
     isSaving.value = true
@@ -815,14 +840,12 @@ function goBack(): void {
             </b>
           </div>
           <div>
-            <span>持仓收益</span>
-            <b :class="amountTone(overview.holdingProfit)">{{ formatSignedMoney(overview.holdingProfit) }}</b>
+            <span>总收益</span>
+            <b :class="amountTone(totalProfit)">{{ formatSignedMoney(totalProfit) }}</b>
           </div>
           <div>
-            <span>累计收益</span>
-            <b :class="amountTone(overview.holdingProfit + overview.realizedProfit)">
-              {{ formatSignedMoney(overview.holdingProfit + overview.realizedProfit) }}
-            </b>
+            <span>总收益率</span>
+            <b :class="amountTone(totalRate)">{{ totalRate === null ? '—' : formatPercent(totalRate) }}</b>
           </div>
         </div>
         <p class="hero-foot">可用现金 ¥{{ formatMoney(overview.cashBalance) }}</p>
@@ -955,17 +978,17 @@ function goBack(): void {
             <b>¥{{ formatMoney(selectedPosition.value) }}</b>
           </div>
           <div>
-            <span>持仓收益</span>
-            <b :class="amountTone(selectedPosition.holdingProfit)">{{ formatSignedMoney(selectedPosition.holdingProfit) }}</b>
+            <span>总收益</span>
+            <b :class="amountTone(positionTotalProfit(selectedPosition))">{{ formatSignedMoney(positionTotalProfit(selectedPosition)) }}</b>
           </div>
           <div>
             <span>{{ todayProfitLabel }}</span>
             <b :class="amountTone(selectedPosition.todayProfit)">{{ positionTodayText(selectedPosition) }}</b>
           </div>
           <div>
-            <span>累计收益</span>
-            <b :class="amountTone(selectedPosition.holdingProfit + selectedPosition.realizedProfit)">
-              {{ formatSignedMoney(selectedPosition.holdingProfit + selectedPosition.realizedProfit) }}
+            <span>总收益率</span>
+            <b :class="amountTone(positionTotalRate(selectedPosition))">
+              {{ positionTotalRate(selectedPosition) === null ? '—' : formatPercent(positionTotalRate(selectedPosition)) }}
             </b>
           </div>
         </div>

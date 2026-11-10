@@ -35,7 +35,7 @@ const missingAssets = computed(() => {
     { label: '基金', route: '/funds', configured: ledger.fund.isConfigured, notHeld: ledger.fund.notHeld },
     { label: '股票', route: '/stocks', configured: ledger.stock.isConfigured, notHeld: ledger.stock.notHeld },
     { label: '公积金', route: '/provident', configured: ledger.providentFund.isConfigured, notHeld: ledger.providentFund.notHeld },
-    { label: '积存金', route: '/gold', configured: ledger.gold.isConfigured, notHeld: ledger.gold.notHeld }
+    { label: '贵金属', route: '/gold', configured: ledger.gold.isConfigured, notHeld: ledger.gold.notHeld }
   ].filter((asset) => !asset.configured && !asset.notHeld)
 })
 
@@ -83,7 +83,7 @@ const maintenanceRows = computed(() => {
     },
     {
       key: 'gold' as const,
-      label: '积存金',
+      label: '贵金属',
       note: ledger.gold.note ?? (ledger.gold.isConfigured ? '持仓与交易' : '尚未录入'),
       route: '/gold',
       action: ledger.gold.notHeld ? '恢复' : ledger.gold.isConfigured ? '核对' : '去录入',

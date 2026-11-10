@@ -95,7 +95,7 @@ const rows = computed<DistributionRow[]>(() => {
     },
     {
       key: 'gold',
-      label: '积存金',
+      label: '贵金属',
       icon: 'gold',
       to: '/gold',
       amount: ledger.gold.amount,
