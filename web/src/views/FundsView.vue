@@ -638,11 +638,13 @@ const todayProfit = computed(() => {
   }
 })
 
-const isUpdating = computed(() => quoteStatus.value?.isRunning ?? false)
+const isUpdating = computed(() => isLoading.value || (quoteStatus.value?.isRunning ?? false))
 const hasQuoteError = computed(() => {
   const run = quoteStatus.value?.lastRun
   return !isUpdating.value && !!run && run.fundAttempted > 0 && run.fundFailed > 0
 })
+const todayProfitTone = computed(() => amountTone(todayProfit.value.hasValue ? todayProfit.value.value : null))
+const quoteProfitTone = computed(() => quoteStatus.value && !hasQuoteError.value ? todayProfitTone.value : '')
 const todayProfitStatus = computed(() => {
   if (!todayProfit.value.hasValue) {
     return '行情待补'
@@ -1924,7 +1926,7 @@ function goBack(): void {
         </h2>
         <div class="hero-today">
           <span class="hero-today-label">今日收益</span>
-          <b :class="amountTone(todayProfit.hasValue ? todayProfit.value : null)">
+          <b :class="todayProfitTone">
             {{ todayProfit.hasValue ? formatSignedMoney(todayProfit.value) : '—' }}
           </b>
           <small v-if="isUpdating" class="hero-update is-updating">
@@ -1938,9 +1940,9 @@ function goBack(): void {
             <UpdateRing :value="0" :total="todayProfit.total" />
             <span>行情待补</span>
           </small>
-          <small v-else-if="todayProfitStatus" class="hero-update" :class="{ 'is-warning': hasQuoteError }">
-            <UpdateRing :value="todayProfit.covered" :total="todayProfit.total" />
-            <span>{{ todayProfitStatus }}</span>
+          <small v-else-if="todayProfitStatus || quoteProfitTone" class="hero-update" :class="{ 'is-warning': hasQuoteError }">
+            <UpdateRing :value="todayProfit.covered" :total="todayProfit.total" :profit-tone="quoteProfitTone" />
+            <span>{{ todayProfitStatus || '净值已更新' }}</span>
           </small>
         </div>
 

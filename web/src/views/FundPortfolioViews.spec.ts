@@ -455,6 +455,7 @@ test('today profit only sums funds disclosed on the latest net value date', asyn
   expect(view.find('.hero-today').text()).toContain('+24.00')
   expect(view.find('.hero-today').text()).toContain('1/2 只基金披露')
   expect(view.find('.hero-update .update-ring').exists()).toBe(true)
+  expect(view.get('.hero-update .update-ring').attributes('aria-valuetext')).toBe('1/2，收益为正')
 
   const bondCard = view.findAll('.fund-card').find((item) => item.text().includes('债券基金'))!
   const dailyMetric = bondCard.findAll('.fund-metric').find((item) => item.text().includes('日收益'))!
@@ -475,6 +476,56 @@ test('shows an indeterminate ring while quotes are updating', async () => {
   expect(view.find('.hero-update').text()).toContain('更新中')
 
   view.unmount()
+})
+
+test.each([
+  { profit: 12, label: '2/2，收益为正', face: true },
+  { profit: -12, label: '2/2，收益为负', face: true },
+  { profit: 0, label: undefined, face: false }
+])('shows the appropriate completed update face for profit $profit', async ({ profit, label, face }) => {
+  const data = structuredClone(overview)
+  for (const fund of data.funds) {
+    fund.dailyProfitDate = todayInBusinessTimeZone()
+    fund.dailyProfit = profit / data.funds.length
+  }
+  mocks.overview.mockResolvedValue(data)
+
+  const view = mount(FundsView)
+  try {
+    await flushPromises()
+    expect(view.find('.hero-update .update-ring-face').exists()).toBe(face)
+    expect(view.find('.hero-update .update-ring').exists()).toBe(face)
+    if (face) {
+      expect(view.get('.hero-update .update-ring').attributes('aria-valuetext')).toBe(label)
+    }
+  } finally {
+    view.unmount()
+  }
+})
+
+test('waits for refreshed fund data before showing the completed update face', async () => {
+  vi.useFakeTimers()
+  mocks.quoteStatus.mockResolvedValueOnce({ ...quoteStatus, isRunning: true })
+  let resolveOverview!: (data: typeof overview) => void
+  mocks.overview.mockImplementationOnce(async () => structuredClone(overview))
+    .mockImplementationOnce(() => new Promise<typeof overview>((resolve) => { resolveOverview = resolve }))
+
+  const view = mount(FundsView)
+  try {
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(15000)
+    expect(view.get('.hero-update .update-ring').attributes('aria-busy')).toBe('true')
+    expect(view.find('.hero-update .update-ring-face').exists()).toBe(false)
+
+    const updated = structuredClone(overview)
+    updated.funds[0]!.dailyProfit = -24
+    resolveOverview(updated)
+    await flushPromises()
+    expect(view.get('.hero-update .update-ring').attributes('aria-valuetext')).toBe('2/2，收益为负')
+  } finally {
+    view.unmount()
+    vi.useRealTimers()
+  }
 })
 
 test('shows a warning ring when the last quote refresh had failures', async () => {
@@ -506,6 +557,7 @@ test('shows a warning ring when the last quote refresh had failures', async () =
 
   expect(view.find('.hero-update.is-warning').exists()).toBe(true)
   expect(view.find('.hero-update').text()).toContain('更新失败')
+  expect(view.find('.hero-update .update-ring-face').exists()).toBe(false)
 
   view.unmount()
 })
