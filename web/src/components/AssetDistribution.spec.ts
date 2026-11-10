@@ -33,8 +33,49 @@ const changes = [
 ]
 
 const stubs = {
-  RouterLink: { props: ['to'], template: '<a><slot /></a>' }
+  RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' }
 }
+
+test('switches the home card vertically or by tapping an adjacent card corner', async () => {
+  const view = mount(AssetDistribution, {
+    props: {
+      overview: { ...overview, stock: { ...overview.stock, notHeld: true } },
+      cards: true
+    },
+    global: { stubs }
+  })
+  const card = view.get('article')
+  const select = (name: string) => view.get(`button[aria-label="${name}"]`).trigger('click')
+  async function swipe(dx: number, dy: number) {
+    await card.trigger('touchstart', { touches: [{ identifier: 0, clientX: 90, clientY: 100 }] })
+    await card.trigger('touchend', { changedTouches: [{ identifier: 0, clientX: 90 + dx, clientY: 100 + dy }] })
+  }
+
+  expect(card.text()).toContain('57.1%')
+  expect(card.get('a').attributes('href')).toBe('/cash')
+  expect(view.findAll('button').map((button) => button.attributes('aria-label'))).toEqual(['基金'])
+  await swipe(0, 80)
+  await swipe(-80, 0)
+  expect(card.attributes('aria-label')).toBe('现金资产')
+  await swipe(4, -80)
+  expect(card.text()).toContain('暂未录入')
+  expect(card.get('a').attributes('href')).toBe('/funds')
+  expect(view.findAll('button').map((button) => button.attributes('aria-label'))).toEqual(['现金', '股票'])
+  await swipe(4, 80)
+  expect(card.attributes('aria-label')).toBe('现金资产')
+  await select('基金')
+  await select('股票')
+  expect(card.text()).toContain('不持有')
+  expect(card.find('a').exists()).toBe(false)
+  await select('公积金')
+  expect(card.text()).toContain('28.6%')
+  expect(card.get('a').attributes('href')).toBe('/provident')
+  await select('贵金属')
+  await swipe(0, -80)
+  expect(card.attributes('aria-label')).toBe('贵金属资产')
+  expect(view.findAll('button').map((button) => button.attributes('aria-label'))).toEqual(['公积金'])
+  view.unmount()
+})
 
 test('shows recorded categories, percentages, new records and missing assets', () => {
   const view = mount(AssetDistribution, {

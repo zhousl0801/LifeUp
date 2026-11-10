@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref, useId } from 'vue'
 import { RouterLink } from 'vue-router'
 import AppIcon from './AppIcon.vue'
 import LoadingButton from './LoadingButton.vue'
@@ -26,8 +26,8 @@ const props = defineProps<{
   changes?: AssetChange[]
   comparable?: boolean
   changeScope?: 'day' | 'month'
+  cards?: boolean
   editable?: boolean
-  manageTo?: string
   hideFundCount?: boolean
   busyKey?: AssetKey | null
 }>()
@@ -114,6 +114,74 @@ const barSegments = computed(() => rows.value
 
 const changePrefix = computed(() => props.changeScope === 'day' ? '较昨日' : '较上月')
 
+const cardId = useId()
+const gradientId = `${cardId}-glow`
+const cardElement = ref<HTMLElement | null>(null)
+const activeIndex = ref(0)
+const activeRow = computed(() => rows.value[activeIndex.value]!)
+const adjacentCards = computed(() => [
+  { side: 'previous', step: -1, row: rows.value[activeIndex.value - 1] },
+  { side: 'next', step: 1, row: rows.value[activeIndex.value + 1] }
+])
+const activePercent = computed(() => {
+  const row = activeRow.value
+  return row.configured && !row.notHeld ? row.percent : null
+})
+let swipeStart: Touch | undefined
+let cardAnimation: Animation | undefined
+const dragOffset = ref(0)
+
+function switchCard(step: number, focusCard = false) {
+  const next = activeIndex.value + step
+  if (next < 0 || next >= rows.value.length) return
+
+  activeIndex.value = next
+  cardAnimation?.cancel()
+  if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    cardAnimation = cardElement.value?.animate?.([
+      { transform: `translateY(${step * 30}px) rotate(${step * 5}deg)` },
+      { transform: 'translateY(0) rotate(0)' }
+    ], { duration: 240, easing: 'ease-out' })
+  }
+
+  if (focusCard) void nextTick(() => cardElement.value?.focus({ preventScroll: true }))
+}
+
+function startSwipe(event: TouchEvent) {
+  swipeStart = event.touches.length === 1 ? event.touches[0] : undefined
+}
+
+function moveSwipe(event: TouchEvent) {
+  const start = swipeStart
+  const touch = event.touches[0]
+  if (!start || event.touches.length !== 1 || touch?.identifier !== start.identifier) return
+
+  const dy = touch.clientY - start.clientY
+  dragOffset.value = Math.abs(dy) > Math.abs(touch.clientX - start.clientX)
+    ? Math.max(-24, Math.min(24, dy / 3)) : 0
+}
+
+function cancelSwipe() {
+  swipeStart = undefined
+  dragOffset.value = 0
+}
+
+function finishSwipe(event: TouchEvent) {
+  const start = swipeStart
+  cancelSwipe()
+  if (!start) return
+
+  const end = Array.from(event.changedTouches).find((touch) => touch.identifier === start.identifier)
+  if (!end) return
+
+  const dx = end.clientX - start.clientX
+  const dy = end.clientY - start.clientY
+  if (Math.abs(dy) < 36 || Math.abs(dy) <= Math.abs(dx)) return
+
+  if (event.cancelable) event.preventDefault()
+  switchCard(dy < 0 ? 1 : -1)
+}
+
 const barLabel = computed(() => {
   const parts = rows.value
     .filter((row) => row.configured && !row.notHeld && row.percent !== null)
@@ -174,15 +242,91 @@ function changeTone(row: DistributionRow): string {
 </script>
 
 <template>
-  <section class="distribution">
-    <div class="distribution-head">
-      <h2>资产分布</h2>
-      <span class="head-meta">
-        <RouterLink v-if="manageTo" :to="manageTo" class="manage-link">管理 ›</RouterLink>
-      </span>
-    </div>
+  <section class="distribution" :class="{ 'distribution-cards': cards }">
+    <h2 class="distribution-head">资产分布</h2>
 
-    <div class="ratio-bar" role="img" :aria-label="barLabel">
+    <template v-if="cards">
+      <div
+        class="card-deck"
+        @touchstart.passive="startSwipe"
+        @touchmove.passive="moveSwipe"
+        @touchend="finishSwipe"
+        @touchcancel="cancelSwipe"
+      >
+        <template v-for="{ side, step, row } in adjacentCards" :key="side">
+          <button
+            v-if="row"
+            type="button"
+            class="card-peek"
+            :class="[`card-peek-${side}`, `card-${row.key}`]"
+            :aria-label="row.label"
+            :aria-controls="cardId"
+            @click="switchCard(step, $event.detail === 0)"
+          >
+            {{ row.label }} <span aria-hidden="true">{{ step < 0 ? '↑' : '↓' }}</span>
+          </button>
+        </template>
+        <article
+          :id="cardId"
+          ref="cardElement"
+          class="distribution-card"
+          :class="`card-${activeRow.key}`"
+          :style="{ '--share': `${Math.min(100, Math.max(0, activePercent ?? 0))}%`, '--card-drag': `${dragOffset}px` }"
+          :aria-label="`${activeRow.label}资产`"
+          tabindex="-1"
+          @keydown.up.prevent="switchCard(-1)"
+          @keydown.down.prevent="switchCard(1)"
+        >
+          <svg
+            v-show="activePercent !== null && activePercent > 0"
+            class="card-glow"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          >
+            <defs>
+              <linearGradient :id="gradientId" gradientUnits="userSpaceOnUse" x1="-38" x2="3" y1="0" y2="0">
+                <stop offset="0" style="stop-color: var(--card-color)" stop-opacity="0" />
+                <stop offset=".67" style="stop-color: var(--card-color)" stop-opacity=".15" />
+                <stop offset=".92" style="stop-color: var(--card-color)" stop-opacity=".64" />
+                <stop offset="1" style="stop-color: var(--card-highlight)" />
+              </linearGradient>
+            </defs>
+            <g class="card-glow-edge">
+              <path
+                :fill="`url(#${gradientId})`"
+                d="M-110 0H0 C-2 12 -1 25 0 33 S1 44 2.7 49 Q4 53 1 56 Q0 58 1.5 61 Q3 65 1 69 C-2 74 -2 86 0 100 H-110Z"
+              />
+            </g>
+          </svg>
+
+          <div class="card-content">
+            <div class="card-heading">
+              <h3><AppIcon :name="activeRow.icon" />{{ activeRow.label }}</h3>
+              <div v-if="activePercent !== null" class="card-share">
+                <span>资产占比</span>
+                <strong>{{ activePercent.toFixed(1) }}%</strong>
+              </div>
+            </div>
+            <strong class="card-balance">{{ amountLabel(activeRow) }}</strong>
+            <div class="card-footer">
+              <div class="card-note">
+                <span v-if="activeRow.configured && !activeRow.notHeld">
+                  {{ activeRow.note }}<template v-if="activeRow.noteAmount != null"> {{ formatSignedMoney(activeRow.noteAmount) }}</template>
+                </span>
+                <span v-if="activeRow.configured && !activeRow.notHeld">{{ changeLabel(activeRow) }}</span>
+              </div>
+              <RouterLink v-if="!activeRow.notHeld" :to="activeRow.to" class="card-link">
+                {{ activeRow.configured ? '查看详情' : '去录入' }} <AppIcon name="chevron" />
+              </RouterLink>
+            </div>
+          </div>
+        </article>
+      </div>
+      <p class="card-position">{{ activeIndex + 1 }} / {{ rows.length }}</p>
+    </template>
+
+    <div v-if="!cards" class="ratio-bar" role="img" :aria-label="barLabel">
       <span
         v-for="segment in barSegments"
         :key="segment.key"
@@ -193,7 +337,7 @@ function changeTone(row: DistributionRow): string {
       <span v-if="!barSegments.length" class="ratio-empty" />
     </div>
 
-    <ul class="asset-list">
+    <ul v-if="!cards" class="asset-list">
       <li
         v-for="(row, index) in rows"
         :key="row.key"
@@ -262,35 +406,207 @@ function changeTone(row: DistributionRow): string {
 }
 
 .distribution-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  margin-bottom: 14px;
-}
-
-.distribution-head h2 {
-  margin: 0;
+  margin: 0 0 14px;
   font-size: 1.125rem;
   font-weight: 700;
   letter-spacing: -0.3px;
 }
 
+.distribution-cards {
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
 
-.head-meta {
-  display: inline-flex;
-  align-items: baseline;
+.card-deck {
+  --card-peek-space: 48px;
+  position: relative;
+  isolation: isolate;
+  padding-block: var(--card-peek-space);
+  touch-action: pan-x pinch-zoom;
+}
+
+.distribution-card,
+.card-peek {
+  --card-color: #2be7a8;
+  --card-highlight: #b5ffdf;
+}
+
+.distribution-card {
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  isolation: isolate;
+  border: 1px solid #ffffff19;
+  border-radius: var(--radius-card);
+  background: #171824;
+  color: #fff;
+  box-shadow: 0 14px 28px -8px #090814aa, inset 0 1px #ffffff13;
+  transform: translateY(var(--card-drag));
+}
+
+.card-fund { --card-color: #a477ff; --card-highlight: #e7cdff; }
+.card-stock { --card-color: #fd507e; --card-highlight: #ffb191; }
+.card-providentFund { --card-color: #21c7ff; --card-highlight: #b5f3ff; }
+.card-gold { --card-color: #ffae38; --card-highlight: #fff2a1; }
+
+.card-glow {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.card-glow-edge {
+  transform-box: view-box;
+  transform: translateX(var(--share));
+  transition: transform .48s cubic-bezier(.22, 1, .36, 1);
+}
+
+.card-content {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  padding: 16px 16px 10px;
+  background: linear-gradient(90deg, #10111ac7, #10111a1a 52%, #10111ab3);
+  text-shadow: 0 1px 7px #10111a, 0 1px 3px #10111a;
+}
+
+.card-heading,
+.card-footer {
+  display: flex;
+  justify-content: space-between;
   gap: 10px;
 }
 
-.manage-link {
-  color: var(--color-brand);
-  font-size: var(--text-footnote);
-  text-decoration: none;
+.card-heading {
+  align-items: flex-start;
 }
 
-.manage-link:hover {
-  text-decoration: underline;
+.card-heading h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: .9375rem;
+}
+
+.card-heading h3 .app-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--card-highlight);
+}
+
+.card-share {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  flex-shrink: 0;
+  font-size: .75rem;
+  color: #e2e1ee;
+}
+
+.card-share strong {
+  color: #fff;
+  font-size: 1.25rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.card-balance {
+  font-size: clamp(1.375rem, 6vw, 1.875rem);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.card-footer {
+  align-items: center;
+  min-height: var(--touch-target);
+}
+
+.card-note {
+  display: grid;
+  gap: 3px;
+  color: #e2e1ee;
+  font-size: .75rem;
+  line-height: 1.35;
+}
+
+.card-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: var(--touch-target);
+  color: #fff;
+  font-size: .75rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.card-link .app-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.card-peek {
+  position: absolute;
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  width: min(89%, 480px);
+  height: calc(100% - 2 * var(--card-peek-space));
+  padding: 9px 18px;
+  border: 1px solid color-mix(in srgb, var(--card-color) 55%, #262033);
+  border-radius: var(--radius-card);
+  background: linear-gradient(140deg,
+    color-mix(in srgb, var(--card-color) 27%, #211b2e),
+    color-mix(in srgb, var(--card-color) 51%, #211b2e));
+  color: #fff;
+  box-shadow: 0 7px 16px #08071280;
+  font: inherit;
+  font-size: var(--text-footnote);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.card-peek-previous {
+  top: 22px;
+  left: max(4%, calc(50% - 250px));
+  align-items: flex-start;
+  transform: rotate(-8deg);
+}
+
+.card-peek-next {
+  right: max(4%, calc(50% - 250px));
+  bottom: 22px;
+  align-items: flex-end;
+  transform: rotate(9deg);
+}
+
+.card-position {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.card-peek:focus-visible,
+.distribution-card:focus-visible {
+  outline: 2px solid var(--card-highlight);
+  outline-offset: 2px;
+}
+
+.card-link:focus-visible {
+  outline: 2px solid var(--card-highlight);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-glow-edge { transition: none; }
+  .distribution-card { transform: none; }
 }
 
 .ratio-bar {

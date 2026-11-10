@@ -5,7 +5,6 @@ import HomeView from './HomeView.vue'
 import { todayInBusinessTimeZone } from '../utils/format'
 import { useMessages } from '../composables/useMessage'
 import type { MonthChange } from '../types/ledger'
-import type { AutoPlan } from '../types/plan'
 import type { AssetTrend } from '../types/trend'
 
 const mocks = vi.hoisted(() => ({
@@ -86,23 +85,6 @@ function point(date: string, overrides: Record<string, unknown>) {
   }
 }
 
-function plan(overrides: Partial<AutoPlan> & Pick<AutoPlan, 'id' | 'type' | 'amount' | 'nextDueDate'>): AutoPlan {
-  return {
-    name: '自动计划',
-    cycle: 'tradingDay',
-    dayOfMonth: null,
-    dayOfWeek: null,
-    time: '12:30:00',
-    startDate: today,
-    generateFrom: today,
-    isActive: true,
-    fundPositionId: null,
-    fundPositionName: null,
-    version: 0,
-    ...overrides
-  }
-}
-
 function trend(startDate: string): AssetTrend {
   return {
     range: 'month',
@@ -145,9 +127,38 @@ const { messages, clear } = useMessages()
 beforeEach(() => {
   clear()
   vi.clearAllMocks()
-  mocks.plans.mockResolvedValue({ plans: [], pendingOccurrences: [] })
   mocks.dayChange.mockResolvedValue(structuredClone(monthChange))
   mocks.change.mockResolvedValue(structuredClone(monthChange))
+})
+
+test.each([
+  { income: 300, expense: 200, incomeWidth: '60%', expenseWidth: '40%', dominant: undefined },
+  { income: 400, expense: 100, incomeWidth: '80%', expenseWidth: '20%', dominant: 'income' },
+  { income: 100, expense: 400, incomeWidth: '20%', expenseWidth: '80%', dominant: 'expense' },
+  { income: 500, expense: 0, incomeWidth: '100%', expenseWidth: '0%', dominant: 'income' },
+  { income: 0, expense: 500, incomeWidth: '0%', expenseWidth: '100%', dominant: 'expense' },
+  { income: 0, expense: 0, incomeWidth: '0%', expenseWidth: '0%', dominant: undefined }
+])('shows a shared monthly scale for income $income and expense $expense', async ({
+  income, expense, incomeWidth, expenseWidth, dominant
+}) => {
+  const start = shift(today, -1)
+  mocks.ledger.mockResolvedValue(overview(start, {
+    month: { income, expense, surplus: income - expense, hasRecords: income + expense > 0 }
+  }))
+  mocks.trend.mockResolvedValue(trend(start))
+
+  const view = mount(HomeView, { global: { plugins: [createPinia()] } })
+  await flushPromises()
+
+  const card = view.get('.month-flow')
+  const segments = card.findAll<HTMLElement>('.month-flow-segment')
+  expect(segments.map((segment) => segment.element.style.width)).toEqual([incomeWidth, expenseWidth])
+  expect(card.get('.month-flow-track').attributes('data-dominant')).toBe(dominant)
+  expect(card.text()).toContain(`¥${income.toFixed(2)}`)
+  expect(card.text()).toContain(`¥${expense.toFixed(2)}`)
+  expect(card.get('.month-surplus').text()).toContain(Math.abs(income - expense).toFixed(2))
+  expect(card.text()).not.toContain('查看账本')
+  view.unmount()
 })
 
 test('shows recorded assets, no comparable month change and the seven-day trend gate', async () => {
@@ -165,7 +176,13 @@ test('shows recorded assets, no comparable month change and the seven-day trend 
   expect(view.find('.trend-panel h2').text()).toBe('资产趋势')
   expect(view.find('.trend-wait').text()).toContain('记录满 7 天后显示趋势')
   expect(view.find('.trend-wait').text()).toContain('已记录 1/7 天')
-  expect(view.find('.distribution').text()).toContain('暂未录入')
+  const distribution = view.get('.distribution')
+  expect(distribution.text()).not.toContain('管理')
+  expect(view.text()).not.toContain('自动记账')
+  expect(mocks.plans).not.toHaveBeenCalled()
+  expect(distribution.get('article').text()).toContain('68.8%')
+  await distribution.get('button[aria-label="基金"]').trigger('click')
+  expect(distribution.get('article').text()).toContain('暂未录入')
   expect(view.find('.chart-stub').exists()).toBe(false)
   view.unmount()
 })
@@ -184,110 +201,6 @@ test('draws the scoped trend once seven days are recorded', async () => {
   expect(view.find('.chart-readout').text()).toContain('244,685.00')
   expect(view.find('.chart-note').exists()).toBe(false)
   expect(view.find('.trend-wait').exists()).toBe(false)
-  view.unmount()
-})
-
-test('groups upcoming and pending plans by type on the home preview', async () => {
-  const start = shift(today, -30)
-  mocks.ledger.mockResolvedValue(overview(start))
-  mocks.trend.mockResolvedValue(trend(start))
-  mocks.plans.mockResolvedValue({
-    plans: [
-      plan({ id: 'fund-a', type: 'fundSip', name: '基金 A', amount: 640, nextDueDate: today }),
-      plan({ id: 'fund-b', type: 'fundSip', name: '基金 B', amount: 100, nextDueDate: shift(today, 1) }),
-      plan({ id: 'provident', type: 'providentDeposit', name: '公积金缴存', amount: 5440, cycle: 'monthly', nextDueDate: shift(today, 7) })
-    ],
-    pendingOccurrences: []
-  })
-
-  const view = mount(HomeView, { global: { plugins: [createPinia()] } })
-  await flushPromises()
-
-  const rows = view.findAll('.plan-row')
-  expect(rows).toHaveLength(2)
-  expect(rows[0]!.text()).toContain('基金定投')
-  expect(rows[0]!.text()).toContain('2 项 · 交易日')
-  expect(rows[0]!.text()).toContain('740.00')
-  expect(rows[1]!.text()).toContain('公积金缴存')
-  expect(rows[1]!.text()).toContain('5,440.00')
-  view.unmount()
-})
-
-test('keeps pending occurrences ahead of upcoming plans for the same type', async () => {
-  const start = shift(today, -30)
-  mocks.ledger.mockResolvedValue(overview(start))
-  mocks.trend.mockResolvedValue(trend(start))
-  mocks.plans.mockResolvedValue({
-    plans: [
-      plan({ id: 'fund-a', type: 'fundSip', name: '基金 A', amount: 640, nextDueDate: shift(today, 1) })
-    ],
-    pendingOccurrences: [
-      {
-        id: 'occurrence-a',
-        planId: 'fund-a',
-        planName: '基金 A',
-        type: 'fundSip',
-        amount: 100,
-        fee: 0,
-        dueDate: today,
-        dueTime: '12:30:00',
-        status: 'waiting',
-        relatedRecordId: null,
-        errorMessage: null,
-        executedAt: null,
-        periodKey: `T${today}`,
-        planVersion: 0
-      }
-    ]
-  })
-
-  const view = mount(HomeView, { global: { plugins: [createPinia()] } })
-  await flushPromises()
-
-  const row = view.find('.plan-row')
-  expect(row.text()).toContain('基金定投')
-  expect(row.text()).toContain('待处理')
-  expect(row.text()).toContain('100.00')
-  expect(row.find('.plan-cycle.pending').exists()).toBe(true)
-  view.unmount()
-})
-
-test('adds the other active plans to a pending row so the type total stays visible', async () => {
-  const start = shift(today, -30)
-  mocks.ledger.mockResolvedValue(overview(start))
-  mocks.trend.mockResolvedValue(trend(start))
-  mocks.plans.mockResolvedValue({
-    plans: [
-      plan({ id: 'fund-a', type: 'fundSip', name: '基金 A', amount: 640, nextDueDate: shift(today, 1) }),
-      plan({ id: 'fund-b', type: 'fundSip', name: '基金 B', amount: 100, nextDueDate: shift(today, 1) })
-    ],
-    pendingOccurrences: [
-      {
-        id: 'occurrence-b',
-        planId: 'fund-b',
-        planName: '基金 B',
-        type: 'fundSip',
-        amount: 100,
-        fee: 0,
-        dueDate: today,
-        dueTime: '12:30:00',
-        status: 'waiting',
-        relatedRecordId: null,
-        errorMessage: null,
-        executedAt: null,
-        periodKey: `T${today}`,
-        planVersion: 0
-      }
-    ]
-  })
-
-  const view = mount(HomeView, { global: { plugins: [createPinia()] } })
-  await flushPromises()
-
-  const row = view.find('.plan-row')
-  expect(row.text()).toContain('待处理')
-  expect(row.text()).toContain('另有 1 项待执行')
-  expect(row.text()).toContain('740.00')
   view.unmount()
 })
 
