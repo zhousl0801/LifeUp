@@ -4,6 +4,8 @@ import { computed } from 'vue'
 const props = defineProps<{ name: string }>()
 
 const paths: Record<string, string[]> = {
+  eye: ['M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z', 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z'],
+  'eye-off': ['M3 3l18 18M10.6 6.1c.5-.1.9-.1 1.4-.1 6.5 0 10 6 10 6a16 16 0 0 1-3 3.3M6.1 7.7A16 16 0 0 0 2 12s3.5 6 10 6a10 10 0 0 0 4.1-.9'],
   search: ['M21 21l-5-5', 'M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0'],
   plus: ['M12 5v14M5 12h14'],
   list: ['M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01'],

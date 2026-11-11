@@ -4,7 +4,7 @@ import { RouterLink } from 'vue-router'
 import AppIcon from './AppIcon.vue'
 import LoadingButton from './LoadingButton.vue'
 import AnimatedMoney from './AnimatedMoney.vue'
-import { amountTone, formatMoney, formatSignedMoney, sumAmounts } from '../utils/format'
+import { amountTone, formatMaskedMoney, formatMoney, formatSignedMoney, sumAmounts } from '../utils/format'
 import type { AssetChange, AssetKey, LedgerOverview } from '../types/ledger'
 
 interface DistributionRow {
@@ -27,6 +27,7 @@ const props = defineProps<{
   comparable?: boolean
   changeScope?: 'day' | 'month'
   cards?: boolean
+  amountsMasked?: boolean
   editable?: boolean
   hideFundCount?: boolean
   busyKey?: AssetKey | null
@@ -163,7 +164,7 @@ function fundNote(note: string): string {
   return withoutCount || '按最新净值估值'
 }
 
-function amountLabel(row: DistributionRow): string {
+function amountLabel(row: DistributionRow, masked = false): string {
   if (row.notHeld) {
     return '不持有'
   }
@@ -172,7 +173,9 @@ function amountLabel(row: DistributionRow): string {
     return '暂未录入'
   }
 
-  return row.amount === null ? '依据不足' : `¥${formatMoney(row.amount)}`
+  if (row.amount === null) return '依据不足'
+
+  return masked ? formatMaskedMoney(row.amount) : `¥${formatMoney(row.amount)}`
 }
 
 function changeLabel(row: DistributionRow): string {
@@ -206,10 +209,10 @@ function changeTone(row: DistributionRow): string {
 
 <template>
   <section class="distribution" :class="{ 'distribution-cards': cards }">
-    <h2 class="distribution-head">资产分布</h2>
+    <h2 v-if="!cards" class="distribution-head">资产分布</h2>
 
     <template v-if="cards">
-      <div class="card-deck">
+      <div class="card-deck" :class="{ 'has-previous': activeIndex > 0 }">
         <template v-for="{ side, step, row } in adjacentCards" :key="side">
           <button
             v-if="row"
@@ -265,7 +268,7 @@ function changeTone(row: DistributionRow): string {
                 <strong>{{ activePercent.toFixed(1) }}%</strong>
               </div>
             </div>
-            <strong class="card-balance">{{ amountLabel(activeRow) }}</strong>
+            <strong class="card-balance">{{ amountLabel(activeRow, amountsMasked) }}</strong>
             <div class="card-footer">
               <div class="card-note">
                 <span v-if="activeRow.configured && !activeRow.notHeld">
@@ -377,9 +380,14 @@ function changeTone(row: DistributionRow): string {
 
 .card-deck {
   --card-peek-space: 48px;
+  --card-peek-start: 0px;
   position: relative;
   isolation: isolate;
-  padding-block: var(--card-peek-space);
+  padding-block: var(--card-peek-start) var(--card-peek-space);
+}
+
+.card-deck.has-previous {
+  --card-peek-start: var(--card-peek-space);
 }
 
 .distribution-card,
@@ -511,7 +519,7 @@ function changeTone(row: DistributionRow): string {
   justify-content: flex-end;
   gap: 6px;
   width: min(89%, 480px);
-  height: calc(100% - 2 * var(--card-peek-space));
+  height: calc(100% - var(--card-peek-start) - var(--card-peek-space));
   padding: 9px 18px;
   border: 1px solid color-mix(in srgb, var(--card-color) 55%, #262033);
   border-radius: var(--radius-card);

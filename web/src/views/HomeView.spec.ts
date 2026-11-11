@@ -92,8 +92,8 @@ function trend(startDate: string): AssetTrend {
     to: today,
     notes: [],
     points: [
-      point(startDate, { cash: 244685, hasCash: true }),
-      point(today, { cash: 244685, provident: 100345, goldValue: 10821.75, hasCash: true, hasProvident: true, hasGold: true })
+      point(startDate, { cash: 244685, knownTotalAssets: 244685, hasCash: true }),
+      point(today, { cash: 244685, provident: 100345, goldValue: 10821.75, knownTotalAssets: 355851.75, hasCash: true, hasProvident: true, hasGold: true })
     ]
   }
 }
@@ -187,9 +187,11 @@ test('shows recorded assets, no comparable month change and the seven-day trend 
   view.unmount()
 })
 
-test('draws the scoped trend once seven days are recorded', async () => {
+test('draws the daily asset totals once seven days are recorded', async () => {
   const start = shift(today, -30)
-  mocks.ledger.mockResolvedValue(overview(start))
+  mocks.ledger.mockResolvedValue(overview(start, {
+    fund: { isConfigured: true, amount: 278788.02, note: '持有 1 只基金', notHeld: false }
+  }))
   mocks.trend.mockResolvedValue(trend(start))
 
   const view = mount(HomeView, { global: { plugins: [createPinia()] } })
@@ -198,7 +200,25 @@ test('draws the scoped trend once seven days are recorded', async () => {
   expect(mocks.trend).toHaveBeenCalledWith('week')
   expect(view.find('.range-button.active').text()).toBe('7日')
   expect(view.find('.chart-stub').exists()).toBe(true)
-  expect(view.find('.chart-readout').text()).toContain('244,685.00')
+  expect(view.get('.chart-readout').text()).toContain('¥3••••')
+  expect(view.get('.hero-value').text()).toBe('¥3••••')
+  expect(view.get('.chart-readout').text()).toContain('已记录资产')
+  expect(view.find('.distribution-head').exists()).toBe(false)
+  const card = view.get('.distribution-card')
+  expect(card.get('.card-balance').text()).toBe('¥2••••')
+  expect(card.find('.card-visibility').exists()).toBe(false)
+  await view.get('.hero-label button[aria-label="显示资产金额"]').trigger('click')
+  expect(view.get('.hero-value').text()).toBe('¥355,851.75')
+  expect(view.get('.chart-readout').text()).toContain('¥355,851.75')
+  expect(card.get('.card-balance').text()).toBe('¥244,685.00')
+  await view.get('.hero-label button[aria-label="隐藏资产金额"]').trigger('click')
+  expect(view.get('.hero-value').text()).toBe('¥3••••')
+  expect(view.get('.chart-readout').text()).toContain('¥3••••')
+  expect(card.get('.card-balance').text()).toBe('¥2••••')
+  await view.get('button[aria-label="基金"]').trigger('click')
+  expect(card.get('.card-balance').text()).toBe('¥2••••')
+  await view.get('.hero-label button[aria-label="显示资产金额"]').trigger('click')
+  expect(card.get('.card-balance').text()).toBe('¥278,788.02')
   expect(view.find('.chart-note').exists()).toBe(false)
   expect(view.find('.trend-wait').exists()).toBe(false)
   view.unmount()
@@ -231,6 +251,14 @@ test('defaults to today change and switches to month change', async () => {
   await flushPromises()
 
   expect(view.find('.change-scope button.active').text()).toBe('当日')
+  expect(view.get('.hero-change').text()).toContain('••••')
+  expect(view.get('.hero-change').text()).not.toContain('+1,000.00')
+  expect(view.get('.hero-change').text()).not.toContain('+5.00%')
+  await view.get('.hero-change').trigger('click')
+  expect(document.body.querySelector('.breakdown-total b')?.textContent).toBe('••••')
+  document.body.querySelector<HTMLButtonElement>('.sheet-close')!.click()
+  await flushPromises()
+  await view.get('.hero-label button[aria-label="显示资产金额"]').trigger('click')
   expect(view.find('.hero-change').text()).toContain('+1,000.00')
   expect(view.find('.hero-change').text()).toContain('+5.00%')
 

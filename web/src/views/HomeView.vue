@@ -15,9 +15,9 @@ import BottomSheet from '../components/BottomSheet.vue'
 import LoadingState from '../components/LoadingState.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import { useLedgerStore } from '../stores/ledger'
-import { amountTone, formatBusinessDate, formatMoney, formatSignedMoney, todayInBusinessTimeZone } from '../utils/format'
+import { amountTone, formatBusinessDate, formatMaskedMoney, formatMoney, formatSignedMoney, todayInBusinessTimeZone } from '../utils/format'
 import { useCountUp } from '../utils/countUp'
-import { buildScopedTrend } from '../utils/trend'
+import { buildAssetTrend, trendAmountLabel } from '../utils/trend'
 import type { MonthChange } from '../types/ledger'
 import type { AssetTrend, AssetTrendPoint, TrendRange } from '../types/trend'
 
@@ -34,6 +34,7 @@ const { overview, isLoading, errorMessage } = storeToRefs(ledgerStore)
 const today = todayInBusinessTimeZone()
 const trend = ref<AssetTrend | null>(null)
 const trendRange = ref<TrendRange>('week')
+const amountsMasked = ref(true)
 const trendSelection = ref<AssetTrendPoint | null>(null)
 const trendLoading = ref(false)
 const trendError = ref('')
@@ -76,17 +77,17 @@ const totalAmountParts = computed(() => {
   const [integer, fraction = '00'] = formatMoney(animatedTotal.value ?? 0).split('.')
   return { integer: integer ?? '0', fraction }
 })
-const scopedTrend = computed(() => trend.value ? buildScopedTrend(trend.value) : null)
+const assetTrendSeries = computed(() => trend.value ? buildAssetTrend(trend.value) : null)
 const selectedPoint = computed(() => {
-  const scoped = scopedTrend.value
+  const series = assetTrendSeries.value
 
-  if (!scoped) {
+  if (!series) {
     return null
   }
 
   const date = trendSelection.value?.date
 
-  return scoped.points.find((point) => point.date === date) ?? scoped.latest
+  return series.points.find((point) => point.date === date) ?? series.latest
 })
 const activeChange = computed(() => changeScope.value === 'day' ? dayChange.value : monthChange.value)
 const activeChangeError = computed(() =>
@@ -282,9 +283,22 @@ onBeforeUnmount(() => {
           <p class="hero-label">
             {{ overview.coverageComplete ? '总资产' : '已记录资产' }}
             <span class="tag">{{ overview.currency }}</span>
+            <button
+              type="button"
+              class="hero-visibility"
+              :aria-label="amountsMasked ? '显示资产金额' : '隐藏资产金额'"
+              @click="amountsMasked = !amountsMasked"
+            >
+              <AppIcon :name="amountsMasked ? 'eye-off' : 'eye'" />
+            </button>
           </p>
           <h2 class="hero-value">
-            <span class="currency">¥</span>{{ totalAmountParts.integer }}<span class="fraction">.{{ totalAmountParts.fraction }}</span>
+            <template v-if="amountsMasked">
+              <span class="currency">¥</span>{{ formatMaskedMoney(overview.totalAssets ?? 0).replace('¥', '') }}
+            </template>
+            <template v-else>
+              <span class="currency">¥</span>{{ totalAmountParts.integer }}<span class="fraction">.{{ totalAmountParts.fraction }}</span>
+            </template>
           </h2>
 
           <div class="hero-change-row">
@@ -297,10 +311,10 @@ onBeforeUnmount(() => {
             >
               <span class="change-arrow" aria-hidden="true" :class="amountTone(activeChange.comparableChange)">{{ (activeChange.comparableChange ?? 0) > 0 ? '▲' : (activeChange.comparableChange ?? 0) < 0 ? '▼' : '—' }}</span>
               <b :class="amountTone(activeChange.comparableChange)">
-                {{ formatSignedMoney(activeChange.comparableChange ?? 0) }}
+                {{ amountsMasked ? '••••' : formatSignedMoney(activeChange.comparableChange ?? 0) }}
               </b>
               <span v-if="changePercent !== null" class="change-percent" :class="amountTone(changePercent)">
-                {{ percentLabel(changePercent) }}
+                {{ amountsMasked ? '••••' : percentLabel(changePercent) }}
               </span>
               <span class="info-mark">ⓘ</span>
             </button>
@@ -339,15 +353,16 @@ onBeforeUnmount(() => {
             <div class="chart-readout">
               <span>{{ selectedPoint ? formatBusinessDate(selectedPoint.date) : '按日重算' }}</span>
               <b :class="{ faint: !selectedPoint || selectedPoint.value === null }">
-                {{ selectedPoint?.value == null ? '依据不足' : `¥${formatMoney(selectedPoint.value)}` }}
+                {{ selectedPoint?.value != null && selectedPoint.source.totalAssets === null ? '已记录资产 ' : '' }}{{ trendAmountLabel(selectedPoint, amountsMasked) }}
               </b>
             </div>
             <LoadingState v-if="trendLoading && !trend" variant="chart" compact label="正在读取趋势" />
             <p v-else-if="trendError" class="hero-hint">{{ trendError }}</p>
             <AssetTrendChart
-              v-else-if="trend && scopedTrend"
+              v-else-if="trend && assetTrendSeries"
               :trend="trend"
               variant="hero"
+              :amounts-masked="amountsMasked"
               @select="selectPoint"
             />
             <p v-else class="hero-hint">还没有可展示的趋势数据。</p>
@@ -398,7 +413,7 @@ onBeforeUnmount(() => {
         </div>
         <p class="month-surplus">
           <span>本月结余</span>
-          <b><AnimatedMoney :value="overview.month.surplus" signed tone /></b>
+          <b><AnimatedMoney :value="overview.month.surplus" signed /></b>
         </p>
         <p v-if="!overview.month.hasRecords" class="month-empty">
           本月还没有收支记录。<RouterLink class="text-btn" :to="{ name: 'entry' }">去记一笔 ›</RouterLink>
@@ -411,6 +426,7 @@ onBeforeUnmount(() => {
         :comparable="activeChange?.hasComparableData ?? false"
         :change-scope="changeScope"
         cards
+        :amounts-masked="amountsMasked"
         hide-fund-count
       />
     </template>
@@ -422,15 +438,15 @@ onBeforeUnmount(() => {
         <template v-if="activeChange.hasComparableData">
           <div class="breakdown-row">
             <span>市值变动</span>
-            <b :class="amountTone(activeChange.marketValueChange)">{{ formatSignedMoney(activeChange.marketValueChange ?? 0) }}</b>
+            <b :class="amountTone(activeChange.marketValueChange)">{{ amountsMasked ? '••••' : formatSignedMoney(activeChange.marketValueChange ?? 0) }}</b>
           </div>
           <div class="breakdown-row">
             <span>净存入·转账</span>
-            <b :class="amountTone(activeChange.netDeposit)">{{ formatSignedMoney(activeChange.netDeposit ?? 0) }}</b>
+            <b :class="amountTone(activeChange.netDeposit)">{{ amountsMasked ? '••••' : formatSignedMoney(activeChange.netDeposit ?? 0) }}</b>
           </div>
           <div class="breakdown-total">
             <span>{{ changeScope === 'day' ? '当日变化' : '本月变化' }}</span>
-            <b :class="amountTone(activeChange.comparableChange)">{{ formatSignedMoney(activeChange.comparableChange ?? 0) }}</b>
+            <b :class="amountTone(activeChange.comparableChange)">{{ amountsMasked ? '••••' : formatSignedMoney(activeChange.comparableChange ?? 0) }}</b>
           </div>
         </template>
         <p v-else class="hint">
@@ -440,7 +456,7 @@ onBeforeUnmount(() => {
         </p>
         <div v-if="addedRecords > 0" class="breakdown-row new-record">
           <span>新增记录（不计入变化）</span>
-          <b>{{ formatSignedMoney(addedRecords) }}</b>
+          <b>{{ amountsMasked ? '••••' : formatSignedMoney(addedRecords) }}</b>
         </div>
         <p class="sheet-note">
           {{ changeScope === 'day'
@@ -585,6 +601,25 @@ onBeforeUnmount(() => {
   color: var(--color-hero-text-secondary);
   font-size: var(--text-footnote);
   font-weight: 500;
+}
+
+.hero-visibility {
+  display: grid;
+  place-items: center;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  margin-block: -8px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-hero-text-secondary);
+  cursor: pointer;
+}
+
+.hero-visibility .app-icon {
+  width: 18px;
+  height: 18px;
 }
 
 .tag {
@@ -863,11 +898,11 @@ onBeforeUnmount(() => {
 }
 
 .metric-dot.income {
-  background: var(--color-finance-income);
+  background: var(--color-month-flow-income);
 }
 
 .metric-dot.expense {
-  background: var(--color-brand);
+  background: var(--color-month-flow-expense);
 }
 
 .metric-value {
@@ -900,11 +935,11 @@ onBeforeUnmount(() => {
 }
 
 .month-flow-segment.income {
-  background: linear-gradient(90deg, var(--color-finance-income), #64d9aa);
+  background: var(--color-month-flow-income);
 }
 
 .month-flow-segment.expense {
-  background: linear-gradient(90deg, #a48af3, var(--color-brand));
+  background: var(--color-month-flow-expense);
 }
 
 .month-flow-track[data-dominant] .month-flow-segment {

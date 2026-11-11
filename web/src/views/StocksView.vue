@@ -860,12 +860,12 @@ function goBack(): void {
     </section>
 
     <template v-else-if="overview">
-      <section class="stock-hero">
+      <section class="stock-hero investment-hero">
         <p class="hero-label">
           股票资产
           <span class="hero-tag">沪深北 · 含 ETF / LOF</span>
         </p>
-        <h2 class="hero-balance"><span>¥</span><AnimatedMoney :value="overview.totalValue" prefix="" /></h2>
+        <h2 class="hero-balance"><span class="hero-currency">¥</span><AnimatedMoney :value="overview.totalValue" prefix="" /></h2>
         <p class="hero-meta">
           持有 {{ activePositions.length }} 只
           <template v-if="overview.todayProfitDate"> · 行情 {{ formatBusinessDate(overview.todayProfitDate) }}</template>
@@ -1255,105 +1255,12 @@ function goBack(): void {
 }
 
 
-.stock-hero {
-  padding: var(--card-padding);
-  border-radius: var(--radius-card);
-  background: linear-gradient(180deg, var(--color-hero-bg) 0%, var(--color-hero-bg-end) 100%);
-  box-shadow: var(--shadow-hero);
-  color: var(--color-hero-text);
-}
-
-.hero-label {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 7px;
-  margin: 0;
-  color: var(--color-hero-text-secondary);
-  font-size: var(--text-footnote);
-}
-
-.hero-tag {
-  padding: 3px 9px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-hero-surface);
-  color: var(--color-hero-text-secondary);
-  font-size: var(--text-caption);
-}
-
-.hero-balance {
-  margin: 10px 0 8px;
-  color: var(--color-hero-text);
-  font-size: 2.375rem;
-  font-weight: 700;
-  letter-spacing: -0.04em;
-  line-height: 1.15;
-  font-variant-numeric: tabular-nums;
-}
-
-.hero-balance span {
-  margin-right: 5px;
-  color: var(--color-hero-text-secondary);
-  font-size: 1.25rem;
-  font-weight: 500;
-  letter-spacing: 0;
-}
-
-.hero-meta {
-  margin: 0;
-  color: var(--color-hero-text-secondary);
-  font-size: var(--text-caption);
-  line-height: 1.6;
-}
-
-.hero-metrics {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid var(--color-hero-border);
-}
-
-.hero-metrics > div + div {
-  padding-left: 12px;
-  border-left: 1px solid var(--color-hero-border);
-}
-
-.hero-metrics span {
-  display: block;
-  min-height: 2.4em;
-  color: var(--color-hero-text-secondary);
-  font-size: var(--text-caption);
-  line-height: 1.35;
-}
-
-.hero-metrics b {
-  display: block;
-  margin-top: 7px;
-  color: var(--color-hero-text);
-  font-size: 0.9375rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-}
-
 .metric-percent {
   margin-left: 4px;
   font-size: var(--text-caption);
   font-style: normal;
   font-weight: 500;
   opacity: 0.85;
-}
-
-.hero-foot {
-  margin: 16px 0 0;
-  padding-top: 12px;
-  border-top: 1px solid var(--color-hero-border);
-  color: var(--color-hero-text-secondary);
-  font-size: var(--text-caption);
-  font-variant-numeric: tabular-nums;
 }
 
 .stock-actions {
@@ -1948,14 +1855,5 @@ function goBack(): void {
     grid-column: 1 / -1;
   }
 
-  .hero-metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .hero-metrics > div:nth-child(3) {
-    grid-column: 1 / -1;
-    padding-left: 0;
-    border-left: 0;
-  }
 }
 </style>

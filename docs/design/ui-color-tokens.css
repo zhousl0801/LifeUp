@@ -123,6 +123,8 @@
   --color-finance-flat: var(--palette-lilac-600);
   --color-finance-income: #237A58;
   --color-finance-expense: var(--palette-ink-text);
+  --color-month-flow-income: #4278C7;
+  --color-month-flow-expense: var(--palette-violet-500);
   --color-finance-transfer: var(--palette-violet-500);
   --color-finance-net-change: var(--palette-ink-text);
   --color-finance-liability: var(--palette-ink-text);
@@ -226,6 +228,8 @@
   --color-finance-flat: #A9A6C5;
   --color-finance-income: #4ED39B;
   --color-finance-expense: #F7F5FF;
+  --color-month-flow-income: #79B4FF;
+  --color-month-flow-expense: #A591F6;
   --color-finance-transfer: #A9A4FF;
   --color-finance-net-change: #F7F5FF;
   --color-finance-liability: #F7F5FF;

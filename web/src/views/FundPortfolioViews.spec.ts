@@ -453,9 +453,10 @@ test('today profit only sums funds disclosed on the latest net value date', asyn
   await flushPromises()
 
   expect(view.find('.hero-today').text()).toContain('+24.00')
-  expect(view.find('.hero-today').text()).toContain('1/2 只基金披露')
-  expect(view.find('.hero-update .update-ring').exists()).toBe(true)
-  expect(view.get('.hero-update .update-ring').attributes('aria-valuetext')).toBe('1/2，收益为正')
+  expect(view.find('.hero-metrics .hero-update').exists()).toBe(false)
+  expect(view.get('.funds-metrics > .hero-update').text()).toMatch(/\d+月\d+日净值 · 1\/2 只已披露/)
+  expect(view.find('.hero-update .update-ring-face').exists()).toBe(false)
+  expect(view.get('.hero-update .update-ring').attributes('aria-valuetext')).toBe('1/2')
 
   const bondCard = view.findAll('.fund-card').find((item) => item.text().includes('债券基金'))!
   const dailyMetric = bondCard.findAll('.fund-metric').find((item) => item.text().includes('日收益'))!

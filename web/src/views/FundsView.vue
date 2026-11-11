@@ -653,7 +653,9 @@ const hasQuoteError = computed(() => {
   return !isUpdating.value && !!run && run.fundAttempted > 0 && run.fundFailed > 0
 })
 const todayProfitTone = computed(() => amountTone(todayProfit.value.hasValue ? todayProfit.value.value : null))
-const quoteProfitTone = computed(() => quoteStatus.value && !hasQuoteError.value ? todayProfitTone.value : '')
+const quoteProfitTone = computed(() =>
+  quoteStatus.value && todayProfit.value.complete && !hasQuoteError.value ? todayProfitTone.value : ''
+)
 const todayProfitStatus = computed(() => {
   if (!todayProfit.value.hasValue) {
     return '行情待补'
@@ -666,11 +668,11 @@ const todayProfitStatus = computed(() => {
   }
 
   if (!todayProfit.value.isToday && todayProfit.value.latestDate) {
-    parts.push(`按 ${formatBusinessDate(todayProfit.value.latestDate)} 净值`)
+    parts.push(`${monthDayText(todayProfit.value.latestDate)}净值`)
   }
 
   if (!todayProfit.value.complete) {
-    parts.push(`仅 ${todayProfit.value.covered}/${todayProfit.value.total} 只基金披露`)
+    parts.push(`${todayProfit.value.covered}/${todayProfit.value.total} 只已披露`)
   }
 
   return parts.join(' · ')
@@ -1923,21 +1925,46 @@ function goBack(): void {
     </section>
 
     <template v-else-if="overview">
-      <section class="funds-hero">
+      <section class="funds-hero investment-hero">
         <p class="hero-label">
           总资产
           <span v-if="searchText.trim()" class="hero-search" :title="searchText">· 搜索「{{ searchText.trim() }}」</span>
           <span class="hero-tag">{{ scope.historyConfirmed ? '已确认持仓' : '持仓日期待确认' }}</span>
         </p>
         <h2 class="hero-balance">
-          <template v-if="scope.hasEffectiveQuotes"><span>¥</span><AnimatedMoney :value="scope.assetValue" prefix="" /></template>
+          <template v-if="scope.hasEffectiveQuotes"><span class="hero-currency">¥</span><AnimatedMoney :value="scope.assetValue" prefix="" /></template>
           <template v-else>行情待补</template>
         </h2>
-        <div class="hero-today">
-          <span class="hero-today-label">今日收益</span>
-          <b :class="todayProfitTone">
-            {{ todayProfit.hasValue ? formatSignedMoney(todayProfit.value) : '—' }}
-          </b>
+        <div class="funds-metrics" role="group" aria-label="收益概览">
+          <div class="hero-metrics">
+            <div class="hero-today">
+              <span class="metric-label">今日收益</span>
+              <b :class="todayProfitTone">
+                {{ todayProfit.hasValue ? formatSignedMoney(todayProfit.value) : '—' }}
+              </b>
+            </div>
+            <div class="metric">
+              <span class="metric-label">持有收益</span>
+              <div class="metric-value">
+                <b :class="amountTone(scope.hasEffectiveQuotes ? scope.holdingProfit : null)">
+                  {{ scope.hasEffectiveQuotes ? formatSignedMoney(scope.holdingProfit) : '行情待补' }}
+                </b>
+                <small
+                  v-if="scope.hasEffectiveQuotes && scope.rate !== null"
+                  class="metric-rate"
+                  :class="amountTone(scope.rate)"
+                >{{ formatSignedMoney(scope.rate) }}%</small>
+              </div>
+            </div>
+            <div class="metric">
+              <span class="metric-label">已实现收益</span>
+              <div class="metric-value">
+                <b :class="amountTone(scope.historyConfirmed ? scope.realizedProfit : null)">
+                  {{ scope.historyConfirmed ? formatSignedMoney(scope.realizedProfit) : '待核对' }}
+                </b>
+              </div>
+            </div>
+          </div>
           <small v-if="isUpdating" class="hero-update is-updating">
             <UpdateRing :value="todayProfit.covered" :total="todayProfit.total" indeterminate />
             <span>
@@ -1953,33 +1980,7 @@ function goBack(): void {
             <UpdateRing :value="todayProfit.covered" :total="todayProfit.total" :profit-tone="quoteProfitTone" />
             <span>{{ todayProfitStatus || '净值已更新' }}</span>
           </small>
-        </div>
-
-        <div class="funds-metrics" role="group" aria-label="收益概览">
-          <div class="metrics-row">
-            <div class="metric">
-              <span class="metric-label">持有收益</span>
-              <div class="metric-value">
-                <b :class="amountTone(scope.hasEffectiveQuotes ? scope.holdingProfit : null)">
-                  {{ scope.hasEffectiveQuotes ? formatSignedMoney(scope.holdingProfit) : '行情待补' }}
-                </b>
-                <small
-                  v-if="scope.hasEffectiveQuotes && scope.rate !== null"
-                  class="metric-rate"
-                  :class="amountTone(scope.rate)"
-                >{{ formatSignedMoney(scope.rate) }}%</small>
-              </div>
-            </div>
-            <div class="metric metric-end">
-              <span class="metric-label">已实现收益</span>
-              <div class="metric-value">
-                <b class="metric-secondary" :class="amountTone(scope.historyConfirmed ? scope.realizedProfit : null)">
-                  {{ scope.historyConfirmed ? formatSignedMoney(scope.realizedProfit) : '待核对' }}
-                </b>
-              </div>
-            </div>
-          </div>
-          <p class="metrics-note">
+          <p class="hero-foot">
             {{ scopedFunds.length }} 只基金 · 持仓成本 <AnimatedMoney :value="scope.cost" />
             <template v-if="scope.pendingBuyAmount > 0"> · 含待确认 <AnimatedMoney :value="scope.pendingBuyAmount" /></template>
             <template v-if="scope.pendingArrivalAmount > 0"> · 含待到账 <AnimatedMoney :value="scope.pendingArrivalAmount" /></template>
@@ -2745,91 +2746,18 @@ function goBack(): void {
 }
 
 .funds-hero {
-  margin-bottom: 16px;
-  padding: var(--card-padding);
-  border-radius: var(--radius-card);
-  background: linear-gradient(180deg, var(--color-hero-bg) 0%, var(--color-hero-bg-end) 100%);
-  box-shadow: var(--shadow-hero);
-  color: var(--color-hero-text);
-}
-
-.hero-label {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 7px;
-  margin: 0;
-  color: var(--color-hero-text-secondary);
-  font-size: var(--text-footnote);
-}
-
-.hero-tag {
-  padding: 3px 9px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-hero-surface);
-  color: var(--color-hero-text-secondary);
-  font-size: var(--text-caption);
-}
-
-.hero-balance {
-  margin: 10px 0 8px;
-  color: var(--color-hero-text);
-  font-size: 2.5rem;
-  font-weight: 700;
-  letter-spacing: -0.04em;
-  line-height: 1.15;
-  font-variant-numeric: tabular-nums;
-}
-
-.hero-balance span {
-  margin-right: 5px;
-  color: var(--color-hero-text-secondary);
-  font-size: 1.25rem;
-  font-weight: 500;
-  letter-spacing: 0;
-}
-
-.hero-today {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 2px 12px;
-  margin-top: 18px;
-  padding: 12px 14px;
-  border-radius: var(--radius-control);
-  background: var(--color-hero-surface);
-}
-
-.hero-today-label {
-  color: var(--color-hero-text-secondary);
-  font-size: var(--text-caption);
-}
-
-.hero-today b {
-  color: var(--color-hero-text);
-  font-size: 1.125rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-}
-
-.hero-today small {
-  grid-column: 1 / -1;
-  color: var(--color-hero-text-muted);
-  font-size: var(--text-caption);
-  line-height: 1.4;
+  margin-bottom: var(--space-4);
 }
 
 .hero-update {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
-  --update-ring-color: var(--color-hero-line);
-}
-
-.hero-update.is-updating span {
+  gap: var(--space-2);
+  margin-top: var(--space-3);
   color: var(--color-hero-text-secondary);
+  font-size: var(--text-caption);
+  line-height: 1.4;
+  --update-ring-color: var(--color-hero-line);
 }
 
 .hero-update.is-warning {
@@ -2837,65 +2765,12 @@ function goBack(): void {
   --update-ring-color: var(--color-warning);
 }
 
-.funds-metrics {
-  margin-top: 18px;
-  padding-top: 16px;
-  border-top: 1px solid var(--color-hero-border);
-}
-
-.metrics-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 16px;
-}
-
-.metric-label {
-  color: var(--color-hero-text-secondary);
-  font-size: var(--text-caption);
-}
-
-.metric-value {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-top: 6px;
-}
-
-.metric-value b {
-  color: var(--color-hero-text);
-  font-size: 1.0625rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-}
-
-.metric-value .metric-secondary {
-  font-size: var(--text-subhead);
-}
-
 .metric-rate {
-  padding: 2px 7px;
-  border-radius: var(--radius-pill);
-  background: var(--color-hero-surface);
+  display: block;
+  margin-top: var(--space-1);
   font-size: var(--text-caption);
-  font-weight: 600;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
-}
-
-.metric-end {
-  text-align: right;
-}
-
-.metric-end .metric-value {
-  justify-content: flex-end;
-}
-
-.metrics-note {
-  margin: 10px 0 0;
-  color: var(--color-hero-text-muted);
-  font-size: var(--text-caption);
-  line-height: 1.6;
 }
 
 .hero-search {
