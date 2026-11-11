@@ -36,46 +36,36 @@ const stubs = {
   RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' }
 }
 
-test('keeps vertical swipes for scrolling and switches when tapping an adjacent card', async () => {
+test('shows every asset card and keeps each balance, fill and link tied to its asset', () => {
   const view = mount(AssetDistribution, {
     props: {
       overview: { ...overview, stock: { ...overview.stock, notHeld: true } },
-      cards: true
+      cards: true,
+      amountsMasked: true
     },
     global: { stubs }
   })
-  const card = view.get('article')
-  const select = (name: string) => view.get(`button[aria-label="${name}"]`).trigger('click')
-  async function swipe(dx: number, dy: number) {
-    await card.trigger('touchstart', { touches: [{ identifier: 0, clientX: 90, clientY: 100 }] })
-    await card.trigger('touchend', { changedTouches: [{ identifier: 0, clientX: 90 + dx, clientY: 100 + dy }] })
-  }
 
-  expect(card.text()).toContain('57.1%')
-  expect(card.get('a').attributes('href')).toBe('/cash')
-  expect(view.findAll('button').map((button) => button.attributes('aria-label'))).toEqual(['基金'])
-  await swipe(0, 80)
-  await swipe(-80, 0)
-  expect(card.attributes('aria-label')).toBe('现金资产')
-  await swipe(4, -80)
-  expect(card.attributes('aria-label')).toBe('现金资产')
-  await select('基金')
-  expect(card.text()).toContain('暂未录入')
-  expect(card.get('a').attributes('href')).toBe('/funds')
-  expect(view.findAll('button').map((button) => button.attributes('aria-label'))).toEqual(['现金', '股票'])
-  await select('现金')
-  expect(card.attributes('aria-label')).toBe('现金资产')
-  await select('基金')
-  await select('股票')
-  expect(card.text()).toContain('不持有')
-  expect(card.find('a').exists()).toBe(false)
-  await select('公积金')
-  expect(card.text()).toContain('28.6%')
-  expect(card.get('a').attributes('href')).toBe('/provident')
-  await select('贵金属')
-  await swipe(0, -80)
-  expect(card.attributes('aria-label')).toBe('贵金属资产')
-  expect(view.findAll('button').map((button) => button.attributes('aria-label'))).toEqual(['公积金'])
+  const cards = view.findAll('article')
+  expect(cards.map(card => card.attributes('aria-label'))).toEqual([
+    '现金资产', '基金资产', '股票资产', '公积金资产', '贵金属资产'
+  ])
+  const cash = view.get('[aria-label="现金资产"]')
+  expect(cash.get('.card-balance').text()).toBe('¥2••••')
+  expect(cash.text()).toContain('57.1%')
+  expect(cash.get('a').attributes('href')).toBe('/cash')
+  const fund = view.get('[aria-label="基金资产"]')
+  expect(fund.get('.card-balance').text()).toBe('暂未录入')
+  expect(fund.get('a').attributes('href')).toBe('/funds')
+  const stock = view.get('[aria-label="股票资产"]')
+  expect(stock.get('.card-balance').text()).toBe('不持有')
+  expect(stock.find('a').exists()).toBe(false)
+  const provident = view.get('[aria-label="公积金资产"]')
+  expect(provident.text()).toContain('28.6%')
+  expect(provident.get('a').attributes('href')).toBe('/provident')
+  const gradients = view.findAll('.card-glow linearGradient').map(gradient => gradient.attributes('id'))
+  expect(gradients).toHaveLength(3)
+  expect(new Set(gradients).size).toBe(gradients.length)
   view.unmount()
 })
 

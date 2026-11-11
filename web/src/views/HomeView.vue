@@ -14,6 +14,7 @@ import AssetTrendChart from '../components/AssetTrendChart.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import LoadingState from '../components/LoadingState.vue'
 import LoadingButton from '../components/LoadingButton.vue'
+import { useHomePreferencesStore } from '../stores/homePreferences'
 import { useLedgerStore } from '../stores/ledger'
 import { amountTone, formatBusinessDate, formatMaskedMoney, formatMoney, formatSignedMoney, todayInBusinessTimeZone } from '../utils/format'
 import { useCountUp } from '../utils/countUp'
@@ -34,7 +35,7 @@ const { overview, isLoading, errorMessage } = storeToRefs(ledgerStore)
 const today = todayInBusinessTimeZone()
 const trend = ref<AssetTrend | null>(null)
 const trendRange = ref<TrendRange>('week')
-const amountsMasked = ref(true)
+const { amountsMasked } = storeToRefs(useHomePreferencesStore())
 const trendSelection = ref<AssetTrendPoint | null>(null)
 const trendLoading = ref(false)
 const trendError = ref('')
