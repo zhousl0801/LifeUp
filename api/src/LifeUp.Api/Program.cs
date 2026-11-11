@@ -87,6 +87,13 @@ builder.Services.AddHttpClient<SgeGoldQuoteProvider>((services, client) =>
     client.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds);
     client.DefaultRequestHeaders.UserAgent.ParseAdd("LifeUp/1.0");
 });
+builder.Services.AddHttpClient<SgeDelayedGoldQuoteProvider>((services, client) =>
+{
+    var options = services.GetRequiredService<IOptions<QuoteProviderOptions>>().Value;
+    client.BaseAddress = new Uri(options.GoldSgeDelayedBaseUrl);
+    client.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("LifeUp/1.0");
+});
 builder.Services.AddHttpClient<IcbcGoldQuoteProvider>((services, client) =>
 {
     var options = services.GetRequiredService<IOptions<QuoteProviderOptions>>().Value;

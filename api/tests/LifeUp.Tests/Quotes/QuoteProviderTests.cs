@@ -165,6 +165,34 @@ public sealed class QuoteProviderTests
     }
 
     [Fact]
+    public async Task GoldQuoteProvider_UsesOfficialDelayedPriceBeforeTheBank()
+    {
+        const string page = """
+            <h1>上海黄金交易所2026年11月11日延时行情</h1>
+            <table>
+              <tr><th>合约</th><th>最新价</th><th>最高价</th></tr>
+              <tr><td>Au99.95</td><td>870.15</td><td>871.40</td></tr>
+              <tr><td>Au99.99</td><td><span class="colorGreen">862.05</span></td><td>873.20</td></tr>
+            </table>
+            """;
+        var spotProvider = new SgeGoldQuoteProvider(
+            CreateClient(_ => new HttpResponseMessage(System.Net.HttpStatusCode.BadGateway)),
+            Options.Create(new QuoteProviderOptions { GoldSgeFallbackBaseUrl = "https://sge-fallback.test/" }));
+        var delayedProvider = new SgeDelayedGoldQuoteProvider(CreateClient(_ => new HttpResponseMessage
+        {
+            Content = new StringContent(page)
+        }));
+        var bankProvider = new IcbcGoldQuoteProvider(CreateClient(_ => throw new InvalidOperationException("不应请求工行。")));
+        var provider = new GoldQuoteProvider(spotProvider, delayedProvider, bankProvider, NullLogger<GoldQuoteProvider>.Instance);
+
+        var quote = await provider.GetLatestAsync(CancellationToken.None);
+
+        Assert.Equal(862.05m, quote.Quote);
+        Assert.Equal(new DateOnly(2026, 11, 11), quote.EffectiveDate);
+        Assert.Equal("sge_delayed", quote.Source);
+    }
+
+    [Fact]
     public async Task GoldQuoteProvider_FallsBackToBankQuoteWhenSpotSourceFails()
     {
         const string bankPayload = """
@@ -176,6 +204,7 @@ public sealed class QuoteProviderTests
         var bankProvider = new IcbcGoldQuoteProvider(CreateClient(_ => JsonResponse(bankPayload)));
         var provider = new GoldQuoteProvider(
             spotProvider,
+            new SgeDelayedGoldQuoteProvider(CreateClient(_ => new HttpResponseMessage(System.Net.HttpStatusCode.BadGateway))),
             bankProvider,
             NullLogger<GoldQuoteProvider>.Instance);
 
@@ -195,6 +224,7 @@ public sealed class QuoteProviderTests
         var bankProvider = new IcbcGoldQuoteProvider(CreateClient(_ => throw new HttpRequestException("ssl failure")));
         var provider = new GoldQuoteProvider(
             spotProvider,
+            new SgeDelayedGoldQuoteProvider(CreateClient(_ => new HttpResponseMessage(System.Net.HttpStatusCode.BadGateway))),
             bankProvider,
             NullLogger<GoldQuoteProvider>.Instance);
 

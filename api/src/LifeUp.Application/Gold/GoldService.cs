@@ -78,6 +78,11 @@ public sealed class GoldService
             .Select(Map)
             .ToList();
 
+        var replayGold = replay.Gold;
+        var quoteSource = holding is not null && replayGold?.Price == holding.Quote && replayGold.PriceDate == holding.QuoteDate
+            ? replayGold.PriceSource
+            : null;
+
         return new GoldOverviewDto(
             holding is not null,
             holding?.Grams ?? 0m,
@@ -97,7 +102,8 @@ public sealed class GoldService
             pendingArrivals,
             holding?.LastQuoteAttemptAt,
             holding?.LastQuoteSource,
-            holding?.LastQuoteError);
+            holding?.LastQuoteError,
+            quoteSource);
     }
 
     public Task<AssetOperationResult<GoldMutationResultDto>> BuyAsync(BuyGoldRequest request, CancellationToken cancellationToken)

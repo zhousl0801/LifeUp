@@ -66,6 +66,15 @@ const { discardOpen, requestClose, resolveDiscard } = useUnsavedSheet(
   closeSheet
 )
 
+const quoteLabel = computed(() => {
+  switch (overview.value?.quoteSource) {
+    case 'sge_delayed': return '上金所延时参考价'
+    case 'eastmoney_sge': return 'Au99.99 现货参考价'
+    case 'icbc': return '工行积存金报价'
+    default: return '报价'
+  }
+})
+
 const hasHolding = computed(() => (overview.value?.grams ?? 0) > 0)
 
 // 总收益按持有收益加已实现收益展示，口径与基金累计收益一致。
@@ -627,7 +636,7 @@ function goBack(): void {
         </h2>
         <p class="hero-meta">
           持有 {{ formatQuantity(overview.grams) }} 克 ·
-          报价 {{ overview.hasEffectiveQuote ? formatMoney(overview.quote) : '行情待补' }} 元/克
+          {{ quoteLabel }} {{ overview.hasEffectiveQuote ? formatMoney(overview.quote) : '行情待补' }} 元/克
           <template v-if="overview.hasEffectiveQuote && overview.quoteDate"> · 行情 {{ formatBusinessDate(overview.quoteDate) }}</template>
           <template v-if="overview.pendingArrivalAmount > 0"> · 含待到账 ¥{{ formatMoney(overview.pendingArrivalAmount) }}</template>
         </p>
