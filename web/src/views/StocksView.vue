@@ -14,6 +14,8 @@ import LoadingButton from '../components/LoadingButton.vue'
 import LoadingState from '../components/LoadingState.vue'
 import InvestmentActivityList, { type InvestmentActivityRow } from '../components/InvestmentActivityList.vue'
 import BottomSheet from '../components/BottomSheet.vue'
+import { useUnsavedSheet } from '../composables/useUnsavedSheet'
+import ConfirmSheet from '../components/ConfirmSheet.vue'
 import {
   amountTone,
   formatBusinessDate,
@@ -67,6 +69,18 @@ const form = reactive({
   priceDate: today,
   note: ''
 })
+
+const { discardOpen, requestClose, resolveDiscard, updateDefault } = useUnsavedSheet(
+  () => requestId.value,
+  () => sheet.value !== null && sheet.value !== 'detail',
+  () => isSaving.value,
+  () => ({
+    ...form,
+    search: searchQuery.value,
+    stock: selectedStock.value ? `${selectedStock.value.market}:${selectedStock.value.code}` : ''
+  }),
+  closeSheet
+)
 
 const marketLabels: Record<StockMarket, string> = {
   shanghai: '沪市',
@@ -329,17 +343,22 @@ async function loadOverview(): Promise<void> {
 }
 
 async function refreshOnEnter(): Promise<void> {
-  if (!overview.value || activePositions.value.length === 0) {
+  if (!overview.value || activePositions.value.length === 0 || isRefreshing.value) {
     return
   }
 
-  try {
-    await refreshStockQuotes()
-  } catch {
-    // 失败原因由持仓的行情状态记录，下面重新读取以展示缓存值。
-  }
+  isRefreshing.value = true
 
-  await loadOverview()
+  try {
+    try {
+      await refreshStockQuotes()
+    } catch {
+      // 失败原因由持仓的行情状态记录，下面重新读取以展示缓存值。
+    }
+    await loadOverview()
+  } finally {
+    isRefreshing.value = false
+  }
 }
 
 async function refreshQuotes(): Promise<void> {
@@ -352,12 +371,18 @@ async function refreshQuotes(): Promise<void> {
 
   try {
     const result = await refreshStockQuotes()
-    const summary = result.failed > 0
-      ? `行情刷新完成：成功 ${result.succeeded} 只，失败 ${result.failed} 只${result.errors[0] ? `；${result.errors[0]}` : ''}`
-      : `行情刷新完成：更新 ${result.updated} 只股票。`
-    if (result.failed > 0) toast.info(summary)
-    else toast.success(summary)
     await loadOverview()
+    if (!overview.value) return
+
+    if (result.failed > 0) {
+      toast.info(`行情刷新结果：成功 ${result.succeeded} 只，失败 ${result.failed} 只${result.errors[0] ? `；${result.errors[0]}` : ''}`)
+    } else if (result.succeeded === 0) {
+      toast.info('暂无可刷新的行情。')
+    } else if (result.updated === 0) {
+      toast.info('行情已是最新。')
+    } else {
+      toast.success(`行情已更新：更新 ${result.updated} 只股票。`)
+    }
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error, '行情刷新失败，请稍后重试。')
   } finally {
@@ -391,6 +416,7 @@ function openSheet(kind: SheetKind, position: StockPosition | null = null): void
   form.priceDate = position?.priceDate ?? today
   form.note = ''
   quoteError.value = ''
+  quoteLoading.value = false
 
   if (kind === 'holding' && position) {
     form.shares = String(position.shares)
@@ -408,19 +434,34 @@ function openSheet(kind: SheetKind, position: StockPosition | null = null): void
   }
 }
 
+let latestQuoteRequest: symbol | undefined
+
 async function loadQuote(market: StockMarket, code: string): Promise<void> {
+  const quoteRequest = Symbol()
+  latestQuoteRequest = quoteRequest
+  const formSession = requestId.value
+  const stock = selectedStock.value
+  const previousPrice = form.price
   quoteLoading.value = true
   quoteError.value = ''
 
+  const isCurrent = () => latestQuoteRequest === quoteRequest
+    && requestId.value === formSession && selectedStock.value === stock && sheet.value !== null
+
   try {
     const quote = await fetchStockQuote(market, code)
+    if (!isCurrent() || form.price !== previousPrice) return
 
     form.price = String(quote.price)
     form.priceDate = quote.priceDate
+    if (sheet.value === 'holding') {
+      updateDefault('price', form.price)
+      updateDefault('priceDate', form.priceDate)
+    }
   } catch (error) {
-    quoteError.value = getApiErrorMessage(error, '行情获取失败，请稍后重试。')
+    if (isCurrent()) quoteError.value = getApiErrorMessage(error, '行情获取失败，请稍后重试。')
   } finally {
-    quoteLoading.value = false
+    if (latestQuoteRequest === quoteRequest) quoteLoading.value = false
   }
 }
 
@@ -969,7 +1010,7 @@ function goBack(): void {
       :open="sheet === 'detail'"
       :title="sheetTitle"
       :subtitle="sheetSubtitle"
-      @close="closeSheet"
+      @close="requestClose"
     >
       <template v-if="selectedPosition">
         <div class="detail-metrics">
@@ -1019,7 +1060,7 @@ function goBack(): void {
       :title="sheetTitle"
       :subtitle="sheetSubtitle"
       :close-disabled="isSaving"
-      @close="closeSheet"
+      @close="requestClose"
     >
       <div class="sheet-summary">
         <div class="summary-line">
@@ -1168,7 +1209,7 @@ function goBack(): void {
         <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
 
         <div class="form-actions">
-          <button type="button" class="secondary-button" :disabled="isSaving" @click="closeSheet">取消</button>
+          <button type="button" class="secondary-button" :disabled="isSaving" @click="requestClose">取消</button>
           <LoadingButton class="primary-button" type="submit" :loading="isSaving" :disabled="!canSubmit" loading-label="保存中…">
             保存
           </LoadingButton>
@@ -1176,6 +1217,16 @@ function goBack(): void {
       </form>
     </BottomSheet>
 
+    <ConfirmSheet
+      :open="discardOpen"
+      title="放弃修改？"
+      message="离开后，本次填写的内容会丢失。"
+      confirm-label="放弃修改"
+      cancel-label="继续编辑"
+      danger
+      @confirm="resolveDiscard(true)"
+      @cancel="resolveDiscard(false)"
+    />
     <AppNav />
   </main>
 </template>

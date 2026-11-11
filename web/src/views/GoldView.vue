@@ -14,6 +14,8 @@ import LoadingButton from '../components/LoadingButton.vue'
 import LoadingState from '../components/LoadingState.vue'
 import InvestmentActivityList, { type InvestmentActivityRow } from '../components/InvestmentActivityList.vue'
 import BottomSheet from '../components/BottomSheet.vue'
+import { useUnsavedSheet } from '../composables/useUnsavedSheet'
+import ConfirmSheet from '../components/ConfirmSheet.vue'
 import {
   amountTone,
   formatBusinessDate,
@@ -55,6 +57,14 @@ const form = reactive({
   businessDate: today,
   note: ''
 })
+
+const { discardOpen, requestClose, resolveDiscard } = useUnsavedSheet(
+  () => requestId.value,
+  () => sheet.value !== null && sheet.value !== 'detail',
+  () => isSaving.value,
+  () => ({ ...form }),
+  closeSheet
+)
 
 const hasHolding = computed(() => (overview.value?.grams ?? 0) > 0)
 
@@ -184,15 +194,16 @@ async function refreshQuoteOnEnter(): Promise<void> {
   isRefreshing.value = true
 
   try {
-    // 后台定时刷新为每小时一次；进入贵金属页面时再取一次最新报价。
-    await refreshGoldQuote()
-  } catch {
-    // 失败原因由服务端记录在持仓状态中，下面重新读取以显示失败提示。
+    try {
+      // 后台定时刷新为每小时一次；进入贵金属页面时再取一次最新报价。
+      await refreshGoldQuote()
+    } catch {
+      // 失败原因由服务端记录在持仓状态中，下面重新读取以显示失败提示。
+    }
+    await loadOverview()
   } finally {
     isRefreshing.value = false
   }
-
-  await loadOverview()
 }
 
 async function loadOverview(): Promise<void> {
@@ -225,12 +236,14 @@ async function refreshQuote(): Promise<void> {
 
   try {
     const result = await refreshGoldQuote()
+    await loadOverview()
+    if (!overview.value) return
+
     const summary = result.updated
       ? `报价已更新：¥${formatMoney(result.quote)} / 克（${formatBusinessDate(result.quoteDate)}）。`
       : `报价已是最新：¥${formatMoney(result.quote)} / 克。`
     if (result.updated) toast.success(summary)
     else toast.info(summary)
-    await loadOverview()
   } catch (error) {
     if (error instanceof ApiError && error.status === 409) {
       await loadOverview()
@@ -745,7 +758,7 @@ function goBack(): void {
       :open="sheet === 'detail'"
       :title="sheetTitle"
       :subtitle="sheetSubtitle"
-      @close="closeSheet"
+      @close="requestClose"
     >
       <template v-if="overview">
         <div class="detail-metrics">
@@ -791,7 +804,7 @@ function goBack(): void {
       :title="sheetTitle"
       :subtitle="sheetSubtitle"
       :close-disabled="isSaving"
-      @close="closeSheet"
+      @close="requestClose"
     >
       <div class="sheet-summary">
         <div class="summary-line">
@@ -913,7 +926,7 @@ function goBack(): void {
         <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
 
         <div class="form-actions">
-          <button type="button" class="secondary-button" :disabled="isSaving" @click="closeSheet">
+          <button type="button" class="secondary-button" :disabled="isSaving" @click="requestClose">
             取消
           </button>
           <LoadingButton class="primary-button" type="submit" :loading="isSaving" :disabled="!canSubmit" loading-label="保存中…">
@@ -922,6 +935,16 @@ function goBack(): void {
         </div>
       </form>
     </BottomSheet>
+    <ConfirmSheet
+      :open="discardOpen"
+      title="放弃修改？"
+      message="离开后，本次填写的内容会丢失。"
+      confirm-label="放弃修改"
+      cancel-label="继续编辑"
+      danger
+      @confirm="resolveDiscard(true)"
+      @cancel="resolveDiscard(false)"
+    />
     <AppNav />
   </main>
 </template>

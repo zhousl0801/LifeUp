@@ -10,9 +10,5 @@ import UpdateBanner from './components/UpdateBanner.vue'
   <PendingMutationNotice />
   <UpdateBanner />
   <AppMessage />
-  <RouterView v-slot="{ Component }">
-    <Transition name="page" mode="out-in">
-      <component :is="Component" />
-    </Transition>
-  </RouterView>
+  <RouterView />
 </template>

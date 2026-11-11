@@ -1,6 +1,12 @@
 <script lang="ts">
 // 多个 sheet 叠加时，只让最上层处理 Tab / Escape，避免下层同时抢焦点。
-const openSheets: symbol[] = []
+type OpenSheet = {
+  element: () => HTMLElement | null
+  previousFocus: HTMLElement | null
+}
+
+const openSheets: OpenSheet[] = []
+let previousOverflow = ''
 </script>
 
 <script setup lang="ts">
@@ -19,13 +25,12 @@ const emit = defineEmits<{
 }>()
 
 const sheetId = useId()
-const instanceId = Symbol('sheet')
 const sheet = ref<HTMLElement | null>(null)
 const dragY = ref(0)
 const dragging = ref(false)
-let previousOverflow = ''
-let previousFocus: HTMLElement | null = null
+const registration: OpenSheet = { element: () => sheet.value, previousFocus: null }
 let dragStartY: number | null = null
+let dragPointerId: number | null = null
 let wasOpen = false
 
 watch(
@@ -34,26 +39,19 @@ watch(
     if (open) {
       wasOpen = true
 
-      if (!openSheets.includes(instanceId)) {
-        openSheets.push(instanceId)
+      if (openSheets.length === 0) {
+        previousOverflow = document.body.style.overflow
+        document.body.style.overflow = 'hidden'
       }
-      previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
-      previousOverflow = document.body.style.overflow
-      document.body.style.overflow = 'hidden'
-      dragY.value = 0
+      openSheets.push(registration)
+      registration.previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      resetDrag()
       await nextTick()
       // 不自动聚焦输入框，避免打开 sheet 就弹出键盘；先把焦点放在对话框本身。
-      sheet.value?.focus()
+      if (openSheets.at(-1) === registration) sheet.value?.focus()
     } else if (wasOpen) {
       wasOpen = false
       unregisterSheet()
-      document.body.style.overflow = previousOverflow
-
-      if (previousFocus?.isConnected) {
-        previousFocus.focus()
-      }
-
-      previousFocus = null
     }
   },
   { immediate: true }
@@ -66,14 +64,30 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleKeydown)
   unregisterSheet()
-  document.body.style.overflow = previousOverflow
 })
 
 function unregisterSheet(): void {
-  const index = openSheets.indexOf(instanceId)
+  const index = openSheets.indexOf(registration)
+  if (index < 0) return
 
-  if (index >= 0) {
-    openSheets.splice(index, 1)
+  const wasTop = index === openSheets.length - 1
+  const previousFocus = registration.previousFocus
+  const closingElement = sheet.value
+  openSheets.splice(index, 1)
+  registration.previousFocus = null
+
+  for (const upper of openSheets.slice(index)) {
+    if (closingElement?.contains(upper.previousFocus)) upper.previousFocus = previousFocus
+  }
+
+  if (openSheets.length === 0) document.body.style.overflow = previousOverflow
+  if (!wasTop) return
+
+  const nextSheet = openSheets.at(-1)?.element()
+  if (previousFocus?.isConnected && (!nextSheet || nextSheet.contains(previousFocus))) {
+    previousFocus.focus()
+  } else {
+    nextSheet?.focus()
   }
 }
 
@@ -97,7 +111,7 @@ function focusables(): HTMLElement[] {
 }
 
 function handleKeydown(event: KeyboardEvent): void {
-  if (!props.open || openSheets[openSheets.length - 1] !== instanceId) {
+  if (!props.open || openSheets.at(-1) !== registration) {
     return
   }
 
@@ -132,10 +146,11 @@ function handleKeydown(event: KeyboardEvent): void {
 }
 
 function startDrag(event: PointerEvent): void {
-  if (props.closeDisabled) {
+  if (props.closeDisabled || dragging.value || event.button !== 0) {
     return
   }
 
+  dragPointerId = event.pointerId
   dragStartY = event.clientY
   dragging.value = true
   dragY.value = 0
@@ -143,28 +158,40 @@ function startDrag(event: PointerEvent): void {
 }
 
 function moveDrag(event: PointerEvent): void {
-  if (!dragging.value || dragStartY === null) {
+  if (event.pointerId !== dragPointerId || dragStartY === null) {
     return
   }
 
   dragY.value = Math.max(0, event.clientY - dragStartY)
 }
 
-function endDrag(): void {
-  if (!dragging.value) {
+function resetDrag(): void {
+  dragging.value = false
+  dragStartY = null
+  dragPointerId = null
+  dragY.value = 0
+}
+
+function cancelDrag(event: PointerEvent): void {
+  if (event.pointerId === dragPointerId) resetDrag()
+}
+
+async function endDrag(event: PointerEvent): Promise<void> {
+  if (event.pointerId !== dragPointerId) return
+
+  if (dragY.value <= 96 || props.closeDisabled) {
+    resetDrag()
     return
   }
 
   dragging.value = false
   dragStartY = null
+  dragPointerId = null
+  close()
+  await nextTick()
 
-  if (dragY.value > 96) {
-    dragY.value = 0
-    close()
-    return
-  }
-
-  dragY.value = 0
+  // When closing opens a confirmation instead, return the underlying sheet to rest.
+  if (props.open) resetDrag()
 }
 </script>
 
@@ -176,7 +203,7 @@ function endDrag(): void {
           ref="sheet"
           class="sheet"
           :class="{ dragging }"
-          :style="dragY > 0 ? { transform: `translateY(${dragY}px)` } : undefined"
+          :style="{ '--sheet-drag-y': `${dragY}px` }"
           role="dialog"
           aria-modal="true"
           :aria-labelledby="sheetId"
@@ -188,7 +215,8 @@ function endDrag(): void {
             @pointerdown="startDrag"
             @pointermove="moveDrag"
             @pointerup="endDrag"
-            @pointercancel="endDrag"
+            @pointercancel="cancelDrag"
+            @lostpointercapture="cancelDrag"
           >
             <span />
           </div>
@@ -236,6 +264,7 @@ function endDrag(): void {
   background: var(--color-bg-surface);
   box-shadow: 0 -8px 30px var(--color-shadow);
   outline: none;
+  transform: translateY(var(--sheet-drag-y, 0px));
   transition: transform var(--motion-sheet) var(--ease-sheet);
 }
 
@@ -245,7 +274,7 @@ function endDrag(): void {
 
 .sheet-enter-active,
 .sheet-leave-active {
-  transition: opacity var(--motion-base) ease;
+  transition: opacity var(--motion-sheet) ease;
 }
 
 .sheet-enter-from,

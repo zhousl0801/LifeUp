@@ -127,59 +127,22 @@ const activePercent = computed(() => {
   const row = activeRow.value
   return row.configured && !row.notHeld ? row.percent : null
 })
-let swipeStart: Touch | undefined
 let cardAnimation: Animation | undefined
-const dragOffset = ref(0)
 
-function switchCard(step: number, focusCard = false) {
+function switchCard(step: number, fromKeyboard = false) {
   const next = activeIndex.value + step
   if (next < 0 || next >= rows.value.length) return
 
   activeIndex.value = next
   cardAnimation?.cancel()
-  if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+  if (!fromKeyboard && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
     cardAnimation = cardElement.value?.animate?.([
       { transform: `translateY(${step * 30}px) rotate(${step * 5}deg)` },
       { transform: 'translateY(0) rotate(0)' }
     ], { duration: 240, easing: 'ease-out' })
   }
 
-  if (focusCard) void nextTick(() => cardElement.value?.focus({ preventScroll: true }))
-}
-
-function startSwipe(event: TouchEvent) {
-  swipeStart = event.touches.length === 1 ? event.touches[0] : undefined
-}
-
-function moveSwipe(event: TouchEvent) {
-  const start = swipeStart
-  const touch = event.touches[0]
-  if (!start || event.touches.length !== 1 || touch?.identifier !== start.identifier) return
-
-  const dy = touch.clientY - start.clientY
-  dragOffset.value = Math.abs(dy) > Math.abs(touch.clientX - start.clientX)
-    ? Math.max(-24, Math.min(24, dy / 3)) : 0
-}
-
-function cancelSwipe() {
-  swipeStart = undefined
-  dragOffset.value = 0
-}
-
-function finishSwipe(event: TouchEvent) {
-  const start = swipeStart
-  cancelSwipe()
-  if (!start) return
-
-  const end = Array.from(event.changedTouches).find((touch) => touch.identifier === start.identifier)
-  if (!end) return
-
-  const dx = end.clientX - start.clientX
-  const dy = end.clientY - start.clientY
-  if (Math.abs(dy) < 36 || Math.abs(dy) <= Math.abs(dx)) return
-
-  if (event.cancelable) event.preventDefault()
-  switchCard(dy < 0 ? 1 : -1)
+  if (fromKeyboard) void nextTick(() => cardElement.value?.focus({ preventScroll: true }))
 }
 
 const barLabel = computed(() => {
@@ -246,13 +209,7 @@ function changeTone(row: DistributionRow): string {
     <h2 class="distribution-head">资产分布</h2>
 
     <template v-if="cards">
-      <div
-        class="card-deck"
-        @touchstart.passive="startSwipe"
-        @touchmove.passive="moveSwipe"
-        @touchend="finishSwipe"
-        @touchcancel="cancelSwipe"
-      >
+      <div class="card-deck">
         <template v-for="{ side, step, row } in adjacentCards" :key="side">
           <button
             v-if="row"
@@ -271,11 +228,11 @@ function changeTone(row: DistributionRow): string {
           ref="cardElement"
           class="distribution-card"
           :class="`card-${activeRow.key}`"
-          :style="{ '--share': `${Math.min(100, Math.max(0, activePercent ?? 0))}%`, '--card-drag': `${dragOffset}px` }"
+          :style="{ '--share': `${Math.min(100, Math.max(0, activePercent ?? 0))}%` }"
           :aria-label="`${activeRow.label}资产`"
           tabindex="-1"
-          @keydown.up.prevent="switchCard(-1)"
-          @keydown.down.prevent="switchCard(1)"
+          @keydown.up.prevent="switchCard(-1, true)"
+          @keydown.down.prevent="switchCard(1, true)"
         >
           <svg
             v-show="activePercent !== null && activePercent > 0"
@@ -423,7 +380,6 @@ function changeTone(row: DistributionRow): string {
   position: relative;
   isolation: isolate;
   padding-block: var(--card-peek-space);
-  touch-action: pan-x pinch-zoom;
 }
 
 .distribution-card,
@@ -442,7 +398,6 @@ function changeTone(row: DistributionRow): string {
   background: #171824;
   color: #fff;
   box-shadow: 0 14px 28px -8px #090814aa, inset 0 1px #ffffff13;
-  transform: translateY(var(--card-drag));
 }
 
 .card-fund { --card-color: #a477ff; --card-highlight: #e7cdff; }

@@ -199,13 +199,18 @@ async function syncQuotes(): Promise<void> {
     const failed = run.fundFailed + run.goldFailed + run.stockFailed
     const succeeded = run.fundSucceeded + run.goldSucceeded + run.stockSucceeded
 
-    const summary = failed > 0
-      ? `行情同步完成：成功 ${succeeded} 项，失败 ${failed} 项。`
-      : `行情已同步：更新 ${run.updated} 项。`
-    if (failed > 0) toast.info(summary)
-    else toast.success(summary)
+    const [status] = await Promise.all([ledgerStore.load(), loadTrend(trendRange.value), loadChanges()])
+    if (status !== 'ready' || trendError.value || dayChangeError.value || monthChangeError.value) {
+      quoteError.value = failed > 0
+        ? `行情刷新失败 ${failed} 项，且页面数据未能完整重新加载。`
+        : '行情请求已完成，但页面数据未能完整重新加载。'
+      return
+    }
 
-    await Promise.all([ledgerStore.load(), loadTrend(trendRange.value), loadChanges()])
+    if (failed > 0) toast.info(`行情刷新结果：成功 ${succeeded} 项，失败 ${failed} 项。`)
+    else if (succeeded === 0) toast.info('暂无可刷新的行情。')
+    else if (run.updated === 0) toast.info('行情已是最新。')
+    else toast.success(`行情已更新：更新 ${run.updated} 项。`)
   } catch (error) {
     quoteError.value = getApiErrorMessage(error, '行情同步失败，请稍后重试。')
   } finally {
@@ -258,9 +263,9 @@ onBeforeUnmount(() => {
 
       <p v-if="quoteError" class="sync-note error" role="alert">{{ quoteError }}</p>
 
-      <LoadingState v-if="isLoading" variant="hero" label="正在读取账本" />
+      <LoadingState v-if="isLoading && !overview" variant="hero" label="正在读取账本" />
 
-      <template v-if="isLoading">
+      <template v-if="isLoading && !overview">
         <section class="month-flow">
           <LoadingState variant="text" :rows="3" compact label="正在读取本月收支" />
         </section>
@@ -375,7 +380,7 @@ onBeforeUnmount(() => {
 
     <p v-if="activeChangeError" class="home-error">{{ activeChangeError }}</p>
 
-    <template v-if="!isLoading && !errorMessage && overview">
+    <template v-if="!errorMessage && overview">
       <section class="month-flow" aria-label="本月收支">
         <div class="month-flow-values">
           <div>

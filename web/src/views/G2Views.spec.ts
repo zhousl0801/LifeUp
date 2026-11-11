@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
   refresh: vi.fn()
 }))
 
-vi.mock('vue-router', () => ({ useRoute: () => ({ params: {}, path: '/funds' }), useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }))
+vi.mock('vue-router', () => ({ onBeforeRouteLeave: vi.fn(), useRoute: () => ({ params: {}, path: '/funds' }), useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }))
 vi.mock('../api/funds', () => ({
   fetchFundOverview: mocks.overview,
   buyFund: mocks.buy,

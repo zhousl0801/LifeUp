@@ -15,10 +15,11 @@ const mocks = vi.hoisted(() => ({
   refresh: vi.fn(),
   refreshOne: vi.fn(),
   quote: vi.fn(),
-  ledger: vi.fn()
+  ledger: vi.fn(),
+  beforeRouteLeave: vi.fn<(guard: () => boolean | Promise<boolean>) => void>()
 }))
 
-vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }))
+vi.mock('vue-router', () => ({ onBeforeRouteLeave: mocks.beforeRouteLeave, useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }))
 vi.mock('../api/stocks', () => ({
   fetchStockOverview: mocks.overview,
   searchStocks: mocks.search,
@@ -408,5 +409,42 @@ test('holding sheet takes cost per share and picks up the latest quote automatic
     cost: 27720,
     price: 2.435
   })
+  view.unmount()
+})
+
+test('asks before discarding an edited stock trade and keeps fields when continuing', async () => {
+  const view = mount(StocksView, { attachTo: document.body })
+  await flushPromises()
+
+  await view.get('.position-row').trigger('click')
+  const buy = Array.from(document.querySelectorAll<HTMLButtonElement>('.sheet button'))
+    .find(button => button.textContent?.trim() === '买入')!
+  buy.click()
+  await flushPromises()
+  const shares = document.querySelector<HTMLInputElement>('.sheet form input')!
+  shares.value = '10'
+  shares.dispatchEvent(new Event('input', { bubbles: true }))
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+  await flushPromises()
+
+  const action = (label: string) => Array.from(document.querySelectorAll<HTMLButtonElement>('.sheet button'))
+    .find(button => button.textContent?.trim() === label)
+  expect(action('继续编辑')).toBeDefined()
+  action('继续编辑')!.click()
+  await flushPromises()
+  expect(shares.isConnected).toBe(true)
+  expect(shares.value).toBe('10')
+
+  const attemptLeave = mocks.beforeRouteLeave.mock.lastCall![0]()
+  await flushPromises()
+  action('继续编辑')!.click()
+  expect(await attemptLeave).toBe(false)
+  await flushPromises()
+
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+  await flushPromises()
+  action('放弃修改')!.click()
+  await flushPromises()
+  expect(shares.isConnected).toBe(false)
   view.unmount()
 })

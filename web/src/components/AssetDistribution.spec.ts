@@ -36,7 +36,7 @@ const stubs = {
   RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' }
 }
 
-test('switches the home card vertically or by tapping an adjacent card corner', async () => {
+test('keeps vertical swipes for scrolling and switches when tapping an adjacent card', async () => {
   const view = mount(AssetDistribution, {
     props: {
       overview: { ...overview, stock: { ...overview.stock, notHeld: true } },
@@ -58,10 +58,12 @@ test('switches the home card vertically or by tapping an adjacent card corner', 
   await swipe(-80, 0)
   expect(card.attributes('aria-label')).toBe('现金资产')
   await swipe(4, -80)
+  expect(card.attributes('aria-label')).toBe('现金资产')
+  await select('基金')
   expect(card.text()).toContain('暂未录入')
   expect(card.get('a').attributes('href')).toBe('/funds')
   expect(view.findAll('button').map((button) => button.attributes('aria-label'))).toEqual(['现金', '股票'])
-  await swipe(4, 80)
+  await select('现金')
   expect(card.attributes('aria-label')).toBe('现金资产')
   await select('基金')
   await select('股票')

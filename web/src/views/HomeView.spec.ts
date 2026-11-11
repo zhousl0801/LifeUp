@@ -259,7 +259,14 @@ test('syncs market quotes from the home header and reloads the overview', async 
   const view = mount(HomeView, { global: { plugins: [createPinia()] } })
   await flushPromises()
 
+  let finishReload!: (value: ReturnType<typeof overview>) => void
+  mocks.ledger.mockReturnValueOnce(new Promise(resolve => { finishReload = resolve }))
   await view.find('.sync-button').trigger('click')
+  await flushPromises()
+  expect(messages.value).toHaveLength(0)
+  expect(view.get('.sync-button').attributes('disabled')).toBeDefined()
+
+  finishReload(overview(start))
   await flushPromises()
 
   expect(mocks.quotes).toHaveBeenCalledWith('all')

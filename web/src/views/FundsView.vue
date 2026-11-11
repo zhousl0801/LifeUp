@@ -30,6 +30,7 @@ import LoadingState from '../components/LoadingState.vue'
 import BackButton from '../components/BackButton.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import BottomSheet from '../components/BottomSheet.vue'
+import { useUnsavedSheet } from '../composables/useUnsavedSheet'
 import ConfirmSheet from '../components/ConfirmSheet.vue'
 import FundReturnsPanel from '../components/FundReturnsPanel.vue'
 import UpdateRing from '../components/UpdateRing.vue'
@@ -150,6 +151,14 @@ const form = reactive({
   priorProfit: '',
   note: ''
 })
+
+const { discardOpen, requestClose, resolveDiscard } = useUnsavedSheet(
+  () => requestId.value,
+  () => sheet.value !== null && sheet.value !== 'buyConfirm',
+  () => isSaving.value,
+  () => ({ ...form, search: fundSearch.value }),
+  closeSheet
+)
 
 const selectedPosition = computed<FundPosition | null>(() =>
   overview.value?.positions.find((position) => position.id === form.positionId) ?? null)
@@ -2372,7 +2381,7 @@ function goBack(): void {
       :title="sheetTitle"
       :subtitle="sheetSubtitle"
       :close-disabled="isSaving"
-      @close="closeSheet"
+      @close="requestClose"
     >
       <div class="sheet-summary">
         <div v-if="sheet !== 'buyConfirm'" class="summary-line">
@@ -2621,7 +2630,7 @@ function goBack(): void {
         <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
 
         <div class="form-actions">
-          <button type="button" class="secondary-button" :disabled="isSaving" @click="closeSheet">
+          <button type="button" class="secondary-button" :disabled="isSaving" @click="requestClose">
             取消
           </button>
           <LoadingButton class="primary-button" type="submit" :loading="isSaving" :disabled="!canSubmit" loading-label="保存中…">
@@ -2676,6 +2685,16 @@ function goBack(): void {
       :busy="groupBusy"
       @confirm="confirmRemoveGroup"
       @cancel="pendingGroupRemoval = null"
+    />
+    <ConfirmSheet
+      :open="discardOpen"
+      title="放弃修改？"
+      message="离开后，本次填写的内容会丢失。"
+      confirm-label="放弃修改"
+      cancel-label="继续编辑"
+      danger
+      @confirm="resolveDiscard(true)"
+      @cancel="resolveDiscard(false)"
     />
     <AppNav />
   </main>
