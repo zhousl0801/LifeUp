@@ -9,6 +9,11 @@ public sealed class QuoteProviderOptions
 
     public string GoldBaseUrl { get; set; } = "https://mybank.icbc.com.cn/";
 
+    // 上金所 Au99.99 现货报价走东方财富行情接口，与股票行情同一套站点，作为积存金估值的主来源。
+    public string GoldSgeBaseUrl { get; set; } = "https://push2.eastmoney.com/";
+
+    public string GoldSgeFallbackBaseUrl { get; set; } = "https://push2delay.eastmoney.com/";
+
     public string StockBaseUrl { get; set; } = "https://push2.eastmoney.com/";
 
     // 主站偶发整机空响应（连上后不回包），备用站点字段完全一致，价格可能略有延迟。
