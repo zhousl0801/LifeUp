@@ -46,13 +46,15 @@ const hero = {
   pointerShadow: 'rgba(0, 0, 0, 0.22)'
 } as const
 
-// 浅色主题的 Hero 底色更亮，面积填充和指针需要相应减弱，避免像一块浅色面板。
+// 浅色主题的 Hero 是白日紫：底色更亮更紫，指针和文字需要更亮，曲线仍用薄荷绿，
+// 面积改用手白光，避免薄荷绿叠在紫色上发灰。
 const lightHero = {
   ...hero,
-  text: '#C2BCE0',
-  pointer: '#C2BCE0',
-  areaStrong: 'rgba(124, 231, 177, 0.20)',
-  pointerShadow: 'rgba(38, 32, 71, 0.16)'
+  text: '#F1EDFF',
+  pointer: '#F1EDFF',
+  areaStrong: 'rgba(255, 255, 255, 0.16)',
+  areaSoft: 'rgba(255, 255, 255, 0.01)',
+  pointerShadow: 'rgba(30, 24, 90, 0.20)'
 } as const
 
 export type ChartThemeVariant = 'default' | 'hero'

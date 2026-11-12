@@ -557,15 +557,15 @@ onBeforeUnmount(() => {
   margin: 14px 0 0;
   padding: 9px 12px;
   border-radius: var(--radius-tag);
-  background: var(--color-accent-mint-soft);
-  color: var(--color-accent-mint);
+  background: var(--color-hero-note-bg);
+  color: var(--color-hero-note-text);
   font-size: var(--text-caption);
   line-height: 1.6;
 }
 
 .sync-note.error {
-  background: rgba(255, 122, 122, 0.12);
-  color: #FF9B9B;
+  background: var(--color-hero-note-error-bg);
+  color: var(--color-hero-note-error-text);
 }
 
 .hero-error {
@@ -626,7 +626,7 @@ onBeforeUnmount(() => {
 .tag {
   padding: 2px 7px;
   border-radius: var(--radius-pill);
-  background: var(--color-hero-surface);
+  background: var(--color-hero-chip);
   color: var(--color-hero-text-secondary);
   font-size: var(--text-caption);
 }
@@ -676,7 +676,7 @@ onBeforeUnmount(() => {
   padding: 7px 12px;
   border: 0;
   border-radius: var(--radius-pill);
-  background: var(--color-hero-surface);
+  background: var(--color-hero-chip);
   color: var(--color-hero-text-secondary);
   font-size: var(--text-footnote);
   line-height: 1.4;
@@ -706,7 +706,7 @@ onBeforeUnmount(() => {
   gap: 2px;
   padding: 3px;
   border-radius: var(--radius-pill);
-  background: var(--color-hero-surface);
+  background: var(--color-hero-chip);
 }
 
 .change-scope button {
@@ -721,8 +721,8 @@ onBeforeUnmount(() => {
 }
 
 .change-scope button.active {
-  background: var(--color-hero-surface-strong);
-  color: var(--color-hero-text);
+  background: var(--color-hero-active);
+  color: var(--color-hero-active-text);
   font-weight: 600;
 }
 
@@ -832,7 +832,7 @@ onBeforeUnmount(() => {
   margin-top: 12px;
   padding: 4px;
   border-radius: var(--radius-pill);
-  background: var(--color-hero-surface);
+  background: var(--color-hero-chip);
 }
 
 .range-button {

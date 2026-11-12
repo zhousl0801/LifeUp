@@ -688,7 +688,8 @@ summary:focus-visible {
   .skeleton,
   .app-nav,
   .trend-panel,
-  .chart-card {
+  .chart-card,
+  .distribution-card {
     border: 1px solid CanvasText;
   }
 

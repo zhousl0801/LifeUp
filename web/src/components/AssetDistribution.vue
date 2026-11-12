@@ -200,9 +200,9 @@ function changeTone(row: DistributionRow): string {
         >
           <defs>
             <linearGradient :id="`${gradientId}-${row.key}`" gradientUnits="userSpaceOnUse" x1="-38" x2="3" y1="0" y2="0">
-              <stop offset="0" style="stop-color: var(--card-color)" stop-opacity="0" />
-              <stop offset=".67" style="stop-color: var(--card-color)" stop-opacity=".15" />
-              <stop offset=".92" style="stop-color: var(--card-color)" stop-opacity=".64" />
+              <stop offset="0" style="stop-color: var(--card-color); stop-opacity: 0" />
+              <stop offset=".67" style="stop-color: var(--card-color); stop-opacity: var(--card-glow-soft)" />
+              <stop offset=".92" style="stop-color: var(--card-color); stop-opacity: var(--card-glow-strong)" />
               <stop offset="1" style="stop-color: var(--card-highlight)" />
             </linearGradient>
           </defs>
@@ -339,20 +339,42 @@ function changeTone(row: DistributionRow): string {
 .distribution-card {
   --card-color: #2be7a8;
   --card-highlight: #b5ffdf;
+  --card-accent: var(--card-highlight);
+  --card-link: var(--card-highlight);
+  --card-share: var(--card-highlight);
+  --card-halo: 0 26px 46px -26px color-mix(in srgb, var(--card-color) 55%, transparent);
+  --card-glow-soft: var(--color-asset-glow-soft);
+  --card-glow-strong: var(--color-asset-glow-strong);
+  --card-text-shadow: 0 1px 7px #10111a, 0 1px 3px #10111a;
   position: relative;
   overflow: hidden;
   isolation: isolate;
-  border: 1px solid #ffffff19;
+  border: 1px solid var(--color-asset-card-border);
   border-radius: var(--radius-card);
-  background: #171824;
-  color: #fff;
-  box-shadow: 0 14px 28px -8px #090814aa, inset 0 1px #ffffff13;
+  background: linear-gradient(180deg, var(--color-asset-card-bg), var(--color-asset-card-bg-end));
+  color: var(--color-asset-card-text);
+  box-shadow: var(--card-halo), var(--color-asset-card-shadow);
 }
 
 .card-fund { --card-color: #a477ff; --card-highlight: #e7cdff; }
 .card-stock { --card-color: #fd507e; --card-highlight: #ffb191; }
 .card-providentFund { --card-color: #21c7ff; --card-highlight: #b5f3ff; }
 .card-gold { --card-color: #ffae38; --card-highlight: #fff2a1; }
+
+/* 浅色主题：白卡分层，分类色退到图标、占比、链接与流光。
+ * 选择器整体放进 :global()，否则 scoped 编译会丢掉后代部分。 */
+:global(html[data-color-scheme='light'] .distribution-card) {
+  --card-link: var(--card-accent);
+  --card-share: var(--card-accent);
+  --card-halo: 0 0 transparent;
+  --card-text-shadow: none;
+}
+
+:global(html[data-color-scheme='light'] .card-cash) { --card-accent: var(--color-asset-accent-cash); }
+:global(html[data-color-scheme='light'] .card-fund) { --card-accent: var(--color-asset-accent-fund); }
+:global(html[data-color-scheme='light'] .card-stock) { --card-accent: var(--color-asset-accent-stock); }
+:global(html[data-color-scheme='light'] .card-providentFund) { --card-accent: var(--color-asset-accent-provident); }
+:global(html[data-color-scheme='light'] .card-gold) { --card-accent: var(--color-asset-accent-gold); }
 
 .card-glow {
   position: absolute;
@@ -394,8 +416,8 @@ function changeTone(row: DistributionRow): string {
   display: grid;
   gap: 6px;
   padding: 16px 16px 10px;
-  background: linear-gradient(90deg, #10111ac7, #10111a1a 52%, #10111ab3);
-  text-shadow: 0 1px 7px #10111a, 0 1px 3px #10111a;
+  background: var(--color-asset-card-veil);
+  text-shadow: var(--card-text-shadow);
 }
 
 .card-heading,
@@ -420,7 +442,7 @@ function changeTone(row: DistributionRow): string {
 .card-heading h3 .app-icon {
   width: 18px;
   height: 18px;
-  color: var(--card-highlight);
+  color: var(--card-accent);
 }
 
 .card-share {
@@ -429,11 +451,11 @@ function changeTone(row: DistributionRow): string {
   gap: 2px;
   flex-shrink: 0;
   font-size: .75rem;
-  color: #e2e1ee;
+  color: var(--color-asset-card-note);
 }
 
 .card-share strong {
-  color: #fff;
+  color: var(--card-share);
   font-size: 1.25rem;
   line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -454,7 +476,7 @@ function changeTone(row: DistributionRow): string {
 .card-note {
   display: grid;
   gap: 3px;
-  color: #e2e1ee;
+  color: var(--color-asset-card-note);
   font-size: .75rem;
   line-height: 1.35;
 }
@@ -464,10 +486,22 @@ function changeTone(row: DistributionRow): string {
   align-items: center;
   gap: 2px;
   min-height: var(--touch-target);
-  color: #fff;
+  color: var(--card-link);
   font-size: .75rem;
   text-decoration: none;
   white-space: nowrap;
+  transition: opacity var(--motion-fast) ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .card-link:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+}
+
+.card-link:active {
+  opacity: .7;
 }
 
 .card-link .app-icon {
@@ -476,12 +510,16 @@ function changeTone(row: DistributionRow): string {
 }
 
 .card-link:focus-visible {
-  outline: 2px solid var(--card-highlight);
+  outline: 2px solid var(--card-accent);
   outline-offset: 2px;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .card-glow-edge { transition: none; }
+}
+
+@media (forced-colors: active) {
+  .card-glow { display: none; }
 }
 
 .ratio-bar {
