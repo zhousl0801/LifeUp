@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using LifeUp.Application.Capital;
 using LifeUp.Application.Cash;
 using LifeUp.Application.History;
 using LifeUp.Application.Funds;
@@ -51,6 +52,9 @@ builder.Services.AddSingleton<ReplayDataCache>();
 builder.Services.AddScoped<LedgerService>();
 builder.Services.AddScoped<TrendService>();
 builder.Services.AddScoped<MonthChangeService>();
+builder.Services.AddScoped<CapitalDefaultResolver>();
+builder.Services.AddScoped<CapitalProjectionCalculator>();
+builder.Services.AddScoped<CapitalGoalService>();
 builder.Services.AddScoped<LedgerEntryService>();
 builder.Services.AddScoped<EntryStatsService>();
 builder.Services.AddScoped<CategoryService>();
