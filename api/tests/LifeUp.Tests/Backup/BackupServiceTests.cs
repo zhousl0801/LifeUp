@@ -94,6 +94,67 @@ public sealed class BackupServiceTests
     }
 
     [Fact]
+    public async Task BackupRoundTrip_PreservesCapitalGoal()
+    {
+        await using var source = await CreateSourceAsync();
+        var goal = new CapitalGoal(1_000_000m, 12_000m, 7_200m, 2_000m, 3m, 2m, 5m, 1.5m);
+        var ledger = await source.Db.Ledgers.SingleAsync();
+        ledger.SetCapitalGoal(goal, Now);
+        await source.Db.SaveChangesAsync();
+
+        var export = (await source.Backup.ExportAsync(CancellationToken.None))!;
+
+        Assert.Equal(4, export.Version);
+        Assert.NotNull(export.Ledger.CapitalGoalJson);
+
+        await using var targetDb = CreateDb();
+        var target = new BackupService(targetDb, source.Dates);
+        var validation = await target.ValidateAsync(export, CancellationToken.None);
+        Assert.True(validation.IsValid, string.Join(" ", validation.Errors));
+
+        await target.RestoreAsync(
+            new RestoreBackupRequest(export, validation.ValidationToken!, false),
+            CancellationToken.None);
+
+        var restored = await targetDb.Ledgers.SingleAsync();
+        Assert.Equal(goal, restored.GetCapitalGoal());
+    }
+
+    [Fact]
+    public async Task Restore_WithInvalidCapitalGoalJson_FailsValidation()
+    {
+        await using var source = await CreateSourceAsync();
+        var export = (await source.Backup.ExportAsync(CancellationToken.None))!;
+        export.Ledger.CapitalGoalJson = "{\"targetAmount\":-1}";
+
+        var validation = await source.Backup.ValidateAsync(export, CancellationToken.None);
+
+        Assert.False(validation.IsValid);
+        Assert.Contains(validation.Errors, error => error.Contains("资本目标"));
+    }
+
+    [Fact]
+    public async Task Restore_WithVersion3WithoutCapitalGoal_Succeeds()
+    {
+        await using var source = await CreateSourceAsync();
+        var export = (await source.Backup.ExportAsync(CancellationToken.None))!;
+        export.Version = 3;
+        export.Ledger.CapitalGoalJson = null;
+
+        await using var targetDb = CreateDb();
+        var target = new BackupService(targetDb, source.Dates);
+        var validation = await target.ValidateAsync(export, CancellationToken.None);
+        Assert.True(validation.IsValid, string.Join(" ", validation.Errors));
+
+        await target.RestoreAsync(
+            new RestoreBackupRequest(export, validation.ValidationToken!, false),
+            CancellationToken.None);
+
+        var restored = await targetDb.Ledgers.SingleAsync();
+        Assert.Null(restored.GetCapitalGoal());
+    }
+
+    [Fact]
     public async Task RestoringFlatBackup_AddsGroupsAndPreservesExistingCategoryIdsAndBalance()
     {
         await using var source = await CreateSourceAsync();

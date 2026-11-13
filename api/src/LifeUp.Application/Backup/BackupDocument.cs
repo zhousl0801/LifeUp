@@ -3,7 +3,7 @@ namespace LifeUp.Application.Backup;
 public sealed class BackupDocument
 {
     public const string CurrentFormat = "lifeup-backup";
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
     public const int MinimumSupportedVersion = 1;
 
     public string Format { get; set; } = CurrentFormat;
@@ -59,6 +59,7 @@ public sealed class BackupLedger
     public bool GoldNotHeld { get; set; }
     public bool StockNotHeld { get; set; }
     public string? MonthlyBudgetsJson { get; set; }
+    public string? CapitalGoalJson { get; set; }
 }
 
 public sealed class BackupCashAccount

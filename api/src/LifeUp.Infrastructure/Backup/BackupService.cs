@@ -480,6 +480,11 @@ public sealed class BackupService
             errors.Add("备份中的月度预算无效。");
         }
 
+        if (!parsed.Ledger.HasValidCapitalGoal())
+        {
+            errors.Add("备份中的资本目标设置无效。");
+        }
+
         if (parsed.CashAccount.Id == Guid.Empty || parsed.CashAccount.LedgerId != parsed.Ledger.Id)
         {
             errors.Add("现金账户缺少有效标识或不属于该账本。");
