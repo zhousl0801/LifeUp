@@ -1,5 +1,10 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import AppIcon from './AppIcon.vue'
+
+const route = useRoute()
+const isGoal = computed(() => route.name === 'capital' || route.name === 'plans')
 </script>
 
 <template>
@@ -15,10 +20,9 @@ import AppIcon from './AppIcon.vue'
         <svg class="nav-icon nav-icon-filled" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2.5 10.5V21h7v-6h5v6h7V10.5Z" fill="currentColor" /><path class="knockout" d="M10 15h4v6h-4z" /></svg>
         <span>总览</span>
       </RouterLink>
-      <RouterLink class="nav-item" active-class="active" to="/plans">
-        <svg class="nav-icon nav-icon-outline" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" /><path d="M12 7v5l3 2" /></svg>
-        <svg class="nav-icon nav-icon-filled" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="currentColor" /><path class="knockout-line" d="M12 7v5l3 2" /></svg>
-        <span>计划</span>
+      <RouterLink class="nav-item" :class="{ active: isGoal }" to="/capital">
+        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="4" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+        <span>目标</span>
       </RouterLink>
       <RouterLink class="nav-item" active-class="active" to="/mine">
         <svg class="nav-icon nav-icon-outline" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M4 21v-2a8 8 0 0 1 16 0v2" /></svg>

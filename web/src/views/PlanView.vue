@@ -25,6 +25,7 @@ import BackButton from '../components/BackButton.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import ConfirmSheet from '../components/ConfirmSheet.vue'
+import GoalTabs from '../components/GoalTabs.vue'
 import LoadingState from '../components/LoadingState.vue'
 import PlanCalendar from '../components/PlanCalendar.vue'
 import { createRequestId } from '../utils/request'
@@ -993,6 +994,7 @@ function goBack(): void {
 
 <template>
   <main class="page plan-page with-nav">
+    <GoalTabs />
     <header class="plan-header">
       <BackButton @back="goBack" />
       <h1>自动记账</h1>

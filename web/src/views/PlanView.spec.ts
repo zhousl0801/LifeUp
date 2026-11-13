@@ -19,7 +19,11 @@ const mocks = vi.hoisted(() => ({
   skip: vi.fn()
 }))
 
-vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }), useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }))
+vi.mock('vue-router', () => ({
+  RouterLink: { props: ['to'], template: '<a><slot /></a>' },
+  useRoute: () => ({ name: 'plans', query: {} }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() })
+}))
 vi.mock('../api/plans', () => ({
   fetchPlanOverview: mocks.overview,
   fetchPlanOccurrences: mocks.occurrences,
