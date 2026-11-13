@@ -1,6 +1,12 @@
 import { mount, flushPromises } from '@vue/test-utils'
-import { beforeEach, expect, test } from 'vitest'
+import { beforeEach, expect, test, vi } from 'vitest'
 import MineView from './MineView.vue'
+
+vi.mock('vue-router', () => ({
+  RouterLink: { props: ['to'], template: '<a><slot /></a>' },
+  useRoute: () => ({ name: 'mine', query: {} }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() })
+}))
 import { profileStorageKey } from '../utils/profile'
 import { initializeTheme, setThemeMode } from '../utils/theme'
 

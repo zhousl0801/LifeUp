@@ -28,6 +28,7 @@ vi.mock('../api/plans', () => ({ fetchPlanOverview: mocks.plans }))
 vi.mock('../api/quotes', () => ({ refreshQuotes: mocks.quotes }))
 vi.mock('vue-router', () => ({
   RouterLink: { props: ['to'], template: '<a><slot /></a>' },
+  useRoute: () => ({ name: 'home', query: {} }),
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() })
 }))
 vi.mock('../components/AssetTrendChart.vue', () => ({ default: { template: '<div class="chart-stub" />' } }))

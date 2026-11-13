@@ -15,7 +15,12 @@ const mocks = vi.hoisted(() => ({
   refresh: vi.fn()
 }))
 
-vi.mock('vue-router', () => ({ onBeforeRouteLeave: vi.fn(), useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }))
+vi.mock('vue-router', () => ({
+  RouterLink: { props: ['to'], template: '<a><slot /></a>' },
+  onBeforeRouteLeave: vi.fn(),
+  useRoute: () => ({ name: 'gold', query: {} }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() })
+}))
 vi.mock('../api/gold', () => ({
   fetchGoldOverview: mocks.overview,
   buyGold: mocks.buy,
