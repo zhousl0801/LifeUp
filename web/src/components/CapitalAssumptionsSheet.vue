@@ -4,7 +4,8 @@ import type {
   CapitalEffectiveInputs,
   CapitalEffectiveValue,
   CapitalGoalSettings,
-  CapitalOverview
+  CapitalOverview,
+  CapitalSuggestions
 } from '../types/capital'
 import { useUnsavedSheet } from '../composables/useUnsavedSheet'
 import { formatMoney, formatSignedMoney, parseAmount, parseSignedAmount } from '../utils/format'
@@ -30,11 +31,16 @@ const percentFields: FieldKey[] = [
   'providentAnnualReturnPercent'
 ]
 const fieldKeys: FieldKey[] = ['targetAmount', ...amountFields, ...percentFields]
+const investmentPresets = [
+  { label: '纳指100 20年 ≈13%', value: 13 },
+  { label: '标普500 20年 ≈10%', value: 10 }
+]
 
 const props = defineProps<{
   open: boolean
   settings: CapitalGoalSettings
   effective: CapitalEffectiveInputs
+  suggestions: CapitalSuggestions
   preview: CapitalOverview | null
   saving: boolean
   serverError: string | null
@@ -121,7 +127,7 @@ function toForm(settings: CapitalGoalSettings): Record<FieldKey, string> {
   const value = (number: number | null) => (number === null ? '' : String(number))
 
   return {
-    targetAmount: value(settings.targetAmount),
+    targetAmount: formatWan(settings.targetAmount),
     monthlyIncome: value(settings.monthlyIncome),
     monthlyExpense: value(settings.monthlyExpense),
     monthlyProvidentDeposit: value(settings.monthlyProvidentDeposit),
@@ -137,12 +143,8 @@ function validateFields(): void {
 
   const targetText = fields.targetAmount.trim()
 
-  if (targetText) {
-    const target = parseAmount(targetText)
-
-    if (target === null || target <= 0) {
-      errors.targetAmount = '目标金额必须大于零，最多两位小数。'
-    }
+  if (targetText && parseTarget(targetText) === null) {
+    errors.targetAmount = '目标金额必须大于零，最多四位小数（万元）。'
   }
 
   for (const key of amountFields) {
@@ -192,7 +194,7 @@ function schedulePreview(): void {
 
 function toSettings(): CapitalGoalSettings {
   return {
-    targetAmount: parseInput(fields.targetAmount, parseAmount),
+    targetAmount: parseInput(fields.targetAmount, parseTarget),
     monthlyIncome: parseInput(fields.monthlyIncome, parseAmount),
     monthlyExpense: parseInput(fields.monthlyExpense, parseAmount),
     monthlyProvidentDeposit: parseInput(fields.monthlyProvidentDeposit, parseAmount),
@@ -207,6 +209,32 @@ function parseInput(value: string, parser: (input: string) => number | null): nu
   const text = value.trim()
 
   return text ? parser(text) : null
+}
+
+function parseTarget(value: string): number | null {
+  const text = value.trim()
+
+  if (!/^\d+(?:\.\d{1,4})?$/.test(text)) {
+    return null
+  }
+
+  const wan = Number(text)
+
+  if (!Number.isFinite(wan) || wan <= 0) {
+    return null
+  }
+
+  const yuan = Math.round(wan * 10_000 * 100) / 100
+
+  return yuan <= 1_000_000_000 ? yuan : null
+}
+
+function formatWan(value: number | null): string {
+  if (value === null) {
+    return ''
+  }
+
+  return String(Number((value / 10_000).toFixed(4)))
 }
 
 function save(): void {
@@ -236,6 +264,21 @@ function resetAssumptions(): void {
   if (!hasErrors()) {
     emit('preview', toSettings())
   }
+}
+
+function applySuggestion(
+  field: 'monthlyIncome' | 'monthlyExpense' | 'monthlyProvidentDeposit',
+  value: number | null
+): void {
+  if (value === null) {
+    return
+  }
+
+  fields[field] = String(value)
+}
+
+function applyPreset(value: number): void {
+  fields.investmentAnnualReturnPercent = String(value)
 }
 
 function amountHint(value: CapitalEffectiveValue): string {
@@ -271,102 +314,157 @@ function formatNet(value: number | null): string {
   <BottomSheet
     :open="open"
     title="调整假设"
-    subtitle="留空时按最近 6 个月自动估算"
+    subtitle="目标按万元填写；留空的假设按最近 6 个月自动估算"
     :close-disabled="saving"
     @close="requestClose"
   >
     <form class="form" @submit.prevent="save">
-      <label class="field full">
-        <span>目标金额</span>
-        <input
-          v-model="fields.targetAmount"
-          aria-label="目标金额"
-          inputmode="decimal"
-          placeholder="例如 1000000"
-          autocomplete="off"
-        />
+      <div class="field full">
+        <label class="field-control">
+          <span>目标金额（万元）</span>
+          <span class="input-unit">
+            <input
+              v-model="fields.targetAmount"
+              aria-label="目标金额"
+              inputmode="decimal"
+              placeholder="例如 100"
+              autocomplete="off"
+            />
+            <i class="unit">万元</i>
+          </span>
+        </label>
         <small v-if="errors.targetAmount" class="field-error">{{ errors.targetAmount }}</small>
-        <small v-else class="hint">留空则清除目标</small>
-      </label>
+        <small v-else class="hint">例如 100 表示 100 万；留空则清除目标</small>
+      </div>
 
-      <label class="field">
-        <span>月收入</span>
-        <input v-model="fields.monthlyIncome" aria-label="月收入" inputmode="decimal" placeholder="现金到账" autocomplete="off" />
+      <div class="field">
+        <label class="field-control">
+          <span>月收入</span>
+          <input v-model="fields.monthlyIncome" aria-label="月收入" inputmode="decimal" placeholder="现金到账" autocomplete="off" />
+        </label>
         <small v-if="errors.monthlyIncome" class="field-error">{{ errors.monthlyIncome }}</small>
         <small v-else-if="!fields.monthlyIncome" class="hint">{{ amountHint(effective.monthlyIncome) }}</small>
-      </label>
+        <button
+          v-if="suggestions.income !== null"
+          type="button"
+          class="quick-fill"
+          @click.prevent="applySuggestion('monthlyIncome', suggestions.income)"
+        >
+          用计划收入 {{ formatMoney(suggestions.income) }}
+        </button>
+      </div>
 
-      <label class="field">
-        <span>月支出</span>
-        <input v-model="fields.monthlyExpense" aria-label="月支出" inputmode="decimal" placeholder="日常支出" autocomplete="off" />
+      <div class="field">
+        <label class="field-control">
+          <span>月支出</span>
+          <input v-model="fields.monthlyExpense" aria-label="月支出" inputmode="decimal" placeholder="日常支出" autocomplete="off" />
+        </label>
         <small v-if="errors.monthlyExpense" class="field-error">{{ errors.monthlyExpense }}</small>
         <small v-else-if="!fields.monthlyExpense" class="hint">{{ amountHint(effective.monthlyExpense) }}</small>
-      </label>
+        <button
+          v-if="suggestions.expense !== null"
+          type="button"
+          class="quick-fill"
+          @click.prevent="applySuggestion('monthlyExpense', suggestions.expense)"
+        >
+          用账单预设 {{ formatMoney(suggestions.expense) }}
+        </button>
+      </div>
 
-      <label class="field">
-        <span>公积金月缴存</span>
-        <input
-          v-model="fields.monthlyProvidentDeposit"
-          aria-label="公积金月缴存"
-          inputmode="decimal"
-          placeholder=""
-          autocomplete="off"
-        />
+      <div class="field">
+        <label class="field-control">
+          <span>公积金月缴存</span>
+          <input
+            v-model="fields.monthlyProvidentDeposit"
+            aria-label="公积金月缴存"
+            inputmode="decimal"
+            placeholder="0"
+            autocomplete="off"
+          />
+        </label>
         <small v-if="errors.monthlyProvidentDeposit" class="field-error">{{ errors.monthlyProvidentDeposit }}</small>
         <small v-else-if="!fields.monthlyProvidentDeposit" class="hint">{{ amountHint(effective.monthlyProvidentDeposit) }}</small>
-      </label>
+        <button
+          v-if="suggestions.providentDeposit !== null"
+          type="button"
+          class="quick-fill"
+          @click.prevent="applySuggestion('monthlyProvidentDeposit', suggestions.providentDeposit)"
+        >
+          用缴存设置 {{ formatMoney(suggestions.providentDeposit) }}
+        </button>
+      </div>
 
-      <label class="field">
-        <span>投资年化</span>
-        <input
-          v-model="fields.investmentAnnualReturnPercent"
-          aria-label="投资年化"
-          inputmode="decimal"
-          placeholder="0"
-          autocomplete="off"
-        />
-        <small v-if="errors.investmentAnnualReturnPercent" class="field-error">{{ errors.investmentAnnualReturnPercent }}</small>
-        <small v-else-if="!fields.investmentAnnualReturnPercent" class="hint">{{ percentHint(effective.investmentAnnualReturnPercent) }}</small>
-      </label>
-
-      <label class="field">
-        <span>公积金年化</span>
-        <input
-          v-model="fields.providentAnnualReturnPercent"
-          aria-label="公积金年化"
-          inputmode="decimal"
-          placeholder="1.5"
-          autocomplete="off"
-        />
+      <div class="field">
+        <label class="field-control">
+          <span>公积金年化</span>
+          <input
+            v-model="fields.providentAnnualReturnPercent"
+            aria-label="公积金年化"
+            inputmode="decimal"
+            placeholder="1.5"
+            autocomplete="off"
+          />
+        </label>
         <small v-if="errors.providentAnnualReturnPercent" class="field-error">{{ errors.providentAnnualReturnPercent }}</small>
         <small v-else-if="!fields.providentAnnualReturnPercent" class="hint">{{ percentHint(effective.providentAnnualReturnPercent) }}</small>
-      </label>
+      </div>
 
-      <label class="field">
-        <span>收入年增长</span>
-        <input
-          v-model="fields.incomeGrowthPercent"
-          aria-label="收入年增长"
-          inputmode="decimal"
-          placeholder="0"
-          autocomplete="off"
-        />
+      <div class="field">
+        <label class="field-control">
+          <span>收入年增长</span>
+          <input
+            v-model="fields.incomeGrowthPercent"
+            aria-label="收入年增长"
+            inputmode="decimal"
+            placeholder="0"
+            autocomplete="off"
+          />
+        </label>
         <small v-if="errors.incomeGrowthPercent" class="field-error">{{ errors.incomeGrowthPercent }}</small>
         <small v-else-if="!fields.incomeGrowthPercent" class="hint">{{ percentHint(effective.incomeGrowthPercent) }}</small>
-      </label>
+      </div>
 
-      <label class="field">
-        <span>支出年增长</span>
-        <input
-          v-model="fields.expenseGrowthPercent"
-          aria-label="支出年增长"
-          inputmode="decimal"
-          placeholder="0"
-          autocomplete="off"
-        />
+      <div class="field">
+        <label class="field-control">
+          <span>支出年增长</span>
+          <input
+            v-model="fields.expenseGrowthPercent"
+            aria-label="支出年增长"
+            inputmode="decimal"
+            placeholder="0"
+            autocomplete="off"
+          />
+        </label>
         <small v-if="errors.expenseGrowthPercent" class="field-error">{{ errors.expenseGrowthPercent }}</small>
         <small v-else-if="!fields.expenseGrowthPercent" class="hint">{{ percentHint(effective.expenseGrowthPercent) }}</small>
-      </label>
+      </div>
+
+      <div class="field full">
+        <label class="field-control">
+          <span>投资年化</span>
+          <input
+            v-model="fields.investmentAnnualReturnPercent"
+            aria-label="投资年化"
+            inputmode="decimal"
+            placeholder="例如 4.5"
+            autocomplete="off"
+          />
+        </label>
+        <small v-if="errors.investmentAnnualReturnPercent" class="field-error">{{ errors.investmentAnnualReturnPercent }}</small>
+        <small v-else-if="!fields.investmentAnnualReturnPercent" class="hint">{{ percentHint(effective.investmentAnnualReturnPercent) }}</small>
+        <div class="presets">
+          <button
+            v-for="preset in investmentPresets"
+            :key="preset.value"
+            type="button"
+            class="preset"
+            @click.prevent="applyPreset(preset.value)"
+          >
+            {{ preset.label }}
+          </button>
+        </div>
+        <small class="hint">历史年化参考，不代表未来收益；可手动修改</small>
+      </div>
 
       <div class="derived">
         <span>月净积累</span>
@@ -414,7 +512,11 @@ function formatNet(value: number | null): string {
   grid-column: 1 / -1;
 }
 
-.field > span {
+.field-control {
+  display: block;
+}
+
+.field-control > span:not(.input-unit) {
   display: block;
   margin-bottom: 5px;
   color: var(--color-text-secondary);
@@ -441,6 +543,27 @@ function formatNet(value: number | null): string {
   box-shadow: 0 0 0 2px var(--color-focus-ring);
 }
 
+.input-unit {
+  position: relative;
+  display: block;
+}
+
+.input-unit input {
+  padding-right: 48px;
+}
+
+.input-unit .unit {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 500;
+  pointer-events: none;
+}
+
 .hint,
 .field-error {
   display: block;
@@ -456,6 +579,38 @@ function formatNet(value: number | null): string {
 
 .field-error {
   color: var(--color-error);
+}
+
+.quick-fill,
+.preset {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  margin-top: 5px;
+  padding: 4px 9px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-subtle);
+  color: var(--color-brand);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.quick-fill:active,
+.preset:active {
+  background: var(--color-brand-soft);
+}
+
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.presets .preset {
+  margin-top: 0;
 }
 
 .derived {

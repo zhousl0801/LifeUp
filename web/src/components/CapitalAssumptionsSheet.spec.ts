@@ -1,7 +1,7 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
-import type { CapitalEffectiveInputs, CapitalGoalSettings, CapitalOverview } from '../types/capital'
+import type { CapitalEffectiveInputs, CapitalGoalSettings, CapitalOverview, CapitalSuggestions } from '../types/capital'
 import CapitalAssumptionsSheet from './CapitalAssumptionsSheet.vue'
 
 const settings: CapitalGoalSettings = {
@@ -34,10 +34,17 @@ const preview = {
 
 let view: VueWrapper | null = null
 
+const suggestions: CapitalSuggestions = {
+  income: 12_000,
+  expense: 7_200,
+  providentDeposit: 2_000
+}
+
 function mountSheet(overrides: Partial<{
   open: boolean
   settings: CapitalGoalSettings
   effective: CapitalEffectiveInputs
+  suggestions: CapitalSuggestions
   preview: CapitalOverview | null
   saving: boolean
   serverError: string | null
@@ -47,6 +54,7 @@ function mountSheet(overrides: Partial<{
       open: true,
       settings,
       effective,
+      suggestions: { income: null, expense: null, providentDeposit: null },
       preview: null,
       saving: false,
       serverError: null,
@@ -107,7 +115,7 @@ describe('CapitalAssumptionsSheet', () => {
     })
     const text = await bodySnapshot()
 
-    expect(input('目标金额').value).toBe('1000000')
+    expect(input('目标金额').value).toBe('100')
     expect(input('投资年化').value).toBe('5')
     expect(text).toContain('最近均值 10,000.00')
   })
@@ -164,12 +172,71 @@ describe('CapitalAssumptionsSheet', () => {
     findButton('恢复假设默认').click()
     await bodySnapshot()
 
-    expect(input('目标金额').value).toBe('1000000')
+    expect(input('目标金额').value).toBe('100')
     expect(input('月收入').value).toBe('')
 
     const emitted = view!.emitted('preview')?.at(-1)?.[0] as CapitalGoalSettings
     expect(emitted.targetAmount).toBe(1_000_000)
     expect(emitted.monthlyIncome).toBeNull()
+  })
+
+  it('groups related fields and defaults the target unit to 万元', async () => {
+    mountSheet()
+    await bodySnapshot()
+
+    const labels = [...document.querySelectorAll('.field-control > span:not(.input-unit)')]
+      .map((element) => element.textContent?.trim())
+
+    expect(labels).toEqual([
+      '目标金额（万元）',
+      '月收入',
+      '月支出',
+      '公积金月缴存',
+      '公积金年化',
+      '收入年增长',
+      '支出年增长',
+      '投资年化'
+    ])
+  })
+
+  it('applies plan, budget and provident suggestions', async () => {
+    mountSheet({ suggestions })
+    await bodySnapshot()
+
+    findButton('用计划收入').click()
+    findButton('用账单预设').click()
+    findButton('用缴存设置').click()
+    await nextTick()
+
+    expect(input('月收入').value).toBe('12000')
+    expect(input('月支出').value).toBe('7200')
+    expect(input('公积金月缴存').value).toBe('2000')
+  })
+
+  it('converts the target from 万元 to yuan', async () => {
+    vi.useFakeTimers()
+    mountSheet()
+    await flushPromises()
+
+    await setInput('目标金额', '120.5')
+    vi.advanceTimersByTime(300)
+    await flushPromises()
+
+    const emitted = view!.emitted('preview')?.at(-1)?.[0] as CapitalGoalSettings
+    expect(emitted.targetAmount).toBe(1_205_000)
+  })
+
+  it('applies the 20-year investment presets', async () => {
+    mountSheet()
+    await bodySnapshot()
+
+    findButton('纳指100').click()
+    await nextTick()
+    expect(input('投资年化').value).toBe('13')
+
+    findButton('标普500').click()
+    await nextTick()
+    expect(input('投资年化').value).toBe('10')
   })
 
   it('does not emit a preview after the sheet closes', async () => {

@@ -105,3 +105,9 @@ export interface CapitalYearLabel {
   label: string
   leftPercent: number
 }
+
+export interface CapitalSuggestions {
+  income: number | null
+  expense: number | null
+  providentDeposit: number | null
+}

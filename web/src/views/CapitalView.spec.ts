@@ -18,7 +18,10 @@ const mocks = vi.hoisted(() => ({
   capital: vi.fn(),
   preview: vi.fn(),
   save: vi.fn(),
-  monthChange: vi.fn()
+  monthChange: vi.fn(),
+  budget: vi.fn(),
+  plans: vi.fn(),
+  stats: vi.fn()
 }))
 
 vi.mock('../api/capital', () => ({
@@ -26,7 +29,12 @@ vi.mock('../api/capital', () => ({
   previewCapital: mocks.preview,
   saveCapital: mocks.save
 }))
-vi.mock('../api/ledger', () => ({ fetchMonthChange: mocks.monthChange }))
+vi.mock('../api/ledger', () => ({
+  fetchMonthChange: mocks.monthChange,
+  fetchMonthlyBudget: mocks.budget
+}))
+vi.mock('../api/plans', () => ({ fetchPlanOverview: mocks.plans }))
+vi.mock('../api/entries', () => ({ fetchEntryStats: mocks.stats }))
 vi.mock('../components/GlassTrack.vue', () => ({
   default: {
     name: 'GlassTrack',
@@ -53,7 +61,7 @@ vi.mock('../components/CapitalProjectionChart.vue', () => ({
 vi.mock('../components/CapitalAssumptionsSheet.vue', () => ({
   default: {
     name: 'CapitalAssumptionsSheet',
-    props: ['open', 'settings', 'effective', 'preview', 'saving', 'serverError'],
+    props: ['open', 'settings', 'effective', 'suggestions', 'preview', 'saving', 'serverError'],
     emits: ['close', 'preview', 'save'],
     template: '<div v-if="open" class="sheet-stub"><span class="server-error">{{ serverError }}</span></div>'
   }
@@ -167,6 +175,16 @@ async function createTestRouter() {
 
 async function mountView(data: CapitalOverview) {
   mocks.capital.mockResolvedValue(data)
+  mocks.plans.mockResolvedValue({
+    plans: [],
+    pendingOccurrences: [],
+    activeCount: 0,
+    nextDueDate: null,
+    cashBalance: 0,
+    providentBalance: 0
+  })
+  mocks.budget.mockResolvedValue({ month: '2026-11', amount: null })
+  mocks.stats.mockResolvedValue({ expense: 0 })
   const router = await createTestRouter()
   const pinia = createPinia()
   useHomePreferencesStore(pinia).amountsMasked = false
@@ -212,6 +230,8 @@ test('shows the no-target CTA and opens the assumptions sheet', async () => {
   }))
 
   expect(view.text()).toContain('还没有目标')
+  expect(view.text()).toContain('先定一个数字')
+  expect(view.find('.set-goal-pulse').exists()).toBe(true)
 
   await view.find('.set-goal').trigger('click')
   await nextTick()
@@ -256,6 +276,32 @@ test('shows the depleted status and the incomplete coverage note', async () => {
   expect(view.text()).toContain('部分资产未录入')
   expect(view.text()).toContain('资本将耗尽')
   expect(view.text()).toContain('2028-07')
+})
+
+test('passes plan, budget and provident suggestions to the sheet', async () => {
+  const view = await mountView(overview())
+  mocks.plans.mockResolvedValue({
+    plans: [
+      { type: 'salaryIncome', amount: 12_000, isActive: true },
+      { type: 'salaryIncome', amount: 999, isActive: false },
+      { type: 'providentDeposit', amount: 2_000, isActive: true }
+    ],
+    pendingOccurrences: [],
+    activeCount: 2,
+    nextDueDate: null,
+    cashBalance: 0,
+    providentBalance: 0
+  })
+  mocks.budget.mockResolvedValue({ month: '2026-11', amount: 7_200 })
+
+  const sheet = await openSheet(view)
+  await flushPromises()
+
+  expect(sheet.props('suggestions')).toEqual({
+    income: 12_000,
+    expense: 7_200,
+    providentDeposit: 2_000
+  })
 })
 
 test('applies a preview to the page without saving', async () => {
