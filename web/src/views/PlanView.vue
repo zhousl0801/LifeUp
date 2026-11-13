@@ -16,6 +16,7 @@ import {
   skipOccurrence
 } from '../api/plans'
 import { createFundPosition, fetchFundOverview, searchFunds } from '../api/funds'
+import { fetchSalaryProfile } from '../api/salary'
 import { ApiError, getApiErrorMessage } from '../api/client'
 import { toast } from '../composables/useMessage'
 import AppIcon from '../components/AppIcon.vue'
@@ -38,6 +39,7 @@ import {
   todayInBusinessTimeZone
 } from '../utils/format'
 import type { FundPosition, FundSearchResult } from '../types/fund'
+import type { SalaryProfile } from '../types/salary'
 import type {
   AutoPlan,
   OccurrenceStatus,
@@ -89,6 +91,7 @@ const expandedGroups = reactive<Record<PlanGroup['key'], boolean>>({
   income: false
 })
 const occurrencesExpanded = ref(false)
+const salaryProfile = ref<SalaryProfile | null>(null)
 
 const form = reactive({
   type: 'salaryIncome' as PlanType,
@@ -97,6 +100,7 @@ const form = reactive({
   fee: '0',
   cycle: 'monthly' as PlanCycle,
   tradingScope: 'threeMarkets' as PlanTradingScope,
+  monthOfYear: '1',
   dayOfMonth: '15',
   dayOfWeek: '1',
   time: '09:00',
@@ -129,7 +133,8 @@ const typeOptions: { value: PlanType; label: string }[] = [
   { value: 'salaryIncome', label: '工资到账' },
   { value: 'providentDeposit', label: '公积金缴存' },
   { value: 'providentWithdrawal', label: '公积金提取' },
-  { value: 'fundSip', label: '基金定投' }
+  { value: 'fundSip', label: '基金定投' },
+  { value: 'bonusIncome', label: '年终奖到账' }
 ]
 
 interface PlanGroup {
@@ -157,7 +162,7 @@ const planGroups = computed<PlanGroup[]>(() => {
   const plans = overview.value?.plans ?? []
   const fundPlans = plans.filter(plan => plan.type === 'fundSip')
   const providentPlans = plans.filter(plan => plan.type === 'providentDeposit' || plan.type === 'providentWithdrawal')
-  const incomePlans = plans.filter(plan => plan.type === 'salaryIncome')
+  const incomePlans = plans.filter(plan => plan.type === 'salaryIncome' || plan.type === 'bonusIncome')
 
   return [
     {
@@ -178,11 +183,11 @@ const planGroups = computed<PlanGroup[]>(() => {
     },
     {
       key: 'income',
-      title: '定期收入',
+      title: '工资收入',
       icon: 'wallet',
       newType: 'salaryIncome',
       plans: incomePlans,
-      summary: groupSummary(incomePlans, '每期收入')
+      summary: incomeSummary(incomePlans)
     }
   ]
 })
@@ -237,6 +242,16 @@ const fundPlanGroups = computed<FundPlanGroup[]>(() => {
       (first.nextDueDate ?? '9999-12-31').localeCompare(second.nextDueDate ?? '9999-12-31')
       || first.name.localeCompare(second.name))
 })
+
+const managedTypes = new Set<PlanType>(['salaryIncome', 'providentDeposit', 'bonusIncome'])
+const amountReadOnly = computed(() => editingPlan.value !== null && isManagedPlan(editingPlan.value))
+function isManagedPlan(plan: AutoPlan): boolean {
+  return salaryProfile.value !== null && managedTypes.has(plan.type)
+}
+
+function canAddPlan(group: PlanGroup): boolean {
+  return !(group.key === 'income' && salaryProfile.value !== null)
+}
 
 const weekdayLabels = ['一', '二', '三', '四', '五', '六', '日']
 
@@ -387,7 +402,12 @@ async function load(): Promise<void> {
   errorMessage.value = ''
 
   try {
-    overview.value = await fetchPlanOverview()
+    const [planOverview, profileResult] = await Promise.all([
+      fetchPlanOverview(),
+      fetchSalaryProfile().catch(() => null)
+    ])
+    overview.value = planOverview
+    salaryProfile.value = profileResult ? profileResult.profile : salaryProfile.value
     await loadOccurrences()
   } catch (error) {
     overview.value = null
@@ -484,6 +504,7 @@ function openNew(type: PlanType = 'salaryIncome'): void {
   form.fee = '0'
   form.cycle = 'monthly'
   form.tradingScope = 'threeMarkets'
+  form.monthOfYear = '1'
   form.dayOfMonth = '15'
   form.dayOfWeek = '1'
   form.time = '09:00'
@@ -507,6 +528,7 @@ function openEdit(plan: AutoPlan): void {
   form.fee = String(plan.fee ?? 0)
   form.cycle = plan.cycle
   form.tradingScope = plan.tradingScope ?? 'threeMarkets'
+  form.monthOfYear = plan.monthOfYear ? String(plan.monthOfYear) : '1'
   form.dayOfMonth = plan.dayOfMonth ? String(plan.dayOfMonth) : '15'
   form.dayOfWeek = plan.dayOfWeek ? String(plan.dayOfWeek) : '1'
   form.time = plan.time.slice(0, 5)
@@ -564,7 +586,8 @@ async function submit(): Promise<void> {
     amount,
     fee,
     tradingScope: isFundSip && form.cycle === 'tradingDay' ? form.tradingScope : 'threeMarkets',
-    cycle: isFundSip ? form.cycle : 'monthly',
+    cycle: isFundSip ? form.cycle : form.type === 'bonusIncome' ? 'yearly' : 'monthly',
+    monthOfYear: form.type === 'bonusIncome' ? Number(form.monthOfYear) : null,
     dayOfMonth: (isFundSip && form.cycle !== 'monthly') ? null : Number(form.dayOfMonth),
     dayOfWeek: (isFundSip && form.cycle === 'weekly') ? Number(form.dayOfWeek) : null,
     time: form.time.length === 5 ? `${form.time}:00` : form.time,
@@ -865,6 +888,38 @@ function groupSummary(plans: AutoPlan[], amountLabel: string): string {
   return `${activePlans.length} 个启用 · ${amountLabel} ¥${formatMoney(amount)}${paused ? ` · ${paused} 个暂停` : ''}`
 }
 
+function incomeSummary(plans: AutoPlan[]): string {
+  if (!plans.length) {
+    return '暂无计划'
+  }
+
+  const activePlans = plans.filter(plan => plan.isActive)
+
+  if (!activePlans.length) {
+    return `已全部暂停 · ${plans.length} 个计划`
+  }
+
+  const salary = sumAmounts(activePlans.filter(plan => plan.type === 'salaryIncome').map(plan => plan.amount))
+  const bonus = sumAmounts(activePlans.filter(plan => plan.type === 'bonusIncome').map(plan => plan.amount))
+  const parts: string[] = []
+
+  if (salary > 0) {
+    parts.push(`工资 ¥${formatMoney(salary)}/月`)
+  }
+
+  if (bonus > 0) {
+    parts.push(`年终奖 ¥${formatMoney(bonus)}/年`)
+  }
+
+  const paused = plans.length - activePlans.length
+
+  if (!parts.length) {
+    return paused ? `已全部暂停 · ${paused} 个计划` : '暂无启用计划'
+  }
+
+  return `${parts.join(' · ')}${paused ? ` · ${paused} 个暂停` : ''}`
+}
+
 function providentSummary(plans: AutoPlan[]): string {
   if (!plans.length) {
     return '暂无计划'
@@ -965,6 +1020,10 @@ function scheduleText(plan: AutoPlan): string {
     return `每周${weekdayLabels[(plan.dayOfWeek ?? 1) - 1]} ${time}`
   }
 
+  if (plan.cycle === 'yearly') {
+    return `每年 ${plan.monthOfYear ?? 1} 月 ${plan.dayOfMonth} 日 ${time}`
+  }
+
   return `每月 ${plan.dayOfMonth} 日 ${time}`
 }
 
@@ -1047,6 +1106,7 @@ function goBack(): void {
             <span class="group-chevron" :class="{ open: isGroupExpanded(group.key) }" aria-hidden="true">⌄</span>
           </button>
           <button
+            v-if="canAddPlan(group)"
             type="button"
             class="group-add"
             :aria-label="`新增${group.title}计划`"
@@ -1166,7 +1226,10 @@ function goBack(): void {
             >
               <header>
                 <div>
-                  <strong>{{ plan.name }}</strong>
+                  <span class="plan-title-line">
+                    <strong>{{ plan.name }}</strong>
+                    <span v-if="isManagedPlan(plan)" class="managed-badge">工资档案</span>
+                  </span>
                   <small>{{ typeLabel(plan.type) }} · {{ scheduleText(plan) }}</small>
                 </div>
                 <span class="plan-amount"><AnimatedMoney :value="plan.amount" /></span>
@@ -1178,21 +1241,25 @@ function goBack(): void {
               <footer class="plan-card-foot">
                 <span class="plan-foot-note">{{ nextDueText(plan) }}</span>
                 <span class="plan-foot-actions">
-                  <button type="button" class="link-button" @click="openEdit(plan)">编辑</button>
-                  <span class="action-sep" aria-hidden="true" />
+                  <template v-if="plan.type !== 'bonusIncome' || !isManagedPlan(plan)">
+                    <button type="button" class="link-button" @click="openEdit(plan)">编辑</button>
+                    <span class="action-sep" aria-hidden="true" />
+                  </template>
                   <LoadingButton
                     class="link-button"
                     :loading="busyAction === plan.id && busyKind === 'toggle'"
                     loading-label="处理中…"
                     @click="togglePlan(plan)"
                   >{{ plan.isActive ? '暂停' : '恢复' }}</LoadingButton>
-                  <span class="action-sep" aria-hidden="true" />
-                  <button
-                    type="button"
-                    class="link-button danger-text"
-                    :disabled="busyAction === plan.id"
-                    @click="requestPlanRemoval(plan)"
-                  >删除</button>
+                  <template v-if="!isManagedPlan(plan)">
+                    <span class="action-sep" aria-hidden="true" />
+                    <button
+                      type="button"
+                      class="link-button danger-text"
+                      :disabled="busyAction === plan.id"
+                      @click="requestPlanRemoval(plan)"
+                    >删除</button>
+                  </template>
                 </span>
               </footer>
             </article>
@@ -1335,9 +1402,21 @@ function goBack(): void {
             :placeholder="form.type === 'salaryIncome' ? '例如：工资、奖金、年终奖' : '留空使用默认名称'"
           />
         </label>
-        <label class="form-field">
+        <label v-if="!amountReadOnly" class="form-field">
           <span>每期金额（元）</span>
           <input v-model="form.amount" type="text" inputmode="decimal" placeholder="0.00" />
+        </label>
+        <div v-else class="form-field readonly-field">
+          <span>每期金额（元）</span>
+          <b>¥{{ formatMoney(editingPlan?.amount ?? 0) }}</b>
+          <small>金额由工资档案管理，请到「我的 → 个人信息」修改。</small>
+        </div>
+
+        <label v-if="form.type === 'bonusIncome'" class="form-field">
+          <span>发放月</span>
+          <select v-model="form.monthOfYear">
+            <option v-for="month in 12" :key="month" :value="String(month)">{{ month }} 月</option>
+          </select>
         </label>
 
         <label v-if="form.type === 'fundSip'" class="form-field">
@@ -2201,5 +2280,34 @@ function goBack(): void {
   color: var(--color-brand);
   font-size: var(--text-caption);
   font-style: normal;
+}
+
+.plan-title-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.managed-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--color-brand-soft);
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+  white-space: nowrap;
+}
+
+.readonly-field b {
+  font-size: var(--text-subhead);
+  font-weight: 600;
+}
+
+.readonly-field small {
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
 }
 </style>

@@ -90,7 +90,7 @@ function signed(value: number): string {
       </div>
     </div>
 
-    <p class="note">分项四舍五入，合计可能有 0.01 差异。</p>
+    <p class="note">分项四舍五入，合计可能有 0.01 差异；净储蓄含年终奖。</p>
     <p v-if="etaMonth" class="goal-note">预计 {{ formatMonthLabel(etaMonth) }}达成</p>
   </section>
 </template>

@@ -105,7 +105,9 @@ public sealed class CapitalGoalService
             effective.IncomeGrowthPercent.Value,
             effective.ExpenseGrowthPercent.Value,
             effective.InvestmentAnnualReturnPercent.Value,
-            effective.ProvidentAnnualReturnPercent.Value));
+            effective.ProvidentAnnualReturnPercent.Value,
+            effective.AnnualBonus.Value,
+            (int)effective.BonusPayoutMonth.Value));
         var milestones = await BuildMilestonesAsync(goal?.TargetAmount, overview.CoverageComplete, cancellationToken);
         var actual = await BuildActualMonthAsync(effective, cancellationToken);
         var projectionDto = new CapitalProjectionDto(
@@ -142,7 +144,8 @@ public sealed class CapitalGoalService
             effective,
             current,
             projectionDto,
-            actual);
+            actual,
+            ledger.GetSalaryProfile() is not null);
     }
 
     private async Task<IReadOnlyList<CapitalMilestoneDto>> BuildMilestonesAsync(
@@ -177,10 +180,21 @@ public sealed class CapitalGoalService
     {
         var change = await _monthChangeService.GetAsync(ChangeScope.Month, cancellationToken);
         var isComplete = change?.HasComparableData ?? false;
+        var bonusMonth = (int)effective.BonusPayoutMonth.Value;
+        var includesBonus = effective.AnnualBonus.Value > 0m && _dates.Today.Month == bonusMonth;
         var expectedNetDeposit = Round(
             effective.MonthlyIncome.Value
             - effective.MonthlyExpense.Value
-            + effective.MonthlyProvidentDeposit.Value);
+            + effective.MonthlyProvidentDeposit.Value
+            + (includesBonus ? effective.AnnualBonus.Value : 0m));
+        var note = isComplete ? null : change?.Notes.FirstOrDefault();
+
+        if (includesBonus)
+        {
+            note = string.IsNullOrEmpty(note)
+                ? "本月为年终奖发放月，差额可能来自到账时间。"
+                : $"{note} 本月为年终奖发放月，差额可能来自到账时间。";
+        }
 
         return new CapitalActualMonthDto(
             _dates.Today.ToString("yyyy-MM"),
@@ -189,7 +203,7 @@ public sealed class CapitalGoalService
             change?.MarketValueChange,
             expectedNetDeposit,
             isComplete,
-            isComplete ? null : change?.Notes.FirstOrDefault());
+            note);
     }
 
     private static decimal Round(decimal value)

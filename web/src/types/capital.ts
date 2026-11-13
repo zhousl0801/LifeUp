@@ -6,7 +6,7 @@ export type CapitalStatus =
   | 'depleted'
   | 'noTarget'
 
-export type CapitalInputSource = 'user' | 'history' | 'default'
+export type CapitalInputSource = 'user' | 'salary' | 'history' | 'default'
 
 export interface CapitalEffectiveValue {
   value: number
@@ -21,6 +21,8 @@ export interface CapitalEffectiveInputs {
   expenseGrowthPercent: CapitalEffectiveValue
   investmentAnnualReturnPercent: CapitalEffectiveValue
   providentAnnualReturnPercent: CapitalEffectiveValue
+  annualBonus: CapitalEffectiveValue
+  bonusPayoutMonth: CapitalEffectiveValue
 }
 
 export interface CapitalGoalSettings {
@@ -32,6 +34,9 @@ export interface CapitalGoalSettings {
   expenseGrowthPercent: number | null
   investmentAnnualReturnPercent: number | null
   providentAnnualReturnPercent: number | null
+  annualBonus: number | null
+  bonusPayoutMonth: number | null
+  useSalaryProfile: boolean
 }
 
 export interface CapitalCurrent {
@@ -99,9 +104,16 @@ export interface CapitalOverview {
   current: CapitalCurrent
   projection: CapitalProjection
   actualMonth: CapitalActualMonth
+  hasSalaryProfile: boolean
 }
 
 export interface CapitalYearLabel {
   label: string
   leftPercent: number
+}
+
+export interface CapitalSuggestions {
+  income: number | null
+  expense: number | null
+  providentDeposit: number | null
 }

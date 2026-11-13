@@ -24,7 +24,7 @@ public static class EntryCategoryDefaults
     private static readonly (string Name, string? SystemKey)[] s_incomeNames =
     [
         ("工资", "salary"),
-        ("奖金", null),
+        ("奖金", "bonus"),
         ("其他收入", "other-income")
     ];
 

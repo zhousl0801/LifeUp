@@ -628,6 +628,123 @@ public sealed class PlanExecutionTests
         return occurrence;
     }
 
+    [Fact]
+    public async Task SaveAsync_YearlyBonusInput_PersistsMonthOfYear()
+    {
+        await using var context = await CreateAsync(1000m);
+        var result = await context.Plans.SaveAsync(new SavePlanRequest(
+            null,
+            AutoPlanType.BonusIncome,
+            "年终奖",
+            60_000m,
+            AutoPlanCycle.Yearly,
+            15,
+            null,
+            new TimeOnly(9, 0),
+            new DateOnly(2027, 1, 15),
+            null,
+            Guid.NewGuid(),
+            null,
+            MonthOfYear: 1), CancellationToken.None);
+
+        Assert.Equal(AssetOperationStatus.Created, result.Status);
+        Assert.Equal(1, result.Result!.MonthOfYear);
+        Assert.Equal(AutoPlanCycle.Yearly, result.Result.Cycle);
+    }
+
+    [Fact]
+    public async Task SaveAsync_BonusIncomeMonthly_ReturnsInvalid()
+    {
+        await using var context = await CreateAsync(1000m);
+        var result = await context.Plans.SaveAsync(new SavePlanRequest(
+            null,
+            AutoPlanType.BonusIncome,
+            "年终奖",
+            60_000m,
+            AutoPlanCycle.Monthly,
+            15,
+            null,
+            new TimeOnly(9, 0),
+            new DateOnly(2026, 11, 15),
+            null,
+            Guid.NewGuid(),
+            null), CancellationToken.None);
+
+        Assert.Equal(AssetOperationStatus.Invalid, result.Status);
+    }
+
+    [Fact]
+    public async Task RunDue_BonusIncome_CreatesBonusIncomeOnce()
+    {
+        await using var context = await CreateAsync(1000m);
+        await SeedDueBonusPlanAsync(context, 60_000m);
+
+        await context.Execution.RunDueAsync(CancellationToken.None);
+        await context.Execution.RunDueAsync(CancellationToken.None);
+
+        var entries = await context.Repository.GetEntriesAsync(
+            context.LedgerId, Today, Today, CancellationToken.None);
+        var entry = Assert.Single(entries, item => item.Kind == LedgerEntryKind.Income);
+        Assert.Equal("奖金", entry.Category);
+        Assert.Equal(60_000m, entry.Amount);
+    }
+
+    [Fact]
+    public async Task RunDue_BonusIncome_FallsBackToSalaryWhenBonusInactive()
+    {
+        await using var context = await CreateAsync(1000m);
+        var bonus = await context.Db.EntryCategories.SingleAsync(
+            category => category.Kind == LedgerEntryKind.Income && category.Name == "奖金");
+        bonus.SetActive(false, Now);
+        await context.Db.SaveChangesAsync(CancellationToken.None);
+        await SeedDueBonusPlanAsync(context, 60_000m);
+
+        await context.Execution.RunDueAsync(CancellationToken.None);
+
+        var entries = await context.Repository.GetEntriesAsync(
+            context.LedgerId, Today, Today, CancellationToken.None);
+        var entry = Assert.Single(entries, item => item.Kind == LedgerEntryKind.Income);
+        Assert.Equal("工资", entry.Category);
+    }
+
+    [Fact]
+    public async Task RunDue_BonusIncome_WithoutSystemKey_UsesBonusName()
+    {
+        await using var context = await CreateAsync(1000m);
+        var bonus = await context.Db.EntryCategories.SingleAsync(
+            category => category.Kind == LedgerEntryKind.Income && category.Name == "奖金");
+        context.Db.Entry(bonus).Property(category => category.SystemKey).CurrentValue = null;
+        await context.Db.SaveChangesAsync(CancellationToken.None);
+        await SeedDueBonusPlanAsync(context, 60_000m);
+
+        await context.Execution.RunDueAsync(CancellationToken.None);
+
+        var entries = await context.Repository.GetEntriesAsync(
+            context.LedgerId, Today, Today, CancellationToken.None);
+        var entry = Assert.Single(entries, item => item.Kind == LedgerEntryKind.Income);
+        Assert.Equal("奖金", entry.Category);
+    }
+
+    private static async Task SeedDueBonusPlanAsync(TestContext context, decimal amount)
+    {
+        var plan = AutoPlan.Create(
+            context.LedgerId,
+            AutoPlanType.BonusIncome,
+            "年终奖",
+            amount,
+            AutoPlanCycle.Yearly,
+            Today.Day,
+            null,
+            new TimeOnly(9, 0),
+            Today,
+            null,
+            Now,
+            monthOfYear: Today.Month);
+
+        await context.PlanRepo.AddPlanAsync(plan, CancellationToken.None);
+        await context.PlanRepo.SaveChangesAsync(CancellationToken.None);
+    }
+
     private static SavePlanRequest Request(
         AutoPlanType type,
         decimal amount,

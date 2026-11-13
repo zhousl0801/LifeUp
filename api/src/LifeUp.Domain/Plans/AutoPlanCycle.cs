@@ -4,5 +4,6 @@ public enum AutoPlanCycle
 {
     Monthly,
     Weekly,
-    TradingDay
+    TradingDay,
+    Yearly
 }

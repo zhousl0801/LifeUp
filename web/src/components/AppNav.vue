@@ -5,6 +5,7 @@ import AppIcon from './AppIcon.vue'
 
 const route = useRoute()
 const isGoal = computed(() => route.name === 'capital' || route.name === 'plans')
+const isMine = computed(() => route.name === 'mine' || route.name === 'salary')
 </script>
 
 <template>
@@ -24,7 +25,7 @@ const isGoal = computed(() => route.name === 'capital' || route.name === 'plans'
         <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="4" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
         <span>目标</span>
       </RouterLink>
-      <RouterLink class="nav-item" active-class="active" to="/mine">
+      <RouterLink class="nav-item" :class="{ active: isMine }" to="/mine">
         <svg class="nav-icon nav-icon-outline" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M4 21v-2a8 8 0 0 1 16 0v2" /></svg>
         <svg class="nav-icon nav-icon-filled" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4.25" fill="currentColor" /><path d="M4 21v-1.6a8 8 0 0 1 16 0V21Z" fill="currentColor" /></svg>
         <span>我的</span>

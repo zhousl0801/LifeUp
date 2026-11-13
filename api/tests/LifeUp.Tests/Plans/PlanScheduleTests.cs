@@ -69,6 +69,75 @@ public sealed class PlanScheduleTests
         Assert.Equal(expected, PlanSchedule.GetDuePeriods(plan, date, date).Count == 1);
     }
 
+    [Fact]
+    public void GetDuePeriods_Yearly_ReturnsOnePeriodPerYear()
+    {
+        var plan = YearlyPlan(month: 1, day: 15, from: new DateOnly(2026, 11, 13));
+
+        var periods = PlanSchedule.GetDuePeriods(plan, plan.GenerateFrom, new DateOnly(2028, 12, 31));
+
+        Assert.Equal(["Y2027", "Y2028"], periods.Select(period => period.PeriodKey));
+        Assert.Equal(
+            [new DateOnly(2027, 1, 15), new DateOnly(2028, 1, 15)],
+            periods.Select(period => period.DueDate));
+    }
+
+    [Fact]
+    public void GetDuePeriods_Yearly_ClampsToMonthEnd()
+    {
+        var plan = YearlyPlan(month: 2, day: 31, from: new DateOnly(2026, 11, 13));
+
+        var periods = PlanSchedule.GetDuePeriods(plan, plan.GenerateFrom, new DateOnly(2027, 12, 31));
+
+        Assert.Equal(new DateOnly(2027, 2, 28), Assert.Single(periods).DueDate);
+    }
+
+    [Fact]
+    public void PeriodKeyFor_Yearly_UsesYear()
+    {
+        var plan = YearlyPlan(month: 1, day: 15, from: new DateOnly(2026, 11, 13));
+
+        Assert.Equal("Y2027", PlanSchedule.PeriodKeyFor(plan, new DateOnly(2027, 1, 15)));
+    }
+
+    [Fact]
+    public void GetNextDue_Yearly_SkipsPastPayout()
+    {
+        var plan = YearlyPlan(month: 1, day: 15, from: new DateOnly(2026, 11, 13));
+
+        var next = PlanSchedule.GetNextDue(plan, new DateOnly(2027, 1, 16));
+
+        Assert.NotNull(next);
+        Assert.Equal(new DateOnly(2028, 1, 15), next.DueDate);
+    }
+
+    [Fact]
+    public void IsDueOn_Yearly_ChecksMonthAndDay()
+    {
+        var plan = YearlyPlan(month: 1, day: 15, from: new DateOnly(2026, 11, 13));
+
+        Assert.True(PlanSchedule.IsDueOn(plan, new DateOnly(2027, 1, 15)));
+        Assert.False(PlanSchedule.IsDueOn(plan, new DateOnly(2027, 1, 16)));
+        Assert.False(PlanSchedule.IsDueOn(plan, new DateOnly(2027, 2, 15)));
+    }
+
+    private static AutoPlan YearlyPlan(int month, int day, DateOnly from)
+    {
+        return AutoPlan.Create(
+            Guid.NewGuid(),
+            AutoPlanType.BonusIncome,
+            "年终奖",
+            60_000m,
+            AutoPlanCycle.Yearly,
+            day,
+            null,
+            new TimeOnly(9, 0),
+            from,
+            null,
+            new DateTimeOffset(2026, 11, 13, 2, 0, 0, TimeSpan.Zero),
+            monthOfYear: month);
+    }
+
     private static AutoPlan Plan(
         AutoPlanCycle cycle,
         int? dayOfMonth = null,

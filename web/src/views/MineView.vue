@@ -85,7 +85,7 @@ function chooseTheme(value: ThemeMode): void {
       <h1>我的</h1>
     </header>
 
-    <h2 class="settings-title">个性化设置</h2>
+    <h2 class="settings-title">个人信息</h2>
 
     <div class="list-box">
       <button type="button" class="list-row" @click="openProfileSheet">
@@ -98,6 +98,15 @@ function chooseTheme(value: ThemeMode): void {
           <b>{{ displayName }} ›</b>
         </span>
       </button>
+      <RouterLink to="/salary" class="list-row">
+        <span>工资档案</span>
+        <b>查看 ›</b>
+      </RouterLink>
+    </div>
+
+    <h2 class="settings-title">个性化设置</h2>
+
+    <div class="list-box">
       <button type="button" class="list-row" @click="themeSheetOpen = true">
         <span>主题配色</span>
         <b>{{ themeLabel }} ›</b>
@@ -199,6 +208,10 @@ function chooseTheme(value: ThemeMode): void {
 }
 
 .settings-title.data-title {
+  margin-top: var(--space-6);
+}
+
+.list-box + .settings-title {
   margin-top: var(--space-6);
 }
 
@@ -424,4 +437,5 @@ function chooseTheme(value: ThemeMode): void {
   font-size: var(--text-caption);
   line-height: 1.6;
 }
+
 </style>

@@ -14,7 +14,8 @@ async function createTestRouter(path: string) {
       { path: '/plans', name: 'plans', component: Empty },
       { path: '/', name: 'home', component: Empty },
       { path: '/ledger', name: 'ledger', component: Empty },
-      { path: '/mine', name: 'mine', component: Empty }
+      { path: '/mine', name: 'mine', component: Empty },
+      { path: '/salary', name: 'salary', component: Empty }
     ]
   })
 
@@ -41,6 +42,23 @@ test('renders 目标 instead of 计划 and highlights it on both routes', async 
   await router.push('/')
   await nextTick()
   expect(goal().classes()).not.toContain('active')
+
+  view.unmount()
+})
+
+
+test('highlights 我的 on the salary detail page', async () => {
+  const router = await createTestRouter('/mine')
+  const view = mount(AppNav, { global: { plugins: [router] } })
+  const mineTab = () => view.findAll('.nav-item').find((item) => item.text() === '我的')!
+
+  expect(mineTab().classes()).toContain('active')
+
+  await router.push('/salary')
+  await nextTick()
+
+  expect(mineTab().classes()).toContain('active')
+  expect(mineTab().attributes('href')).toContain('/mine')
 
   view.unmount()
 })

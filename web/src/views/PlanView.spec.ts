@@ -1,6 +1,7 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { beforeEach, expect, test, vi } from 'vitest'
 import PlanView from './PlanView.vue'
+import type { PlanOverview } from '../types/plan'
 import { useMessages } from '../composables/useMessage'
 
 const mocks = vi.hoisted(() => ({
@@ -16,7 +17,8 @@ const mocks = vi.hoisted(() => ({
   remove: vi.fn(),
   run: vi.fn(),
   retry: vi.fn(),
-  skip: vi.fn()
+  skip: vi.fn(),
+  salary: vi.fn()
 }))
 
 vi.mock('vue-router', () => ({
@@ -41,6 +43,9 @@ vi.mock('../api/funds', () => ({
   searchFunds: mocks.search,
   createFundPosition: mocks.createPosition
 }))
+vi.mock('../api/salary', () => ({
+  fetchSalaryProfile: mocks.salary
+}))
 
 const overview = {
   plans: [{
@@ -51,6 +56,7 @@ const overview = {
     cycle: 'monthly',
     dayOfMonth: 15,
     dayOfWeek: null,
+    monthOfYear: null,
     time: '09:00:00',
     startDate: '2026-10-01',
     generateFrom: '2026-10-01',
@@ -67,7 +73,7 @@ const overview = {
   providentBalance: 0
 }
 
-const { messages, clear } = useMessages()
+const { clear } = useMessages()
 
 beforeEach(() => {
   clear()
@@ -88,6 +94,7 @@ beforeEach(() => {
     }]
   })
   mocks.funds.mockResolvedValue({ positions: [] })
+  mocks.salary.mockResolvedValue({ profile: null })
   document.body.innerHTML = ''
 })
 
@@ -103,7 +110,7 @@ test('plan list shows the active salary plan and can save a new salary plan', as
   expect(view.text()).toContain('工资到账')
   expect(view.text()).toContain('每月 15 日 09:00')
 
-  const newButton = view.findAll('button').find((button) => button.attributes('aria-label') === '新增定期收入计划')!
+  const newButton = view.findAll('button').find((button) => button.attributes('aria-label') === '新增工资收入计划')!
   await newButton.trigger('click')
   await flushPromises()
 
@@ -128,20 +135,123 @@ test('plan list shows the active salary plan and can save a new salary plan', as
   view.unmount()
 })
 
-test('run-now reports results and the preview section is gone', async () => {
-  mocks.run.mockResolvedValue({ createdOccurrences: 1, completed: 1, waiting: 0, failed: 0 })
+test('salary profile marks salary plans as managed and shows the yearly bonus', async () => {
+  mocks.salary.mockResolvedValue({
+    profile: {
+      baseMonthlySalary: 20_000,
+      netMonthlySalary: 12_000,
+      providentMonthly: 4_800,
+      bonusMonths: 4,
+      bonusNetAmount: 60_000,
+      bonusPayoutMonth: 1,
+      payDay: 15
+    }
+  })
+  const withBonus = structuredClone(overview) as PlanOverview
+  withBonus.plans.push({
+    id: 'plan-bonus',
+    type: 'bonusIncome',
+    name: '年终奖',
+    amount: 60_000,
+    cycle: 'yearly',
+    dayOfMonth: 15,
+    dayOfWeek: null,
+    monthOfYear: 2,
+    time: '09:00:00',
+    startDate: '2027-01-15',
+    generateFrom: '2027-01-15',
+    isActive: true,
+    fundPositionId: null,
+    fundPositionName: null,
+    nextDueDate: '2027-01-15',
+    version: 0
+  })
+  withBonus.activeCount = 2
+  mocks.overview.mockResolvedValue(withBonus)
+
   const view = mount(PlanView, { attachTo: document.body })
   await flushPromises()
 
-  expect(view.text()).not.toContain('执行预览')
-  expect(view.text()).not.toContain('试算本期')
+  expect(view.find('.salary-card').exists()).toBe(false)
+  expect(view.findAll('button').some(button => button.attributes('aria-label') === '新增工资收入计划')).toBe(false)
 
-  const runButton = view.findAll('button').find((button) => button.attributes('aria-label') === '立即执行')!
-  await runButton.trigger('click')
+  await view.find('.group-income .group-toggle').trigger('click')
   await flushPromises()
 
-  expect(mocks.run).toHaveBeenCalledTimes(1)
-  expect(messages.value.at(-1)?.text ?? '').toContain('已记账 1')
+  const cards = view.findAll('.group-income .plan-card')
+  const salaryCard = cards.find(card => card.text().includes('工资到账'))!
+  const bonusCard = cards.find(card => card.text().includes('年终奖到账'))!
+
+  expect(salaryCard.find('.managed-badge').exists()).toBe(true)
+  expect(bonusCard.find('.managed-badge').exists()).toBe(true)
+  expect(bonusCard.text()).not.toContain('由工资档案管理')
+  expect(view.text()).toContain('工资 ¥1,000.00/月')
+  expect(view.text()).toContain('年终奖 ¥60,000.00/年')
+  expect(salaryCard.findAll('button').some(button => button.text() === '删除')).toBe(false)
+  expect(bonusCard.text()).toContain('每年 2 月 15 日')
+  expect(bonusCard.findAll('button').some(button => button.text() === '编辑')).toBe(false)
+
+  await salaryCard.findAll('button').find(button => button.text() === '编辑')!.trigger('click')
+  await flushPromises()
+
+  expect(document.body.textContent).toContain('金额由工资档案管理')
+  expect(document.querySelector('.readonly-field')).not.toBeNull()
+  view.unmount()
+})
+
+test('edits a bonus plan after the salary profile is disabled', async () => {
+  const withBonus = structuredClone(overview) as PlanOverview
+  withBonus.plans.push({
+    id: 'plan-bonus',
+    type: 'bonusIncome',
+    name: '年终奖',
+    amount: 60_000,
+    cycle: 'yearly',
+    dayOfMonth: 15,
+    dayOfWeek: null,
+    monthOfYear: 2,
+    time: '09:00:00',
+    startDate: '2027-02-15',
+    generateFrom: '2027-02-15',
+    isActive: true,
+    fundPositionId: null,
+    fundPositionName: null,
+    nextDueDate: '2027-02-15',
+    version: 0
+  })
+  withBonus.activeCount = 2
+  mocks.overview.mockResolvedValue(withBonus)
+  mocks.save.mockResolvedValue({})
+
+  const view = mount(PlanView, { attachTo: document.body })
+  await flushPromises()
+  await view.find('.group-income .group-toggle').trigger('click')
+  await flushPromises()
+
+  const bonusCard = view.findAll('.group-income .plan-card')
+    .find(card => card.text().includes('年终奖到账'))!
+  const edit = bonusCard.findAll('button').find(button => button.text() === '编辑')
+  expect(edit).toBeTruthy()
+  await edit!.trigger('click')
+  await flushPromises()
+
+  const inputs = Array.from(document.querySelectorAll<HTMLInputElement>('.sheet form input'))
+  inputs[1]!.value = '70000'
+  inputs[1]!.dispatchEvent(new Event('input', { bubbles: true }))
+  const select = document.querySelector<HTMLSelectElement>('.sheet form select')!
+  select.value = '2'
+  select.dispatchEvent(new Event('change', { bubbles: true }))
+  await flushPromises()
+
+  document.querySelector('.sheet form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+  await flushPromises()
+
+  expect(mocks.save.mock.calls[0]![0]).toMatchObject({
+    type: 'bonusIncome',
+    cycle: 'yearly',
+    amount: 70_000,
+    monthOfYear: 2
+  })
   view.unmount()
 })
 
@@ -192,7 +302,7 @@ test('plans are grouped by type and share classes of the same fund merge into on
 
   expect(view.text()).toContain('基金定投')
   expect(view.text()).toContain('公积金')
-  expect(view.text()).toContain('定期收入')
+  expect(view.text()).toContain('工资收入')
   expect(view.findAll('.fund-plan-card')).toHaveLength(1)
   expect(view.findAll('.fund-plan-row')).toHaveLength(2)
   expect(view.find('.fund-plan-card').text()).toContain('A 类 / C 类')

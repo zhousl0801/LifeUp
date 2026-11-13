@@ -14,10 +14,12 @@ import LoadingButton from '../components/LoadingButton.vue'
 import LoadingState from '../components/LoadingState.vue'
 import { ApiError, getApiErrorMessage } from '../api/client'
 import { fetchCapital, previewCapital, saveCapital } from '../api/capital'
-import { fetchMonthChange } from '../api/ledger'
+import { fetchEntryStats } from '../api/entries'
+import { fetchMonthChange, fetchMonthlyBudget } from '../api/ledger'
+import { fetchPlanOverview } from '../api/plans'
 import { toast } from '../composables/useMessage'
 import { useHomePreferencesStore } from '../stores/homePreferences'
-import type { CapitalGoalSettings, CapitalOverview } from '../types/capital'
+import type { CapitalGoalSettings, CapitalOverview, CapitalSuggestions } from '../types/capital'
 import type { MonthChange } from '../types/ledger'
 import { formatMonthLabel, selectYearLabels } from '../utils/capital'
 import {
@@ -42,6 +44,7 @@ const monthChangeOpen = ref(false)
 const monthChange = ref<MonthChange | null>(null)
 const monthChangeLoading = ref(false)
 const monthChangeError = ref('')
+const suggestions = ref<CapitalSuggestions>({ income: null, expense: null, providentDeposit: null })
 const { amountsMasked } = storeToRefs(useHomePreferencesStore())
 let previewSequence = 0
 
@@ -136,6 +139,43 @@ function openAssumptions(): void {
   saveError.value = ''
   previewOverview.value = null
   sheetOpen.value = true
+  void loadSuggestions()
+}
+
+async function loadSuggestions(): Promise<void> {
+  try {
+    const [plans, budget] = await Promise.all([
+      fetchPlanOverview(),
+      fetchMonthlyBudget(currentMonth)
+    ])
+    const activePlans = plans.plans.filter((plan) => plan.isActive)
+    const income = activePlans
+      .filter((plan) => plan.type === 'salaryIncome')
+      .reduce((sum, plan) => sum + plan.amount, 0)
+    const provident = activePlans
+      .filter((plan) => plan.type === 'providentDeposit')
+      .reduce((sum, plan) => sum + plan.amount, 0)
+    let expense = budget.amount
+
+    if (expense === null) {
+      const stats = await fetchEntryStats('month', `${shiftMonth(currentMonth, -1)}-01`)
+      expense = stats.expense > 0 ? stats.expense : null
+    }
+
+    suggestions.value = {
+      income: income > 0 ? income : null,
+      expense,
+      providentDeposit: provident > 0 ? provident : null
+    }
+  } catch {
+    suggestions.value = { income: null, expense: null, providentDeposit: null }
+  }
+}
+
+function shiftMonth(month: string, offset: number): string {
+  const date = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1 + offset, 1))
+
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
 }
 
 async function closeAssumptions(): Promise<void> {
@@ -235,9 +275,19 @@ function netTone(value: number): string {
   <main class="page capital-page with-nav">
     <header class="capital-header">
       <h1>目标</h1>
-      <button type="button" class="header-action" aria-label="调整假设" @click="openAssumptions">
-        <AppIcon name="settings" />
-      </button>
+      <div class="capital-header-actions">
+        <button
+          type="button"
+          class="header-action"
+          :aria-label="amountsMasked ? '显示资产金额' : '隐藏资产金额'"
+          @click="amountsMasked = !amountsMasked"
+        >
+          <AppIcon :name="amountsMasked ? 'eye-off' : 'eye'" />
+        </button>
+        <button type="button" class="header-action" aria-label="调整假设" @click="openAssumptions">
+          <AppIcon name="settings" />
+        </button>
+      </div>
     </header>
 
     <GoalTabs />
@@ -304,7 +354,14 @@ function netTone(value: number): string {
       </p>
 
       <button v-if="targetAmount === null" type="button" class="set-goal" @click="openAssumptions">
-        设定目标
+        <span class="set-goal-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="4" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+        </span>
+        <span class="set-goal-copy">
+          <b>设定目标</b>
+          <small>先定一个数字，看看多久能到</small>
+        </span>
+        <span class="set-goal-pulse" aria-hidden="true"></span>
       </button>
 
       <template v-if="display.projection.status !== 'reached'">
@@ -341,9 +398,11 @@ function netTone(value: number): string {
         :open="sheetOpen"
         :settings="display.settings"
         :effective="display.effective"
+        :suggestions="suggestions"
         :preview="previewOverview"
         :saving="saving"
         :server-error="saveError"
+        :has-salary-profile="display.hasSalaryProfile ?? false"
         @close="closeAssumptions"
         @preview="handlePreview"
         @save="handleSave"
@@ -402,6 +461,12 @@ function netTone(value: number): string {
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 14px;
+}
+
+.capital-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .capital-header h1 {
@@ -578,15 +643,77 @@ function netTone(value: number): string {
 }
 
 .set-goal {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   width: 100%;
-  min-height: 48px;
+  min-height: 64px;
   margin-top: 14px;
+  padding: 10px 16px;
   border: 0;
-  border-radius: var(--radius-pill);
+  border-radius: 20px;
   background: var(--color-brand);
+  box-shadow: 0 12px 28px rgba(72, 64, 194, 0.22);
   color: var(--color-on-brand);
+  text-align: left;
+}
+
+.set-goal-icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  place-items: center;
+}
+
+.set-goal-icon svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.set-goal-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.set-goal-copy b {
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 700;
+}
+
+.set-goal-copy small {
+  color: var(--color-hero-text-secondary);
+  font-size: 11px;
+}
+
+.set-goal-pulse {
+  width: 10px;
+  height: 10px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--color-accent-mint);
+  animation: goal-pulse 2s ease-out infinite;
+}
+
+@keyframes goal-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(124, 231, 177, 0.55); }
+  70% { box-shadow: 0 0 0 8px rgba(124, 231, 177, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(124, 231, 177, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .set-goal-pulse {
+    animation: none;
+  }
 }
 
 .capital-card {

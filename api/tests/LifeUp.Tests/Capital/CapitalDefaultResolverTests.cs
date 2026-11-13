@@ -99,6 +99,100 @@ public sealed class CapitalDefaultResolverTests
         Assert.Equal("history", result.MonthlyIncome.Source);
     }
 
+    [Fact]
+    public async Task ResolveAsync_FollowsSalaryProfile()
+    {
+        var repository = new FakeLedgerRepository();
+        var ledger = Ledger.Create(new DateOnly(2026, 8, 1), Today, Now);
+        await SeedLedgerAsync(repository, ledger);
+        ledger.SetSalaryProfile(new SalaryProfile(20_000m, 12_000m, 4_800m, 4m, 60_000m, 1, 15), Now);
+        var goal = new CapitalGoal(
+            1_000_000m, 99_000m, 5_000m, 9_999m, 0m, 0m, 5m, 1.5m,
+            AnnualBonus: 1m, BonusPayoutMonth: 12, UseSalaryProfile: true);
+
+        var result = await CreateResolver(repository).ResolveAsync(ledger, goal, CancellationToken.None);
+
+        Assert.Equal(12_000m, result.MonthlyIncome.Value);
+        Assert.Equal("salary", result.MonthlyIncome.Source);
+        Assert.Equal(4_800m, result.MonthlyProvidentDeposit.Value);
+        Assert.Equal("salary", result.MonthlyProvidentDeposit.Source);
+        Assert.Equal(60_000m, result.AnnualBonus.Value);
+        Assert.Equal("salary", result.AnnualBonus.Source);
+        Assert.Equal(1m, result.BonusPayoutMonth.Value);
+        Assert.Equal(5_000m, result.MonthlyExpense.Value);
+        Assert.Equal("user", result.MonthlyExpense.Source);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_ProfileWithZeroBonusMonths_IgnoresBonusNet()
+    {
+        var repository = new FakeLedgerRepository();
+        var ledger = Ledger.Create(new DateOnly(2026, 8, 1), Today, Now);
+        await SeedLedgerAsync(repository, ledger);
+        ledger.SetSalaryProfile(new SalaryProfile(20_000m, 12_000m, 4_800m, 0m, 60_000m, 1, 15), Now);
+
+        var result = await CreateResolver(repository).ResolveAsync(ledger, null, CancellationToken.None);
+
+        Assert.Equal(0m, result.AnnualBonus.Value);
+        Assert.Equal("salary", result.AnnualBonus.Source);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_ManualGoalOverridesProfile()
+    {
+        var repository = new FakeLedgerRepository();
+        var ledger = Ledger.Create(new DateOnly(2026, 8, 1), Today, Now);
+        await SeedLedgerAsync(repository, ledger);
+        ledger.SetSalaryProfile(new SalaryProfile(20_000m, 12_000m, 4_800m, 4m, 60_000m, 1, 15), Now);
+        var goal = new CapitalGoal(
+            1_000_000m, 99_000m, 5_000m, 9_999m, 0m, 0m, 5m, 1.5m,
+            AnnualBonus: 1m, BonusPayoutMonth: 12);
+
+        var result = await CreateResolver(repository).ResolveAsync(ledger, goal, CancellationToken.None);
+
+        Assert.Equal(99_000m, result.MonthlyIncome.Value);
+        Assert.Equal("user", result.MonthlyIncome.Source);
+        Assert.Equal(9_999m, result.MonthlyProvidentDeposit.Value);
+        Assert.Equal(1m, result.AnnualBonus.Value);
+        Assert.Equal(12m, result.BonusPayoutMonth.Value);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_ProfileMissing_FallsBackToHistory()
+    {
+        var repository = new FakeLedgerRepository();
+        var ledger = Ledger.Create(new DateOnly(2026, 8, 1), Today, Now);
+        await SeedLedgerAsync(repository, ledger);
+        await AddEntryAsync(repository, ledger.Id, LedgerEntryKind.Income, 10_000m, new DateOnly(2026, 8, 5));
+        await AddEntryAsync(repository, ledger.Id, LedgerEntryKind.Income, 10_000m, new DateOnly(2026, 9, 5));
+        await AddEntryAsync(repository, ledger.Id, LedgerEntryKind.Income, 10_000m, new DateOnly(2026, 10, 5));
+        var goal = new CapitalGoal(
+            1_000_000m, null, 5_000m, null, 0m, 0m, 5m, 1.5m,
+            UseSalaryProfile: true);
+
+        var result = await CreateResolver(repository).ResolveAsync(ledger, goal, CancellationToken.None);
+
+        Assert.Equal(10_000m, result.MonthlyIncome.Value);
+        Assert.Equal("history", result.MonthlyIncome.Source);
+        Assert.Equal(0m, result.AnnualBonus.Value);
+        Assert.Equal("default", result.AnnualBonus.Source);
+        Assert.Equal(1m, result.BonusPayoutMonth.Value);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WithoutGoal_UsesProfile()
+    {
+        var repository = new FakeLedgerRepository();
+        var ledger = Ledger.Create(new DateOnly(2026, 8, 1), Today, Now);
+        await SeedLedgerAsync(repository, ledger);
+        ledger.SetSalaryProfile(new SalaryProfile(20_000m, 12_000m, 4_800m, 4m, 60_000m, 1, 15), Now);
+
+        var result = await CreateResolver(repository).ResolveAsync(ledger, null, CancellationToken.None);
+
+        Assert.Equal(12_000m, result.MonthlyIncome.Value);
+        Assert.Equal("salary", result.MonthlyIncome.Source);
+    }
+
     private static CapitalDefaultResolver CreateResolver(FakeLedgerRepository repository)
     {
         return new CapitalDefaultResolver(repository, new BusinessDateProvider(new FixedTimeProvider(Now)));

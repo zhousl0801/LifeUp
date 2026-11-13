@@ -15,6 +15,11 @@ public sealed class CapitalProjectionCalculator
         {
             "按当前资产结构推演"
         };
+
+        if (input.AnnualBonus > 0m)
+        {
+            notes.Add("年终奖按发放月计入。");
+        }
         var cash = NonNegative(input.Cash);
         var investment = NonNegative(input.Investment);
         var provident = NonNegative(input.Provident);
@@ -76,7 +81,10 @@ public sealed class CapitalProjectionCalculator
             var expense = Round(Grow(input.MonthlyExpense, expenseGrowth, yearOffset));
             var providentDeposit = Round(Grow(input.MonthlyProvidentDeposit, incomeGrowth, yearOffset));
             var netSavings = income - expense;
-            var netAccumulation = netSavings + providentDeposit;
+            var bonus = month.Month == input.BonusPayoutMonth
+                ? Round(Grow(input.AnnualBonus, incomeGrowth, yearOffset))
+                : 0m;
+            var netAccumulation = netSavings + providentDeposit + bonus;
             var nonProvidentReturn = nonProvidentBalance * nonProvidentRate;
             var providentReturn = providentBalance * providentMonthlyRate;
             var monthReturn = nonProvidentReturn + providentReturn;
@@ -84,7 +92,7 @@ public sealed class CapitalProjectionCalculator
             nonProvidentBalance += nonProvidentReturn;
             providentBalance += providentReturn;
             var capitalBeforeContributions = nonProvidentBalance + providentBalance;
-            nonProvidentBalance += netSavings;
+            nonProvidentBalance += netSavings + bonus;
             providentBalance += providentDeposit;
 
             if (nonProvidentBalance < 0m)

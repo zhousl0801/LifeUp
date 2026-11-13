@@ -204,7 +204,8 @@ public sealed class PlanService
                     request.FundPositionId,
                     now,
                     fee,
-                    tradingScope);
+                    tradingScope,
+                    request.MonthOfYear);
                 await _planRepository.AddPlanAsync(plan, cancellationToken);
             }
             else
@@ -225,7 +226,8 @@ public sealed class PlanService
                     now,
                     generationFloor,
                     fee,
-                    tradingScope);
+                    tradingScope,
+                    request.MonthOfYear);
             }
 
             var positionNames = new Dictionary<Guid, string>();
@@ -465,6 +467,7 @@ public sealed class PlanService
         return type switch
         {
             AutoPlanType.SalaryIncome => "工资到账",
+            AutoPlanType.BonusIncome => "年终奖",
             AutoPlanType.ProvidentDeposit => "公积金缴存",
             AutoPlanType.ProvidentWithdrawal => "公积金提取",
             _ => $"基金定投 · {positionName ?? "基金"}"
@@ -513,7 +516,8 @@ public sealed class PlanService
             position is null ? null : new FundPlanTarget(position.Name, position.Code, position.ShareClass),
             plan.IsActive ? PlanSchedule.GetDuePeriods(plan, from, from.AddDays(90)).Take(10).Select(period => period.DueDate).ToList() : [],
             plan.Fee,
-            plan.TradingScope);
+            plan.TradingScope,
+            plan.MonthOfYear);
     }
 
     public static PlanOccurrenceDto Map(PlanOccurrence occurrence)

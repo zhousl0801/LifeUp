@@ -1,6 +1,6 @@
-export type PlanType = 'salaryIncome' | 'providentDeposit' | 'providentWithdrawal' | 'fundSip'
+export type PlanType = 'salaryIncome' | 'providentDeposit' | 'providentWithdrawal' | 'fundSip' | 'bonusIncome'
 
-export type PlanCycle = 'monthly' | 'weekly' | 'tradingDay'
+export type PlanCycle = 'monthly' | 'weekly' | 'tradingDay' | 'yearly'
 
 export type PlanTradingScope = 'china' | 'threeMarkets'
 
@@ -16,6 +16,7 @@ export interface AutoPlan {
   cycle: PlanCycle
   dayOfMonth: number | null
   dayOfWeek: number | null
+  monthOfYear?: number | null
   time: string
   startDate: string
   generateFrom: string
@@ -77,6 +78,7 @@ export interface SavePlanInput {
   cycle: PlanCycle
   dayOfMonth: number | null
   dayOfWeek: number | null
+  monthOfYear?: number | null
   time: string
   startDate: string
   fundPositionId: string | null

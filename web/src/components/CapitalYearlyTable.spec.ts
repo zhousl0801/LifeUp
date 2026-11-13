@@ -32,6 +32,7 @@ test('renders rows, expands details and shows the goal note', async () => {
   expect(view.findAll('.row-main')).toHaveLength(2)
   expect(view.find('.goal').text()).toContain('达成')
   expect(view.text()).toContain('预计 2033 年 6 月达成')
+  expect(view.text()).toContain('净储蓄含年终奖')
 
   await view.findAll('.row-main')[0]!.trigger('click')
 

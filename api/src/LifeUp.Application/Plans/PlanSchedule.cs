@@ -41,6 +41,31 @@ public static class PlanSchedule
                 cursor = cursor.AddMonths(1);
             }
         }
+        else if (plan.Cycle == AutoPlanCycle.Yearly)
+        {
+            var month = plan.MonthOfYear!.Value;
+            var year = start.Year;
+            var firstDay = Math.Min(plan.DayOfMonth!.Value, DateTime.DaysInMonth(year, month));
+
+            if (new DateOnly(year, month, firstDay) < start)
+            {
+                year++;
+            }
+
+            while (true)
+            {
+                var day = Math.Min(plan.DayOfMonth!.Value, DateTime.DaysInMonth(year, month));
+                var dueDate = new DateOnly(year, month, day);
+
+                if (dueDate > toDate)
+                {
+                    break;
+                }
+
+                periods.Add(new PlanDuePeriod($"Y{dueDate.Year:D4}", dueDate, plan.Time));
+                year++;
+            }
+        }
         else
         {
             var targetDay = plan.DayOfWeek!.Value % 7;
@@ -72,9 +97,12 @@ public static class PlanSchedule
             return $"T{dueDate:yyyy-MM-dd}";
         }
 
-        return plan.Cycle == AutoPlanCycle.Monthly
-            ? $"{dueDate.Year:D4}-{dueDate.Month:D2}"
-            : $"W{dueDate:yyyy-MM-dd}";
+        return plan.Cycle switch
+        {
+            AutoPlanCycle.Monthly => $"{dueDate.Year:D4}-{dueDate.Month:D2}",
+            AutoPlanCycle.Yearly => $"Y{dueDate.Year:D4}",
+            _ => $"W{dueDate:yyyy-MM-dd}"
+        };
     }
 
     public static int TypeOrder(AutoPlanType type)
@@ -82,9 +110,10 @@ public static class PlanSchedule
         return type switch
         {
             AutoPlanType.SalaryIncome => 0,
-            AutoPlanType.ProvidentDeposit => 1,
-            AutoPlanType.ProvidentWithdrawal => 2,
-            _ => 3
+            AutoPlanType.BonusIncome => 1,
+            AutoPlanType.ProvidentDeposit => 2,
+            AutoPlanType.ProvidentWithdrawal => 3,
+            _ => 4
         };
     }
 
@@ -105,6 +134,13 @@ public static class PlanSchedule
             var day = Math.Min(plan.DayOfMonth!.Value, DateTime.DaysInMonth(date.Year, date.Month));
 
             return date.Day == day;
+        }
+
+        if (plan.Cycle == AutoPlanCycle.Yearly)
+        {
+            var day = Math.Min(plan.DayOfMonth!.Value, DateTime.DaysInMonth(date.Year, plan.MonthOfYear!.Value));
+
+            return date.Month == plan.MonthOfYear && date.Day == day;
         }
 
         return (int)date.DayOfWeek == plan.DayOfWeek!.Value % 7;
