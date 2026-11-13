@@ -99,6 +99,9 @@ public sealed class CapitalController : ControllerBase
             request.IncomeGrowthPercent,
             request.ExpenseGrowthPercent,
             request.InvestmentAnnualReturnPercent,
-            request.ProvidentAnnualReturnPercent);
+            request.ProvidentAnnualReturnPercent,
+            request.AnnualBonus,
+            request.BonusPayoutMonth,
+            request.UseSalaryProfile);
     }
 }

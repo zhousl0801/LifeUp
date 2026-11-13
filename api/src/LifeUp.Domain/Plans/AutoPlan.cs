@@ -29,6 +29,8 @@ public sealed class AutoPlan
 
     public int? DayOfWeek { get; private set; }
 
+    public int? MonthOfYear { get; private set; }
+
     public TimeOnly Time { get; private set; }
 
     public DateOnly StartDate { get; private set; }
@@ -58,7 +60,8 @@ public sealed class AutoPlan
         Guid? fundPositionId,
         DateTimeOffset now,
         decimal fee = 0m,
-        AutoPlanTradingScope tradingScope = AutoPlanTradingScope.ThreeMarkets)
+        AutoPlanTradingScope tradingScope = AutoPlanTradingScope.ThreeMarkets,
+        int? monthOfYear = null)
     {
         var plan = new AutoPlan
         {
@@ -67,7 +70,7 @@ public sealed class AutoPlan
             IsActive = true,
             CreatedAt = now
         };
-        plan.SetValues(type, name, amount, fee, cycle, dayOfMonth, dayOfWeek, time, startDate, fundPositionId, tradingScope, now);
+        plan.SetValues(type, name, amount, fee, cycle, dayOfMonth, dayOfWeek, time, startDate, fundPositionId, tradingScope, monthOfYear, now);
 
         return plan;
     }
@@ -85,7 +88,8 @@ public sealed class AutoPlan
         DateTimeOffset now,
         DateOnly generationFloor,
         decimal fee = 0m,
-        AutoPlanTradingScope tradingScope = AutoPlanTradingScope.ThreeMarkets)
+        AutoPlanTradingScope tradingScope = AutoPlanTradingScope.ThreeMarkets,
+        int? monthOfYear = null)
     {
         if (type != Type)
         {
@@ -95,9 +99,10 @@ public sealed class AutoPlan
         var periodRuleChanged = Cycle != cycle
             || DayOfMonth != dayOfMonth
             || DayOfWeek != dayOfWeek
+            || MonthOfYear != monthOfYear
             || (cycle == AutoPlanCycle.TradingDay && TradingScope != tradingScope);
 
-        SetValues(type, name, amount, fee, cycle, dayOfMonth, dayOfWeek, time, startDate, fundPositionId, tradingScope, now);
+        SetValues(type, name, amount, fee, cycle, dayOfMonth, dayOfWeek, time, startDate, fundPositionId, tradingScope, monthOfYear, now);
         GenerateFrom = GenerateFrom > startDate ? GenerateFrom : startDate;
 
         // 周期、星期、每月日期或交易日范围变化后，历史期次键会整体失效。
@@ -156,6 +161,7 @@ public sealed class AutoPlan
         DateOnly startDate,
         Guid? fundPositionId,
         AutoPlanTradingScope tradingScope,
+        int? monthOfYear,
         DateTimeOffset now)
     {
         if (LedgerId == Guid.Empty)
@@ -193,9 +199,24 @@ public sealed class AutoPlan
             throw new ArgumentException("计划开始日期无效。", nameof(startDate));
         }
 
-        if (type != AutoPlanType.FundSip && cycle != AutoPlanCycle.Monthly)
+        if (type == AutoPlanType.BonusIncome && cycle != AutoPlanCycle.Yearly)
+        {
+            throw new ArgumentException("年终奖计划只支持每年周期。", nameof(cycle));
+        }
+
+        if (type != AutoPlanType.BonusIncome && cycle == AutoPlanCycle.Yearly)
+        {
+            throw new ArgumentException("只有年终奖计划可以使用每年周期。", nameof(cycle));
+        }
+
+        if (type != AutoPlanType.FundSip && type != AutoPlanType.BonusIncome && cycle != AutoPlanCycle.Monthly)
         {
             throw new ArgumentException("工资、缴存和提取计划仅支持每月周期。", nameof(cycle));
+        }
+
+        if (cycle != AutoPlanCycle.Yearly && monthOfYear is not null)
+        {
+            throw new ArgumentException("每月、每周和交易日计划不填写发放月。", nameof(monthOfYear));
         }
 
         if (!Enum.IsDefined(type) || !Enum.IsDefined(cycle))
@@ -213,6 +234,18 @@ public sealed class AutoPlan
             if (!Enum.IsDefined(tradingScope))
             {
                 throw new ArgumentException("交易日范围无效。", nameof(tradingScope));
+            }
+        }
+        else if (cycle == AutoPlanCycle.Yearly)
+        {
+            if (monthOfYear is null || monthOfYear < 1 || monthOfYear > 12)
+            {
+                throw new ArgumentException("每年计划须填写 1 至 12 的发放月。", nameof(monthOfYear));
+            }
+
+            if (dayOfMonth is null || dayOfMonth < 1 || dayOfMonth > 31 || dayOfWeek is not null)
+            {
+                throw new ArgumentException("每年计划须填写 1 至 31 的发放日。", nameof(dayOfMonth));
             }
         }
         else if (cycle == AutoPlanCycle.Monthly)
@@ -250,6 +283,7 @@ public sealed class AutoPlan
         Cycle = cycle;
         DayOfMonth = dayOfMonth;
         DayOfWeek = dayOfWeek;
+        MonthOfYear = monthOfYear;
         Time = time;
         StartDate = startDate;
         FundPositionId = fundPositionId;

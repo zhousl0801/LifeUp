@@ -1,3 +1,4 @@
+using System.Text.Json;
 using LifeUp.Domain.Ledgers;
 
 namespace LifeUp.Tests.Ledgers;
@@ -80,6 +81,51 @@ public sealed class CapitalGoalTests
 
         Assert.False(CapitalGoal.TryValidate(goal, out var errors));
         Assert.NotEmpty(errors);
+    }
+
+    [Theory]
+    [InlineData(-1, true)]
+    [InlineData(1.234, true)]
+    [InlineData(0, false)]
+    [InlineData(60_000, false)]
+    public void TryValidate_AnnualBonusBounds(decimal amount, bool invalid)
+    {
+        var goal = new CapitalGoal(
+            1_000_000m, null, null, null, null, null, null, null,
+            AnnualBonus: amount);
+
+        var result = CapitalGoal.TryValidate(goal, out var errors);
+
+        Assert.Equal(!invalid, result);
+        Assert.Equal(invalid, errors.Count > 0);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(13)]
+    public void TryValidate_RejectsInvalidBonusPayoutMonth(int month)
+    {
+        var goal = new CapitalGoal(
+            1_000_000m, null, null, null, null, null, null, null,
+            BonusPayoutMonth: month);
+
+        Assert.False(CapitalGoal.TryValidate(goal, out var errors));
+        Assert.NotEmpty(errors);
+    }
+
+    [Fact]
+    public void Deserialize_LegacyGoalJson_UsesDefaults()
+    {
+        const string json = "{\"targetAmount\":1000000,\"monthlyIncome\":12000,\"monthlyExpense\":7200,\"monthlyProvidentDeposit\":2000,\"incomeGrowthPercent\":3,\"expenseGrowthPercent\":2,\"investmentAnnualReturnPercent\":5,\"providentAnnualReturnPercent\":1.5}";
+
+        var goal = JsonSerializer.Deserialize<CapitalGoal>(
+            json,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        Assert.NotNull(goal);
+        Assert.Null(goal.AnnualBonus);
+        Assert.Null(goal.BonusPayoutMonth);
+        Assert.False(goal.UseSalaryProfile);
     }
 
     [Fact]

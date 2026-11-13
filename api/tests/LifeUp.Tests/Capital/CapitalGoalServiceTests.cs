@@ -92,6 +92,43 @@ public sealed class CapitalGoalServiceTests
         Assert.All(overview.Projection.Milestones, item => Assert.Equal(new DateOnly(2026, 11, 1), item.Date));
     }
 
+    [Fact]
+    public async Task GetAsync_WithSalaryProfile_UsesProfileAndFlags()
+    {
+        var (repository, service, _) = await CreateAsync(new DateOnly(2026, 8, 1), 100_000m);
+        await SetProfileAsync(repository, new SalaryProfile(20_000m, 12_000m, 4_800m, 4m, 60_000m, 1, 15));
+
+        var overview = await service.GetAsync(CancellationToken.None);
+
+        Assert.NotNull(overview);
+        Assert.True(overview.HasSalaryProfile);
+        Assert.Equal("salary", overview.Effective.MonthlyIncome.Source);
+        Assert.Equal(12_000m, overview.Effective.MonthlyIncome.Value);
+        Assert.Equal(4_800m, overview.Effective.MonthlyProvidentDeposit.Value);
+        Assert.Equal(60_000m, overview.Effective.AnnualBonus.Value);
+        Assert.Equal(1m, overview.Effective.BonusPayoutMonth.Value);
+    }
+
+    [Fact]
+    public async Task GetAsync_InBonusMonth_IncludesBonusInExpected()
+    {
+        var (repository, service, _) = await CreateAsync(new DateOnly(2026, 8, 1), 100_000m);
+        await SetProfileAsync(repository, new SalaryProfile(20_000m, 12_000m, 4_800m, 4m, 60_000m, 11, 15));
+
+        var overview = await service.GetAsync(CancellationToken.None);
+
+        Assert.NotNull(overview);
+        Assert.Equal(76_800m, overview.ActualMonth.ExpectedNetDeposit);
+        Assert.Contains("年终奖", overview.ActualMonth.Note);
+    }
+
+    private static async Task SetProfileAsync(FakeLedgerRepository repository, SalaryProfile profile)
+    {
+        var ledger = await repository.GetForUpdateAsync(CancellationToken.None);
+        ledger!.SetSalaryProfile(profile, Now);
+        await repository.SaveChangesAsync(CancellationToken.None);
+    }
+
     private static async Task<(FakeLedgerRepository Repository, CapitalGoalService Service, Ledger Ledger)> CreateAsync(
         DateOnly startDate,
         decimal cashBalance)

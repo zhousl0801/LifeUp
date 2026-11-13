@@ -5,5 +5,6 @@ public enum AutoPlanType
     SalaryIncome,
     ProvidentDeposit,
     ProvidentWithdrawal,
-    FundSip
+    FundSip,
+    BonusIncome
 }

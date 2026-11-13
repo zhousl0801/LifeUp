@@ -61,6 +61,9 @@ internal sealed class AutoPlanConfiguration : IEntityTypeConfiguration<AutoPlan>
         builder.Property(plan => plan.DayOfWeek)
             .HasColumnName("day_of_week");
 
+        builder.Property(plan => plan.MonthOfYear)
+            .HasColumnName("month_of_year");
+
         builder.Property(plan => plan.Time)
             .HasColumnName("time")
             .HasColumnType("time")

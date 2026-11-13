@@ -11,7 +11,9 @@ public sealed record CapitalEffectiveInputs(
     CapitalEffectiveValue IncomeGrowthPercent,
     CapitalEffectiveValue ExpenseGrowthPercent,
     CapitalEffectiveValue InvestmentAnnualReturnPercent,
-    CapitalEffectiveValue ProvidentAnnualReturnPercent);
+    CapitalEffectiveValue ProvidentAnnualReturnPercent,
+    CapitalEffectiveValue AnnualBonus,
+    CapitalEffectiveValue BonusPayoutMonth);
 
 public sealed record CapitalGoalSettingsDto(
     decimal? TargetAmount,
@@ -21,12 +23,15 @@ public sealed record CapitalGoalSettingsDto(
     decimal? IncomeGrowthPercent,
     decimal? ExpenseGrowthPercent,
     decimal? InvestmentAnnualReturnPercent,
-    decimal? ProvidentAnnualReturnPercent)
+    decimal? ProvidentAnnualReturnPercent,
+    decimal? AnnualBonus,
+    int? BonusPayoutMonth,
+    bool UseSalaryProfile)
 {
     public static CapitalGoalSettingsDto From(CapitalGoal? goal)
     {
         return goal is null
-            ? new CapitalGoalSettingsDto(null, null, null, null, null, null, null, null)
+            ? new CapitalGoalSettingsDto(null, null, null, null, null, null, null, null, null, null, false)
             : new CapitalGoalSettingsDto(
                 goal.TargetAmount,
                 goal.MonthlyIncome,
@@ -35,7 +40,10 @@ public sealed record CapitalGoalSettingsDto(
                 goal.IncomeGrowthPercent,
                 goal.ExpenseGrowthPercent,
                 goal.InvestmentAnnualReturnPercent,
-                goal.ProvidentAnnualReturnPercent);
+                goal.ProvidentAnnualReturnPercent,
+                goal.AnnualBonus,
+                goal.BonusPayoutMonth,
+                goal.UseSalaryProfile);
     }
 }
 
@@ -97,7 +105,8 @@ public sealed record CapitalOverviewDto(
     CapitalEffectiveInputs Effective,
     CapitalCurrentDto Current,
     CapitalProjectionDto Projection,
-    CapitalActualMonthDto ActualMonth);
+    CapitalActualMonthDto ActualMonth,
+    bool HasSalaryProfile);
 
 public sealed record UpdateCapitalGoalRequest(
     decimal? TargetAmount,
@@ -107,4 +116,7 @@ public sealed record UpdateCapitalGoalRequest(
     decimal? IncomeGrowthPercent,
     decimal? ExpenseGrowthPercent,
     decimal? InvestmentAnnualReturnPercent,
-    decimal? ProvidentAnnualReturnPercent);
+    decimal? ProvidentAnnualReturnPercent,
+    decimal? AnnualBonus = null,
+    int? BonusPayoutMonth = null,
+    bool UseSalaryProfile = false);

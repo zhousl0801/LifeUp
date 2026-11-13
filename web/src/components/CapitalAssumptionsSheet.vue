@@ -22,15 +22,18 @@ type FieldKey =
   | 'expenseGrowthPercent'
   | 'investmentAnnualReturnPercent'
   | 'providentAnnualReturnPercent'
+  | 'annualBonus'
+  | 'bonusPayoutMonth'
 
-const amountFields: FieldKey[] = ['monthlyIncome', 'monthlyExpense', 'monthlyProvidentDeposit']
+const amountFields: FieldKey[] = ['monthlyIncome', 'monthlyExpense', 'monthlyProvidentDeposit', 'annualBonus']
+const monthFields: FieldKey[] = ['bonusPayoutMonth']
 const percentFields: FieldKey[] = [
   'incomeGrowthPercent',
   'expenseGrowthPercent',
   'investmentAnnualReturnPercent',
   'providentAnnualReturnPercent'
 ]
-const fieldKeys: FieldKey[] = ['targetAmount', ...amountFields, ...percentFields]
+const fieldKeys: FieldKey[] = ['targetAmount', ...amountFields, ...monthFields, ...percentFields]
 const investmentPresets = [
   { label: '纳指100 20年 ≈13%', value: 13 },
   { label: '标普500 20年 ≈10%', value: 10 }
@@ -44,6 +47,7 @@ const props = defineProps<{
   preview: CapitalOverview | null
   saving: boolean
   serverError: string | null
+  hasSalaryProfile: boolean
 }>()
 
 const emit = defineEmits<{
@@ -60,10 +64,13 @@ const fields = reactive<Record<FieldKey, string>>({
   incomeGrowthPercent: '',
   expenseGrowthPercent: '',
   investmentAnnualReturnPercent: '',
-  providentAnnualReturnPercent: ''
+  providentAnnualReturnPercent: '',
+  annualBonus: '',
+  bonusPayoutMonth: '1'
 })
 const errors = reactive<Partial<Record<FieldKey, string>>>({})
 const sessionKey = ref(0)
+const followProfile = ref(false)
 let previewTimer: ReturnType<typeof setTimeout> | null = null
 
 const { discardOpen, requestClose, resolveDiscard } = useUnsavedSheet(
@@ -75,9 +82,13 @@ const { discardOpen, requestClose, resolveDiscard } = useUnsavedSheet(
 )
 
 const computedNet = computed(() => {
-  const income = parseInput(fields.monthlyIncome, parseAmount)
+  const income = followProfile.value
+    ? props.effective.monthlyIncome.value
+    : parseInput(fields.monthlyIncome, parseAmount)
   const expense = parseInput(fields.monthlyExpense, parseAmount)
-  const provident = parseInput(fields.monthlyProvidentDeposit, parseAmount)
+  const provident = followProfile.value
+    ? props.effective.monthlyProvidentDeposit.value
+    : parseInput(fields.monthlyProvidentDeposit, parseAmount)
 
   if (income === null || expense === null || provident === null) {
     return null
@@ -86,6 +97,13 @@ const computedNet = computed(() => {
   return income - expense + provident
 })
 
+const bonusAmount = computed(() => followProfile.value
+  ? props.effective.annualBonus?.value ?? 0
+  : parseInput(fields.annualBonus, parseAmount) ?? 0)
+const bonusMonth = computed(() => followProfile.value
+  ? props.effective.bonusPayoutMonth?.value ?? 1
+  : Number(fields.bonusPayoutMonth) || 1)
+
 const previewNet = computed(() => props.preview?.projection.monthlyNetAccumulation ?? computedNet.value)
 const previewBlended = computed(() => props.preview?.projection.blendedAnnualReturnPercent ?? null)
 
@@ -93,6 +111,11 @@ watch(
   () => props.open,
   (open) => {
     if (open) {
+      followProfile.value = props.hasSalaryProfile
+        && (props.settings.useSalaryProfile
+          || (props.settings.monthlyIncome === null
+            && props.settings.monthlyProvidentDeposit === null
+            && (props.settings.annualBonus ?? null) === null))
       Object.assign(fields, toForm(props.settings))
       clearErrors()
       sessionKey.value++
@@ -134,7 +157,9 @@ function toForm(settings: CapitalGoalSettings): Record<FieldKey, string> {
     incomeGrowthPercent: value(settings.incomeGrowthPercent),
     expenseGrowthPercent: value(settings.expenseGrowthPercent),
     investmentAnnualReturnPercent: value(settings.investmentAnnualReturnPercent),
-    providentAnnualReturnPercent: value(settings.providentAnnualReturnPercent)
+    providentAnnualReturnPercent: value(settings.providentAnnualReturnPercent),
+    annualBonus: value(settings.annualBonus ?? null),
+    bonusPayoutMonth: settings.bonusPayoutMonth == null ? '1' : String(settings.bonusPayoutMonth)
   }
 }
 
@@ -147,11 +172,27 @@ function validateFields(): void {
     errors.targetAmount = '目标金额必须大于零，最多四位小数（万元）。'
   }
 
+  const followedFields = followProfile.value
+    ? new Set<FieldKey>(['monthlyIncome', 'monthlyProvidentDeposit', 'annualBonus', 'bonusPayoutMonth'])
+    : new Set<FieldKey>()
+
   for (const key of amountFields) {
+    if (followedFields.has(key)) {
+      continue
+    }
+
     const text = fields[key].trim()
 
     if (text && parseAmount(text) === null) {
       errors[key] = '金额必须不小于零，最多两位小数。'
+    }
+  }
+
+  if (!followedFields.has('bonusPayoutMonth')) {
+    const month = Number(fields.bonusPayoutMonth)
+
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+      errors.bonusPayoutMonth = '发放月需在 1 到 12 之间。'
     }
   }
 
@@ -201,8 +242,29 @@ function toSettings(): CapitalGoalSettings {
     incomeGrowthPercent: parseInput(fields.incomeGrowthPercent, parseSignedAmount),
     expenseGrowthPercent: parseInput(fields.expenseGrowthPercent, parseSignedAmount),
     investmentAnnualReturnPercent: parseInput(fields.investmentAnnualReturnPercent, parseSignedAmount),
-    providentAnnualReturnPercent: parseInput(fields.providentAnnualReturnPercent, parseSignedAmount)
+    providentAnnualReturnPercent: parseInput(fields.providentAnnualReturnPercent, parseSignedAmount),
+    annualBonus: parseInput(fields.annualBonus, parseAmount),
+    bonusPayoutMonth: Number(fields.bonusPayoutMonth),
+    useSalaryProfile: followProfile.value
   }
+}
+
+function switchToManual(): void {
+  fields.monthlyIncome = String(props.effective.monthlyIncome.value)
+  fields.monthlyProvidentDeposit = String(props.effective.monthlyProvidentDeposit.value)
+  fields.annualBonus = (props.effective.annualBonus?.value ?? 0) > 0
+    ? String(props.effective.annualBonus?.value ?? 0)
+    : ''
+  fields.bonusPayoutMonth = String(props.effective.bonusPayoutMonth?.value ?? 1)
+  followProfile.value = false
+  validateFields()
+  schedulePreview()
+}
+
+function switchToFollow(): void {
+  followProfile.value = true
+  validateFields()
+  schedulePreview()
 }
 
 function parseInput(value: string, parser: (input: string) => number | null): number | null {
@@ -255,6 +317,8 @@ function resetAssumptions(): void {
   fields.monthlyIncome = ''
   fields.monthlyExpense = ''
   fields.monthlyProvidentDeposit = ''
+  fields.annualBonus = ''
+  fields.bonusPayoutMonth = '1'
   fields.incomeGrowthPercent = ''
   fields.expenseGrowthPercent = ''
   fields.investmentAnnualReturnPercent = ''
@@ -284,6 +348,10 @@ function applyPreset(value: number): void {
 function amountHint(value: CapitalEffectiveValue): string {
   if (value.source === 'user') {
     return '已设定'
+  }
+
+  if (value.source === 'salary') {
+    return '来自工资档案'
   }
 
   if (value.source === 'history') {
@@ -337,7 +405,32 @@ function formatNet(value: number | null): string {
         <small v-else class="hint">例如 100 表示 100 万；留空则清除目标</small>
       </div>
 
-      <div class="field">
+      <div v-if="hasSalaryProfile" class="field full follow-banner">
+        <div>
+          <b>{{ followProfile ? '跟随工资档案' : '手动覆盖' }}</b>
+          <small>{{ followProfile ? '月收入、公积金和年终奖来自工资档案。' : '当前使用手填值，工资档案变化不会覆盖。' }}</small>
+        </div>
+        <button
+          type="button"
+          class="quick-fill"
+          @click.prevent="followProfile ? switchToManual() : switchToFollow()"
+        >{{ followProfile ? '改为手动' : '改用工资档案' }}</button>
+      </div>
+      <div v-else-if="settings.useSalaryProfile" class="field full follow-banner warning">
+        <div>
+          <b>工资档案已停用</b>
+          <small>请改为手动，或到自动计划页重新建立工资档案。</small>
+        </div>
+      </div>
+
+      <div v-if="followProfile" class="field">
+        <div class="field-control readonly-control">
+          <span>月收入</span>
+          <b>¥{{ formatMoney(effective.monthlyIncome.value) }}</b>
+          <small class="source-badge">工资档案</small>
+        </div>
+      </div>
+      <div v-else class="field">
         <label class="field-control">
           <span>月收入</span>
           <input v-model="fields.monthlyIncome" aria-label="月收入" inputmode="decimal" placeholder="现金到账" autocomplete="off" />
@@ -371,7 +464,14 @@ function formatNet(value: number | null): string {
         </button>
       </div>
 
-      <div class="field">
+      <div v-if="followProfile" class="field">
+        <div class="field-control readonly-control">
+          <span>公积金月缴存</span>
+          <b>¥{{ formatMoney(effective.monthlyProvidentDeposit.value) }}</b>
+          <small class="source-badge">工资档案</small>
+        </div>
+      </div>
+      <div v-else class="field">
         <label class="field-control">
           <span>公积金月缴存</span>
           <input
@@ -393,6 +493,33 @@ function formatNet(value: number | null): string {
           用缴存设置 {{ formatMoney(suggestions.providentDeposit) }}
         </button>
       </div>
+
+      <div v-if="followProfile" class="field">
+        <div class="field-control readonly-control">
+          <span>年终奖（到手）</span>
+          <b>{{ (effective.annualBonus?.value ?? 0) > 0 ? `¥${formatMoney(effective.annualBonus?.value ?? 0)}` : '未设置' }}</b>
+          <small class="source-badge">{{ effective.bonusPayoutMonth?.value ?? 1 }} 月到账</small>
+        </div>
+      </div>
+      <template v-else>
+        <div class="field">
+          <label class="field-control">
+            <span>年终奖（到手）</span>
+            <input v-model="fields.annualBonus" aria-label="年终奖到手" inputmode="decimal" placeholder="0" autocomplete="off" />
+          </label>
+          <small v-if="errors.annualBonus" class="field-error">{{ errors.annualBonus }}</small>
+          <small v-else class="hint">预测和年度表按发放月计入，不计入月净积累。</small>
+        </div>
+        <div class="field">
+          <label class="field-control">
+            <span>年终奖发放月</span>
+            <select v-model="fields.bonusPayoutMonth" aria-label="年终奖发放月">
+              <option v-for="month in 12" :key="month" :value="String(month)">{{ month }} 月</option>
+            </select>
+          </label>
+          <small v-if="errors.bonusPayoutMonth" class="field-error">{{ errors.bonusPayoutMonth }}</small>
+        </div>
+      </template>
 
       <div class="field">
         <label class="field-control">
@@ -472,6 +599,10 @@ function formatNet(value: number | null): string {
         <span>组合年化</span>
         <b>{{ formatRate(previewBlended) }}</b>
       </div>
+
+      <p v-if="bonusAmount > 0" class="bonus-hint field full">
+        年终奖 ¥{{ formatMoney(bonusAmount) }} 于每年 {{ bonusMonth }} 月计入达成时间，不计入月净积累。
+      </p>
 
       <p v-if="serverError" class="form-error">{{ serverError }}</p>
 
@@ -665,5 +796,60 @@ function formatNet(value: number | null): string {
 .primary {
   background: var(--color-brand);
   color: var(--color-on-brand);
+}
+
+.follow-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-card);
+  background: var(--color-brand-soft);
+}
+
+.follow-banner > div {
+  display: grid;
+  gap: 3px;
+}
+
+.follow-banner b {
+  font-size: var(--text-footnote);
+  font-weight: 600;
+}
+
+.follow-banner small {
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+}
+
+.follow-banner.warning {
+  background: var(--color-bg-subtle);
+}
+
+.readonly-control {
+  display: grid;
+  gap: 4px;
+}
+
+.readonly-control b {
+  font-size: var(--text-subhead);
+  font-weight: 600;
+}
+
+.source-badge {
+  justify-self: start;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--color-brand-soft);
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+}
+
+.bonus-hint {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+  line-height: 1.6;
 }
 </style>

@@ -9,6 +9,7 @@ public sealed class CapitalDefaultResolver
     private const string UserSource = "user";
     private const string HistorySource = "history";
     private const string DefaultSource = "default";
+    private const string SalarySource = "salary";
 
     private readonly ILedgerRepository _ledgerRepository;
     private readonly BusinessDateProvider _dates;
@@ -60,15 +61,31 @@ public sealed class CapitalDefaultResolver
         }
 
         var historySource = hasHistory ? HistorySource : DefaultSource;
+        var profile = ledger.GetSalaryProfile();
+        var followsProfile = profile is not null && (goal is null || goal.UseSalaryProfile);
+        var monthlyIncome = followsProfile
+            ? new CapitalEffectiveValue(profile!.NetMonthlySalary, SalarySource)
+            : UserOr(goal?.MonthlyIncome, income, historySource);
+        var monthlyProvident = followsProfile
+            ? new CapitalEffectiveValue(profile!.ProvidentMonthly, SalarySource)
+            : UserOr(goal?.MonthlyProvidentDeposit, providentDeposit, historySource);
+        var annualBonus = followsProfile
+            ? new CapitalEffectiveValue(profile!.BonusMonths > 0m ? profile.BonusNetAmount : 0m, SalarySource)
+            : UserOr(goal?.AnnualBonus, 0m, DefaultSource);
+        var bonusPayoutMonth = followsProfile
+            ? new CapitalEffectiveValue(profile!.BonusPayoutMonth, SalarySource)
+            : UserOr(goal?.BonusPayoutMonth is int payoutMonth ? payoutMonth : (decimal?)null, 1m, DefaultSource);
 
         return new CapitalEffectiveInputs(
-            UserOr(goal?.MonthlyIncome, income, historySource),
+            monthlyIncome,
             UserOr(goal?.MonthlyExpense, expense, historySource),
-            UserOr(goal?.MonthlyProvidentDeposit, providentDeposit, historySource),
+            monthlyProvident,
             UserOr(goal?.IncomeGrowthPercent, 0m, DefaultSource),
             UserOr(goal?.ExpenseGrowthPercent, 0m, DefaultSource),
             UserOr(goal?.InvestmentAnnualReturnPercent, 0m, DefaultSource),
-            UserOr(goal?.ProvidentAnnualReturnPercent, 1.5m, DefaultSource));
+            UserOr(goal?.ProvidentAnnualReturnPercent, 1.5m, DefaultSource),
+            annualBonus,
+            bonusPayoutMonth);
     }
 
     private static IReadOnlyList<DateOnly> GetCompleteMonths(Ledger ledger, DateOnly today)

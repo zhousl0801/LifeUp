@@ -8,7 +8,10 @@ public sealed record CapitalGoal(
     decimal? IncomeGrowthPercent,
     decimal? ExpenseGrowthPercent,
     decimal? InvestmentAnnualReturnPercent,
-    decimal? ProvidentAnnualReturnPercent)
+    decimal? ProvidentAnnualReturnPercent,
+    decimal? AnnualBonus = null,
+    int? BonusPayoutMonth = null,
+    bool UseSalaryProfile = false)
 {
     private const decimal MinimumPercent = -100m;
     private const decimal MaximumPercent = 100m;
@@ -61,6 +64,16 @@ public sealed record CapitalGoal(
         if (!IsValidPercent(goal.ProvidentAnnualReturnPercent))
         {
             validationErrors.Add("公积金年化必须在 -100 到 100 之间，且最多保留两位小数。");
+        }
+
+        if (!IsValidAmount(goal.AnnualBonus))
+        {
+            validationErrors.Add("年终奖到手必须不小于零、不超过 10 亿元，且最多保留两位小数。");
+        }
+
+        if (goal.BonusPayoutMonth is < 1 or > 12)
+        {
+            validationErrors.Add("年终奖发放月必须在 1 到 12 之间。");
         }
 
         errors = validationErrors;

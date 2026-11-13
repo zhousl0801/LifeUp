@@ -3,7 +3,7 @@ import { beforeEach, expect, test, vi } from 'vitest'
 import MineView from './MineView.vue'
 
 vi.mock('vue-router', () => ({
-  RouterLink: { props: ['to'], template: '<a><slot /></a>' },
+  RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
   useRoute: () => ({ name: 'mine', query: {} }),
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() })
 }))
@@ -19,10 +19,24 @@ beforeEach(() => {
 const mountOptions = {
   global: {
     stubs: {
-      RouterLink: { template: '<a><slot /></a>' }
+      RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' }
     }
   }
 }
+
+test('salary profile entry opens the detail page', () => {
+  const view = mount(MineView, mountOptions)
+
+  const rows = view.findAll('.list-box .list-row')
+  expect(rows[0]!.text()).toContain('头像与昵称')
+  expect(rows[1]!.text()).toContain('工资档案')
+
+  const link = view.findAll('a').find(item => item.text().includes('工资档案'))!
+  expect(link.attributes('href')).toBe('/salary')
+  expect(link.text()).toContain('查看')
+  expect(view.find('.salary-card').exists()).toBe(false)
+  view.unmount()
+})
 
 test('theme setting switches between system, light and dark', async () => {
   const view = mount(MineView, mountOptions)

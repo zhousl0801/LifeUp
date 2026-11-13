@@ -50,6 +50,29 @@ public sealed class CapitalEndpointsTests
     }
 
     [Fact]
+    public async Task Put_SavesBonusAndFollowFlag()
+    {
+        using var factory = new LifeUpApiFactory();
+        using var client = factory.CreateClient();
+        await InitializeAsync(client, 100_000m);
+
+        var put = await client.PutAsJsonAsync("/api/ledger/capital", new
+        {
+            targetAmount = 1_000_000m,
+            annualBonus = 60_000m,
+            bonusPayoutMonth = 1,
+            useSalaryProfile = false
+        });
+
+        Assert.Equal(HttpStatusCode.OK, put.StatusCode);
+        var saved = await put.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(60_000m, saved.GetProperty("settings").GetProperty("annualBonus").GetDecimal());
+        Assert.Equal(1, saved.GetProperty("settings").GetProperty("bonusPayoutMonth").GetInt32());
+        Assert.Equal(60_000m, saved.GetProperty("effective").GetProperty("annualBonus").GetProperty("value").GetDecimal());
+        Assert.False(saved.GetProperty("hasSalaryProfile").GetBoolean());
+    }
+
+    [Fact]
     public async Task Put_InvalidGoal_ReturnsBadRequest()
     {
         using var factory = new LifeUpApiFactory();

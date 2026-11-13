@@ -61,7 +61,7 @@ vi.mock('../components/CapitalProjectionChart.vue', () => ({
 vi.mock('../components/CapitalAssumptionsSheet.vue', () => ({
   default: {
     name: 'CapitalAssumptionsSheet',
-    props: ['open', 'settings', 'effective', 'suggestions', 'preview', 'saving', 'serverError'],
+    props: ['open', 'settings', 'effective', 'suggestions', 'preview', 'saving', 'serverError', 'hasSalaryProfile'],
     emits: ['close', 'preview', 'save'],
     template: '<div v-if="open" class="sheet-stub"><span class="server-error">{{ serverError }}</span></div>'
   }
@@ -75,7 +75,10 @@ const settings: CapitalGoalSettings = {
   incomeGrowthPercent: 3,
   expenseGrowthPercent: 2,
   investmentAnnualReturnPercent: 5,
-  providentAnnualReturnPercent: 1.5
+  providentAnnualReturnPercent: 1.5,
+  annualBonus: 60_000,
+  bonusPayoutMonth: 1,
+  useSalaryProfile: false
 }
 
 const effective: CapitalEffectiveInputs = {
@@ -85,7 +88,9 @@ const effective: CapitalEffectiveInputs = {
   incomeGrowthPercent: { value: 3, source: 'user' },
   expenseGrowthPercent: { value: 2, source: 'user' },
   investmentAnnualReturnPercent: { value: 5, source: 'user' },
-  providentAnnualReturnPercent: { value: 1.5, source: 'user' }
+  providentAnnualReturnPercent: { value: 1.5, source: 'user' },
+  annualBonus: { value: 60_000, source: 'user' },
+  bonusPayoutMonth: { value: 1, source: 'user' }
 }
 
 const baseProjection: CapitalProjection = {
@@ -147,6 +152,7 @@ function overview(overrides: Partial<CapitalOverview> = {}): CapitalOverview {
       isComplete: true,
       note: null
     },
+    hasSalaryProfile: false,
     ...overrides
   }
 }
@@ -196,7 +202,7 @@ async function mountView(data: CapitalOverview) {
 }
 
 async function openSheet(view: ReturnType<typeof mountView> extends Promise<infer T> ? T : never) {
-  await view.find('.header-action').trigger('click')
+  await view.find('button[aria-label="调整假设"]').trigger('click')
   await nextTick()
 
   return view.findComponent(CapitalAssumptionsSheet)
@@ -302,6 +308,32 @@ test('passes plan, budget and provident suggestions to the sheet', async () => {
     expense: 7_200,
     providentDeposit: 2_000
   })
+})
+
+test('does not show the provident or bonus explanation', async () => {
+  const view = await mountView(overview({ hasSalaryProfile: true }))
+
+  const hero = view.find('.hero-stats').text()
+  expect(hero).not.toContain('含公积金')
+  expect(hero).not.toContain('年终奖')
+  expect(view.find('.stat-detail').exists()).toBe(false)
+  view.unmount()
+})
+
+test('toggles amount masking from the header eye', async () => {
+  const view = await mountView(overview())
+
+  expect(view.find('.hero-amount').text()).not.toContain('••••')
+  expect(view.find('button[aria-label="隐藏资产金额"]').exists()).toBe(true)
+
+  await view.find('button[aria-label="隐藏资产金额"]').trigger('click')
+  expect(view.find('.hero-amount').text()).toContain('••••')
+  expect(view.find('button[aria-label="显示资产金额"]').exists()).toBe(true)
+
+  await view.find('button[aria-label="显示资产金额"]').trigger('click')
+  expect(view.find('.hero-amount').text()).not.toContain('••••')
+  expect(view.find('button[aria-label="隐藏资产金额"]').exists()).toBe(true)
+  view.unmount()
 })
 
 test('applies a preview to the page without saving', async () => {

@@ -167,6 +167,67 @@ public sealed class CapitalProjectionCalculatorTests
     }
 
     [Fact]
+    public void Calculate_BonusInPayoutMonth_RaisesCapitalAndKeepsMonthlyNet()
+    {
+        var input = new CapitalProjectionInput(
+            AsOf, 0m, 0m, 0m, 1_000_000m,
+            10_000m, 5_000m, 0m, 0m, 0m, 0m, 0m,
+            AnnualBonus: 60_000m, BonusPayoutMonth: 1);
+
+        var result = new CapitalProjectionCalculator().Calculate(input);
+
+        Assert.Equal(5_000m, result.MonthlyNetAccumulation);
+        Assert.Equal(5_000m, result.Points[0].NetAccumulation);
+        Assert.Equal(65_000m, result.Points[1].NetAccumulation);
+        var year = Assert.Single(result.Years, item => item.Year == 2027);
+        Assert.Equal(120_000m, year.NetSavings + year.ProvidentDeposit);
+        Assert.Contains(result.Notes, note => note.Contains("年终奖"));
+    }
+
+    [Fact]
+    public void Calculate_Bonus_ShiftsEtaEarlier()
+    {
+        var withoutBonus = new CapitalProjectionInput(
+            AsOf, 0m, 0m, 0m, 100_000m,
+            10_000m, 0m, 0m, 0m, 0m, 0m, 0m);
+        var withBonus = withoutBonus with { AnnualBonus = 60_000m, BonusPayoutMonth = 1 };
+
+        var baseline = new CapitalProjectionCalculator().Calculate(withoutBonus);
+        var improved = new CapitalProjectionCalculator().Calculate(withBonus);
+
+        Assert.NotNull(baseline.MonthsRemaining);
+        Assert.NotNull(improved.MonthsRemaining);
+        Assert.True(improved.MonthsRemaining < baseline.MonthsRemaining);
+    }
+
+    [Fact]
+    public void Calculate_Bonus_GrowsWithIncomeGrowth()
+    {
+        var input = new CapitalProjectionInput(
+            AsOf, 0m, 0m, 0m, 1_000_000m,
+            10_000m, 0m, 0m, 10m, 0m, 0m, 0m,
+            AnnualBonus: 10_000m, BonusPayoutMonth: 1);
+
+        var result = new CapitalProjectionCalculator().Calculate(input);
+
+        Assert.Equal(10_000m, result.Points[0].NetAccumulation);
+        Assert.Equal(22_000m, result.Points[1].NetAccumulation);
+    }
+
+    [Fact]
+    public void Calculate_WithoutBonus_AddsNoBonusNote()
+    {
+        var input = new CapitalProjectionInput(
+            AsOf, 0m, 0m, 0m, 100_000m,
+            10_000m, 0m, 0m, 0m, 0m, 0m, 0m);
+
+        var result = new CapitalProjectionCalculator().Calculate(input);
+
+        Assert.DoesNotContain(result.Notes, note => note.Contains("年终奖"));
+        Assert.Equal(10_000m, result.Points[0].NetAccumulation);
+    }
+
+    [Fact]
     public void NoInvestmentAssets_AddsRateHint()
     {
         var input = new CapitalProjectionInput(

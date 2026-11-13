@@ -44,7 +44,11 @@ public sealed class Ledger
 
     public string? CapitalGoalJson { get; private set; }
 
+    public string? SalaryProfileJson { get; private set; }
+
     private static readonly JsonSerializerOptions CapitalGoalJsonOptions = new(JsonSerializerDefaults.Web);
+
+    private static readonly JsonSerializerOptions SalaryProfileJsonOptions = new(JsonSerializerDefaults.Web);
 
     public static bool TryParseBudgetMonth(string month, out DateOnly date)
     {
@@ -142,6 +146,55 @@ public sealed class Ledger
         try
         {
             return CapitalGoalJson is null || GetCapitalGoal() is not null;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    public SalaryProfile? GetSalaryProfile()
+    {
+        if (SalaryProfileJson is null)
+        {
+            return null;
+        }
+
+        var profile = JsonSerializer.Deserialize<SalaryProfile>(SalaryProfileJson, SalaryProfileJsonOptions)
+            ?? throw new JsonException("工资档案格式无效。");
+
+        if (!SalaryProfile.TryValidate(profile, out var errors))
+        {
+            throw new JsonException(string.Join(" ", errors));
+        }
+
+        return profile;
+    }
+
+    public bool SetSalaryProfile(SalaryProfile? profile, DateTimeOffset now)
+    {
+        if (profile is not null && !SalaryProfile.TryValidate(profile, out var errors))
+        {
+            throw new ArgumentException(string.Join(" ", errors), nameof(profile));
+        }
+
+        var json = profile is null ? null : JsonSerializer.Serialize(profile, SalaryProfileJsonOptions);
+
+        if (string.Equals(SalaryProfileJson, json, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        SalaryProfileJson = json;
+        Touch(now);
+        return true;
+    }
+
+    public bool HasValidSalaryProfile()
+    {
+        try
+        {
+            return SalaryProfileJson is null || GetSalaryProfile() is not null;
         }
         catch (JsonException)
         {

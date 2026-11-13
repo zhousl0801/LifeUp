@@ -275,9 +275,19 @@ function netTone(value: number): string {
   <main class="page capital-page with-nav">
     <header class="capital-header">
       <h1>目标</h1>
-      <button type="button" class="header-action" aria-label="调整假设" @click="openAssumptions">
-        <AppIcon name="settings" />
-      </button>
+      <div class="capital-header-actions">
+        <button
+          type="button"
+          class="header-action"
+          :aria-label="amountsMasked ? '显示资产金额' : '隐藏资产金额'"
+          @click="amountsMasked = !amountsMasked"
+        >
+          <AppIcon :name="amountsMasked ? 'eye-off' : 'eye'" />
+        </button>
+        <button type="button" class="header-action" aria-label="调整假设" @click="openAssumptions">
+          <AppIcon name="settings" />
+        </button>
+      </div>
     </header>
 
     <GoalTabs />
@@ -392,6 +402,7 @@ function netTone(value: number): string {
         :preview="previewOverview"
         :saving="saving"
         :server-error="saveError"
+        :has-salary-profile="display.hasSalaryProfile ?? false"
         @close="closeAssumptions"
         @preview="handlePreview"
         @save="handleSave"
@@ -450,6 +461,12 @@ function netTone(value: number): string {
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 14px;
+}
+
+.capital-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .capital-header h1 {

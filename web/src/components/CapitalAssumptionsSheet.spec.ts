@@ -12,7 +12,10 @@ const settings: CapitalGoalSettings = {
   incomeGrowthPercent: 3,
   expenseGrowthPercent: 2,
   investmentAnnualReturnPercent: 5,
-  providentAnnualReturnPercent: 1.5
+  providentAnnualReturnPercent: 1.5,
+  annualBonus: 60_000,
+  bonusPayoutMonth: 1,
+  useSalaryProfile: false
 }
 
 const effective: CapitalEffectiveInputs = {
@@ -22,7 +25,9 @@ const effective: CapitalEffectiveInputs = {
   incomeGrowthPercent: { value: 3, source: 'user' },
   expenseGrowthPercent: { value: 2, source: 'user' },
   investmentAnnualReturnPercent: { value: 5, source: 'user' },
-  providentAnnualReturnPercent: { value: 1.5, source: 'user' }
+  providentAnnualReturnPercent: { value: 1.5, source: 'user' },
+  annualBonus: { value: 60_000, source: 'user' },
+  bonusPayoutMonth: { value: 1, source: 'user' }
 }
 
 const preview = {
@@ -48,6 +53,7 @@ function mountSheet(overrides: Partial<{
   preview: CapitalOverview | null
   saving: boolean
   serverError: string | null
+  hasSalaryProfile: boolean
 }> = {}) {
   view = mount(CapitalAssumptionsSheet, {
     props: {
@@ -58,6 +64,7 @@ function mountSheet(overrides: Partial<{
       preview: null,
       saving: false,
       serverError: null,
+      hasSalaryProfile: false,
       ...overrides
     }
   })
@@ -192,11 +199,93 @@ describe('CapitalAssumptionsSheet', () => {
       '月收入',
       '月支出',
       '公积金月缴存',
+      '年终奖（到手）',
+      '年终奖发放月',
       '公积金年化',
       '收入年增长',
       '支出年增长',
       '投资年化'
     ])
+  })
+
+  it('follows the salary profile and switches to manual with effective values', async () => {
+    mountSheet({
+      settings: { ...settings, useSalaryProfile: true },
+      hasSalaryProfile: true
+    })
+    await bodySnapshot()
+
+    expect(document.querySelector('input[aria-label="月收入"]')).toBeNull()
+    expect(document.querySelector('input[aria-label="公积金月缴存"]')).toBeNull()
+    expect(document.querySelector('input[aria-label="年终奖到手"]')).toBeNull()
+    expect(document.body.textContent).toContain('跟随工资档案')
+
+    findButton('改为手动').click()
+    await nextTick()
+
+    expect(input('月收入').value).toBe('12000')
+    expect(input('公积金月缴存').value).toBe('2000')
+    expect(input('年终奖到手').value).toBe('60000')
+
+    findButton('保存并重新计算').click()
+    await nextTick()
+
+    expect(view!.emitted('save')?.[0]?.[0]).toMatchObject({
+      monthlyIncome: 12_000,
+      monthlyProvidentDeposit: 2_000,
+      annualBonus: 60_000,
+      useSalaryProfile: false
+    })
+  })
+
+  it('keeps the retained manual payout month while following', async () => {
+    mountSheet({
+      settings: { ...settings, useSalaryProfile: true, bonusPayoutMonth: 12 },
+      hasSalaryProfile: true
+    })
+    await bodySnapshot()
+
+    findButton('保存并重新计算').click()
+    await nextTick()
+
+    expect(view!.emitted('save')?.[0]?.[0]).toMatchObject({
+      useSalaryProfile: true,
+      bonusPayoutMonth: 12
+    })
+  })
+
+  it('switches back to following the salary profile', async () => {
+    mountSheet({
+      settings: { ...settings, useSalaryProfile: false, bonusPayoutMonth: 12 },
+      hasSalaryProfile: true
+    })
+    await bodySnapshot()
+
+    findButton('改用工资档案').click()
+    await nextTick()
+
+    expect(document.querySelector('input[aria-label="月收入"]')).toBeNull()
+    expect(document.body.textContent).toContain('跟随工资档案')
+
+    findButton('保存并重新计算').click()
+    await nextTick()
+
+    expect(view!.emitted('save')?.[0]?.[0]).toMatchObject({
+      useSalaryProfile: true,
+      bonusPayoutMonth: 12
+    })
+  })
+
+  it('saves an empty bonus as null', async () => {
+    mountSheet()
+    await bodySnapshot()
+
+    await setInput('年终奖到手', '')
+
+    findButton('保存并重新计算').click()
+    await nextTick()
+
+    expect(view!.emitted('save')?.[0]?.[0]).toMatchObject({ annualBonus: null })
   })
 
   it('applies plan, budget and provident suggestions', async () => {

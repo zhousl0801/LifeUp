@@ -41,7 +41,7 @@ export function buildCapitalChartOption(input: CapitalChartInput) {
 
   return {
     animation: false,
-    grid: { left: 8, right: 8, top: 26, bottom: 22 },
+    grid: { left: input.amountsMasked ? 28 : 8, right: 28, top: 26, bottom: 26, containLabel: !input.amountsMasked },
     tooltip: {
       trigger: 'axis',
       confine: true,
@@ -65,17 +65,21 @@ export function buildCapitalChartOption(input: CapitalChartInput) {
       axisTick: { show: false },
       axisLabel: {
         color: theme.text,
-        fontSize: chartFontSize(9),
+        fontSize: chartFontSize(10),
+        hideOverlap: true,
         interval: (index: number, value: string) => index === 0
           || index === months.length - 1
           || (value.endsWith('-01') && Number(value.slice(0, 4)) % 2 === 0),
-        formatter: (value: string) => value.slice(0, 4)
+        formatter: (value: string) => value
       }
     },
     yAxis: {
       type: 'value',
-      show: false,
-      max
+      show: !input.amountsMasked,
+      max,
+      splitNumber: 4,
+      axisLabel: { color: theme.text, fontSize: chartFontSize(10), formatter: formatWan },
+      splitLine: { lineStyle: { color: theme.axis } }
     },
     series: [
       {
@@ -113,6 +117,7 @@ export function buildCapitalChartOption(input: CapitalChartInput) {
               lineStyle: { color: theme.pointer, type: 'dashed' },
               label: {
                 formatter: `目标 ${targetLabel}`,
+                position: 'insideEndTop',
                 color: theme.text,
                 fontSize: chartFontSize(10)
               },
@@ -130,7 +135,7 @@ export function buildMonthlyChartOption(input: CapitalChartInput) {
 
   return {
     animation: false,
-    grid: { left: 8, right: 8, top: 12, bottom: 22 },
+    grid: { left: 8, right: 8, top: 12, bottom: 26 },
     tooltip: {
       trigger: 'axis',
       confine: true,
@@ -156,7 +161,7 @@ export function buildMonthlyChartOption(input: CapitalChartInput) {
       data: points.map((point) => `${Number(point.month.slice(5))}月`),
       axisLine: { lineStyle: { color: theme.axis } },
       axisTick: { show: false },
-      axisLabel: { color: theme.text, fontSize: chartFontSize(9), interval: 2 }
+      axisLabel: { color: theme.text, fontSize: chartFontSize(10), interval: 2, hideOverlap: true }
     },
     yAxis: {
       type: 'value',

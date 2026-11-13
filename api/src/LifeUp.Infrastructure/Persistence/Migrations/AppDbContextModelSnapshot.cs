@@ -820,6 +820,10 @@ namespace LifeUp.Infrastructure.Persistence.Migrations
                         .HasDefaultValue(false)
                         .HasColumnName("provident_fund_not_held");
 
+                    b.Property<string>("SalaryProfileJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("salary_profile");
+
                     b.Property<int>("SingletonSlot")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
@@ -1047,6 +1051,10 @@ namespace LifeUp.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("LedgerId")
                         .HasColumnType("uuid")
                         .HasColumnName("ledger_id");
+
+                    b.Property<int?>("MonthOfYear")
+                        .HasColumnType("integer")
+                        .HasColumnName("month_of_year");
 
                     b.Property<string>("Name")
                         .IsRequired()

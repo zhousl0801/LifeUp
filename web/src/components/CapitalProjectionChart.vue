@@ -77,8 +77,11 @@ onMounted(() => {
 
 watch(
   () => [props.points, props.targetAmount, props.view, props.amountsMasked, props.currentTotal, props.currentMonth],
-  () => render(),
-  { deep: true }
+  () => {
+    resize()
+    render()
+  },
+  { deep: true, flush: 'post' }
 )
 
 watch(resolvedTheme, () => render())
@@ -226,7 +229,7 @@ onBeforeUnmount(() => {
 .legend {
   display: flex;
   gap: 14px;
-  margin-top: 2px;
+  margin-top: 8px;
   color: var(--color-text-secondary);
   font-size: 12px;
 }

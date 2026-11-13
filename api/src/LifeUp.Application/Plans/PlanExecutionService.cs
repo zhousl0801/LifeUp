@@ -272,21 +272,56 @@ public sealed class PlanExecutionService
         }
     }
 
+    private async Task<EntryCategory?> ResolveBonusCategoryAsync(
+        Guid ledgerId,
+        CancellationToken cancellationToken)
+    {
+        var category = await _ledgerRepository.GetCategoryBySystemKeyAsync(
+            ledgerId,
+            LedgerEntryKind.Income,
+            "bonus",
+            cancellationToken);
+
+        if (category is { IsActive: true })
+        {
+            return category;
+        }
+
+        var categories = await _ledgerRepository.GetCategoriesAsync(ledgerId, cancellationToken);
+
+        return categories.FirstOrDefault(item => item.Kind == LedgerEntryKind.Income
+            && item.Name == "奖金"
+            && item.IsActive);
+    }
+
     private async Task<ExecutionResult> ExecuteBusinessAsync(PlanOccurrence occurrence, CancellationToken cancellationToken)
     {
         switch (occurrence.Type)
         {
             case AutoPlanType.SalaryIncome:
+            case AutoPlanType.BonusIncome:
             {
-                var salaryCategory = await _ledgerRepository.GetCategoryBySystemKeyAsync(
-                    occurrence.LedgerId,
-                    LedgerEntryKind.Income,
-                    "salary",
-                    cancellationToken);
+                var category = occurrence.Type == AutoPlanType.BonusIncome
+                    ? await ResolveBonusCategoryAsync(occurrence.LedgerId, cancellationToken)
+                    : await _ledgerRepository.GetCategoryBySystemKeyAsync(
+                        occurrence.LedgerId,
+                        LedgerEntryKind.Income,
+                        "salary",
+                        cancellationToken);
+
+                if (category is null && occurrence.Type == AutoPlanType.BonusIncome)
+                {
+                    category = await _ledgerRepository.GetCategoryBySystemKeyAsync(
+                        occurrence.LedgerId,
+                        LedgerEntryKind.Income,
+                        "salary",
+                        cancellationToken);
+                }
+
                 var result = await _entries.CreateAsync(
                     new CreateLedgerEntryRequest(
                         LedgerEntryKind.Income,
-                        salaryCategory?.Name ?? "工资",
+                        category?.Name ?? "工资",
                         occurrence.Amount,
                         occurrence.DueDate,
                         occurrence.PlanName,

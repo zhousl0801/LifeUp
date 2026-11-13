@@ -22,7 +22,9 @@ public sealed record CapitalProjectionInput(
     decimal IncomeGrowthPercent,
     decimal ExpenseGrowthPercent,
     decimal InvestmentAnnualReturnPercent,
-    decimal ProvidentAnnualReturnPercent);
+    decimal ProvidentAnnualReturnPercent,
+    decimal AnnualBonus = 0m,
+    int BonusPayoutMonth = 1);
 
 public sealed record CapitalProjectionPoint(
     string Month,

@@ -104,7 +104,7 @@ public sealed class BackupServiceTests
 
         var export = (await source.Backup.ExportAsync(CancellationToken.None))!;
 
-        Assert.Equal(4, export.Version);
+        Assert.Equal(5, export.Version);
         Assert.NotNull(export.Ledger.CapitalGoalJson);
 
         await using var targetDb = CreateDb();
@@ -118,6 +118,72 @@ public sealed class BackupServiceTests
 
         var restored = await targetDb.Ledgers.SingleAsync();
         Assert.Equal(goal, restored.GetCapitalGoal());
+    }
+
+    [Fact]
+    public async Task BackupRoundTrip_PreservesSalaryProfile()
+    {
+        await using var source = await CreateSourceAsync();
+        var profile = new SalaryProfile(20_000m, 12_000m, 4_800m, 4m, 60_000m, 1, 15);
+        var ledger = await source.Db.Ledgers.SingleAsync();
+        ledger.SetSalaryProfile(profile, Now);
+        await source.Db.SaveChangesAsync();
+
+        var export = (await source.Backup.ExportAsync(CancellationToken.None))!;
+
+        Assert.Equal(5, export.Version);
+        Assert.NotNull(export.Ledger.SalaryProfileJson);
+
+        await using var targetDb = CreateDb();
+        var target = new BackupService(targetDb, source.Dates);
+        var validation = await target.ValidateAsync(export, CancellationToken.None);
+        Assert.True(validation.IsValid, string.Join(" ", validation.Errors));
+
+        await target.RestoreAsync(
+            new RestoreBackupRequest(export, validation.ValidationToken!, false),
+            CancellationToken.None);
+
+        var restored = await targetDb.Ledgers.SingleAsync();
+        Assert.Equal(profile, restored.GetSalaryProfile());
+    }
+
+    [Fact]
+    public async Task Restore_WithVersion4WithoutSalaryProfile_Succeeds()
+    {
+        await using var source = await CreateSourceAsync();
+        var export = (await source.Backup.ExportAsync(CancellationToken.None))!;
+        export.Version = 4;
+        export.Ledger.SalaryProfileJson = null;
+
+        foreach (var plan in export.Plans)
+        {
+            plan.MonthOfYear = null;
+        }
+
+        await using var targetDb = CreateDb();
+        var target = new BackupService(targetDb, source.Dates);
+        var validation = await target.ValidateAsync(export, CancellationToken.None);
+        Assert.True(validation.IsValid, string.Join(" ", validation.Errors));
+
+        await target.RestoreAsync(
+            new RestoreBackupRequest(export, validation.ValidationToken!, false),
+            CancellationToken.None);
+
+        var restored = await targetDb.Ledgers.SingleAsync();
+        Assert.Null(restored.GetSalaryProfile());
+    }
+
+    [Fact]
+    public async Task Restore_WithInvalidSalaryProfile_FailsValidation()
+    {
+        await using var source = await CreateSourceAsync();
+        var export = (await source.Backup.ExportAsync(CancellationToken.None))!;
+        export.Ledger.SalaryProfileJson = "{\"baseMonthlySalary\":-1}";
+
+        var validation = await source.Backup.ValidateAsync(export, CancellationToken.None);
+
+        Assert.False(validation.IsValid);
+        Assert.Contains(validation.Errors, error => error.Contains("工资档案"));
     }
 
     [Fact]
