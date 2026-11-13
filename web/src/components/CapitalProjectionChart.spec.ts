@@ -13,8 +13,9 @@ const runtime = vi.hoisted(() => ({ load: vi.fn() }))
 vi.mock('../utils/chartRuntime', () => ({ loadChartRuntime: runtime.load }))
 
 interface ChartOption {
-  series: { name: string; type: string; markLine?: unknown }[]
+  series: { name: string; type: string; markLine?: { label: { formatter: string } } }[]
   xAxis: { data: string[] }
+  tooltip: { formatter: (params: { dataIndex?: number }[]) => string }
 }
 
 function monthAt(index: number): string {
@@ -64,4 +65,36 @@ test('renders the capital option and switches to the monthly bars', async () => 
 
   view.unmount()
   expect(chart.dispose).toHaveBeenCalledOnce()
+})
+
+test('masks the target label and monthly tooltip', async () => {
+  runtime.load.mockResolvedValue({ init: () => chart })
+  chart.setOption.mockClear()
+  const view = mount(CapitalProjectionChart, {
+    props: {
+      points,
+      targetAmount: 1_000_000,
+      view: 'capital',
+      amountsMasked: true,
+      currentTotal: 376_000,
+      currentMonth: '2026-11'
+    }
+  })
+  await flushPromises()
+
+  const capital = chart.setOption.mock.calls.at(-1)![0] as ChartOption
+
+  expect(capital.series[2]!.markLine!.label.formatter).not.toMatch(/\d/)
+
+  await view.setProps({ view: 'monthly' })
+  await flushPromises()
+
+  const monthly = chart.setOption.mock.calls.at(-1)![0] as ChartOption
+  const tooltip = monthly.tooltip.formatter([{ dataIndex: 0 }])
+
+  expect(tooltip).toContain('净积累')
+  expect(tooltip).not.toContain('6,800.00')
+  expect(tooltip).not.toContain('6800')
+
+  view.unmount()
 })

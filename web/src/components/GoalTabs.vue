@@ -29,7 +29,7 @@ const isPlans = computed(() => route.name === 'plans')
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 40px;
+  min-height: 44px;
   border-radius: var(--radius-pill);
   color: var(--color-text-secondary);
   font-size: 14px;

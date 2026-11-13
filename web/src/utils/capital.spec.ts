@@ -92,4 +92,21 @@ describe('selectYearLabels', () => {
   it('returns no labels without a target', () => {
     expect(selectYearLabels(rows, 2026, null, null, 37.6)).toEqual([])
   })
+
+  it('includes a goal reached in the current year', () => {
+    const labels = selectYearLabels([yearRow(2026, 100_000, true)], 2026, 100_000, 2026, 80)
+
+    expect(labels).toEqual([{ label: '2026', leftPercent: 100 }])
+  })
+
+  it('shows only the goal year when it is within two years', () => {
+    const nearRows = [
+      yearRow(2026, 50_000),
+      yearRow(2027, 75_000),
+      yearRow(2028, 100_000, true)
+    ]
+    const labels = selectYearLabels(nearRows, 2026, 100_000, 2028, 50)
+
+    expect(labels.map((item) => item.label)).toEqual(['2028'])
+  })
 })

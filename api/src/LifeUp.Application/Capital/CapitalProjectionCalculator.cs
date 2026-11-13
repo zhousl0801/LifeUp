@@ -1,3 +1,5 @@
+using LifeUp.Domain.Ledgers;
+
 namespace LifeUp.Application.Capital;
 
 public sealed class CapitalProjectionCalculator
@@ -70,17 +72,20 @@ public sealed class CapitalProjectionCalculator
         {
             var month = firstMonth.AddMonths(monthIndex);
             var yearOffset = month.Year - input.AsOfDate.Year;
-            var income = Round(input.MonthlyIncome * GrowthFactor(incomeGrowth, yearOffset));
-            var expense = Round(input.MonthlyExpense * GrowthFactor(expenseGrowth, yearOffset));
-            var providentDeposit = Round(input.MonthlyProvidentDeposit * GrowthFactor(incomeGrowth, yearOffset));
+            var income = Round(Grow(input.MonthlyIncome, incomeGrowth, yearOffset));
+            var expense = Round(Grow(input.MonthlyExpense, expenseGrowth, yearOffset));
+            var providentDeposit = Round(Grow(input.MonthlyProvidentDeposit, incomeGrowth, yearOffset));
             var netSavings = income - expense;
             var netAccumulation = netSavings + providentDeposit;
             var nonProvidentReturn = nonProvidentBalance * nonProvidentRate;
             var providentReturn = providentBalance * providentMonthlyRate;
             var monthReturn = nonProvidentReturn + providentReturn;
 
-            nonProvidentBalance += nonProvidentReturn + netSavings;
-            providentBalance += providentReturn + providentDeposit;
+            nonProvidentBalance += nonProvidentReturn;
+            providentBalance += providentReturn;
+            var capitalBeforeContributions = nonProvidentBalance + providentBalance;
+            nonProvidentBalance += netSavings;
+            providentBalance += providentDeposit;
 
             if (nonProvidentBalance < 0m)
             {
@@ -96,12 +101,20 @@ public sealed class CapitalProjectionCalculator
                 depleted = true;
             }
 
+            var capitalAfterContributions = nonProvidentBalance + providentBalance;
+            var actualNet = capitalAfterContributions - capitalBeforeContributions;
+
+            if (capitalAfterContributions == 0m && netAccumulation < 0m)
+            {
+                depleted = true;
+            }
+
             monthIndex++;
-            var capital = Round(nonProvidentBalance + providentBalance);
+            var capital = Round(capitalAfterContributions);
             points.Add(new CapitalProjectionPoint(
                 month.ToString("yyyy-MM"),
                 capital,
-                Round(netAccumulation),
+                Round(actualNet),
                 Round(monthReturn)));
 
             if (!years.TryGetValue(month.Year, out var year))
@@ -110,7 +123,7 @@ public sealed class CapitalProjectionCalculator
                 years[month.Year] = year;
             }
 
-            year.NetSavings += netSavings;
+            year.NetSavings += actualNet - providentDeposit;
             year.ProvidentDeposit += providentDeposit;
             year.Return += monthReturn;
             year.YearEndCapital = capital;
@@ -293,14 +306,23 @@ public sealed class CapitalProjectionCalculator
         return decimal.Round((decimal)monthly, 10, MidpointRounding.AwayFromZero);
     }
 
-    private static decimal GrowthFactor(decimal annualGrowth, int yearOffset)
+    private static decimal Grow(decimal amount, decimal annualGrowth, int yearOffset)
     {
-        if (yearOffset <= 0 || annualGrowth == 0m)
+        if (amount == 0m || yearOffset <= 0 || annualGrowth == 0m)
         {
-            return 1m;
+            return amount;
         }
 
-        return (decimal)Math.Pow((double)(1m + annualGrowth), yearOffset);
+        var factor = Math.Pow((double)(1m + annualGrowth), yearOffset);
+
+        if (!double.IsFinite(factor) || factor >= (double)LedgerEntry.MaximumAmount)
+        {
+            return LedgerEntry.MaximumAmount;
+        }
+
+        var grown = (decimal)factor * amount;
+
+        return grown > LedgerEntry.MaximumAmount ? LedgerEntry.MaximumAmount : grown;
     }
 
     private static decimal NonNegative(decimal value)

@@ -172,6 +172,21 @@ describe('CapitalAssumptionsSheet', () => {
     expect(emitted.monthlyIncome).toBeNull()
   })
 
+  it('does not emit a preview after the sheet closes', async () => {
+    vi.useFakeTimers()
+    mountSheet()
+    await flushPromises()
+
+    await setInput('月收入', '15000')
+    const before = view!.emitted('preview')?.length ?? 0
+
+    await view!.setProps({ open: false })
+    vi.advanceTimersByTime(300)
+    await flushPromises()
+
+    expect(view!.emitted('preview')?.length ?? 0).toBe(before)
+  })
+
   it('asks before discarding unsaved changes', async () => {
     mountSheet()
     await bodySnapshot()

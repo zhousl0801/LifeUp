@@ -151,6 +151,7 @@ async function createTestRouter() {
     routes: [
       { path: '/capital', name: 'capital', component: Empty },
       { path: '/plans', name: 'plans', component: Empty },
+      { path: '/setup', name: 'setup', component: Empty },
       { path: '/assets', name: 'assets', component: Empty },
       { path: '/ledger', name: 'ledger', component: Empty },
       { path: '/', name: 'home', component: Empty },
@@ -246,13 +247,15 @@ test('shows the depleted status and the incomplete coverage note', async () => {
       ...baseProjection,
       status: 'depleted',
       etaMonth: null,
-      monthsRemaining: null
+      monthsRemaining: null,
+      notes: ['按当前资产结构推演', '按当前假设，资本将在 2028-07 耗尽。']
     }
   }))
 
   expect(view.text()).toContain('已记录资产')
   expect(view.text()).toContain('部分资产未录入')
   expect(view.text()).toContain('资本将耗尽')
+  expect(view.text()).toContain('2028-07')
 })
 
 test('applies a preview to the page without saving', async () => {
@@ -284,6 +287,39 @@ test('saves settings, closes the sheet and updates the page', async () => {
   expect(mocks.save).toHaveBeenCalledWith(settings)
   expect(view.text()).toContain('380,000.00')
   expect(sheet.props('open')).toBe(false)
+})
+
+test('ignores preview responses after the sheet closes', async () => {
+  const view = await mountView(overview())
+  const previewData = overview({ current: { ...overview().current, total: 400_000 } })
+  let resolvePreview!: (value: CapitalOverview) => void
+  mocks.preview.mockImplementationOnce(() => new Promise((resolve) => {
+    resolvePreview = resolve
+  }))
+
+  const sheet = await openSheet(view)
+  sheet.vm.$emit('preview', settings)
+  await nextTick()
+  sheet.vm.$emit('close')
+  await nextTick()
+  resolvePreview(previewData)
+  await flushPromises()
+
+  expect(view.text()).toContain('376,000.00')
+  expect(view.text()).not.toContain('400,000.00')
+})
+
+test('offers setup when the ledger is not initialized', async () => {
+  mocks.capital.mockRejectedValue(new ApiError(404, '账本尚未初始化'))
+  const router = await createTestRouter()
+  const pinia = createPinia()
+  useHomePreferencesStore(pinia).amountsMasked = false
+  const view = mount(CapitalView, { global: { plugins: [router, pinia] } })
+
+  await flushPromises()
+
+  expect(view.text()).toContain('去初始化账本')
+  expect(view.find('.state-link').attributes('href')).toContain('setup')
 })
 
 test('keeps the sheet open and shows a 409 error', async () => {

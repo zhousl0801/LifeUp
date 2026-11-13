@@ -63,7 +63,40 @@ public sealed class CapitalProjectionCalculatorTests
 
         Assert.Equal(CapitalProjectionStatus.Depleted, result.Status);
         Assert.Null(result.EtaMonth);
-        Assert.Contains(result.Notes, note => note.Contains("耗尽"));
+        Assert.Equal("2028-07", result.Points[^1].Month);
+        Assert.Equal(0m, result.Points[^1].Capital);
+        Assert.Contains(result.Notes, note => note.Contains("2028-07"));
+        var year = Assert.Single(result.Years, item => item.Year == 2028);
+        Assert.Equal(-35_000m, year.NetSavings);
+        Assert.Equal(0m, year.YearEndCapital);
+    }
+
+    [Fact]
+    public void ProvidentCoversDeficitAfterNonProvidentCapital()
+    {
+        var input = new CapitalProjectionInput(
+            AsOf, 100_000m, 0m, 10_000m, 1_000_000_000m,
+            0m, 5_000m, 0m, 0m, 0m, 0m, 0m);
+
+        var result = new CapitalProjectionCalculator().Calculate(input);
+
+        Assert.Equal(CapitalProjectionStatus.Depleted, result.Status);
+        Assert.Equal("2028-09", result.Points[^1].Month);
+        Assert.Equal(0m, result.Points[^1].Capital);
+        Assert.Contains(result.Notes, note => note.Contains("2028-09"));
+    }
+
+    [Fact]
+    public void ExtremeGrowth_DoesNotOverflow()
+    {
+        var input = new CapitalProjectionInput(
+            AsOf, 0m, 0m, 0m, 1_000_000_000m,
+            1m, 0m, 0m, 100m, 0m, 0m, 0m);
+
+        var result = new CapitalProjectionCalculator().Calculate(input);
+
+        Assert.Equal(CapitalProjectionStatus.OnTrack, result.Status);
+        Assert.True(result.Points.Count > 0);
     }
 
     [Fact]

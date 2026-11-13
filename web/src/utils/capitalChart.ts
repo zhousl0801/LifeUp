@@ -34,7 +34,9 @@ export function buildCapitalChartOption(input: CapitalChartInput) {
   }
 
   const amount = (value: number) => input.amountsMasked ? formatMaskedMoney(value) : `¥${formatMoney(value)}`
-  const targetLabel = input.targetAmount !== null ? formatWan(input.targetAmount) : ''
+  const targetLabel = input.targetAmount !== null
+    ? input.amountsMasked ? '••••' : formatWan(input.targetAmount)
+    : ''
   const max = Math.max(input.targetAmount ?? 0, totals[totals.length - 1] ?? 0, 1) * 1.05
 
   return {
@@ -133,7 +135,21 @@ export function buildMonthlyChartOption(input: CapitalChartInput) {
       trigger: 'axis',
       confine: true,
       borderWidth: 0,
-      axisPointer: { type: 'shadow' }
+      axisPointer: { type: 'shadow' },
+      formatter: (params: { dataIndex?: number }[]) => {
+        const index = params[0]?.dataIndex
+        const point = index === undefined ? undefined : points[index]
+
+        if (!point) {
+          return ''
+        }
+
+        const amount = (value: number) => input.amountsMasked
+          ? formatMaskedMoney(value)
+          : `¥${formatMoney(value)}`
+
+        return `${Number(point.month.slice(5))}月<br/>净积累 ${amount(point.netAccumulation)}<br/>投资收益 ${amount(point.return)}`
+      }
     },
     xAxis: {
       type: 'category',

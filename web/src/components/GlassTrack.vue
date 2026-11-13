@@ -62,7 +62,7 @@ function isNew(milestone: CapitalMilestone): boolean {
   return newMilestoneKeys.value.includes(milestoneKey(milestone))
 }
 
-function revealMilestones(progress: number): void {
+function revealMilestones(progress: number, pop: boolean): void {
   const known = new Set(visibleMilestones.value.map(milestoneKey))
 
   for (const milestone of props.milestones) {
@@ -74,6 +74,11 @@ function revealMilestones(progress: number): void {
 
     visibleMilestones.value.push(milestone)
     known.add(key)
+
+    if (!pop) {
+      continue
+    }
+
     newMilestoneKeys.value = [...newMilestoneKeys.value, key]
 
     const timer = window.setTimeout(() => {
@@ -83,14 +88,14 @@ function revealMilestones(progress: number): void {
   }
 }
 
-function animateTo(target: number, duration: number, withBeam: boolean): void {
+function animateTo(target: number, duration: number, withBeam: boolean, pop: boolean): void {
   cancelAnimationFrame(frameId)
   animating.value = true
   showBeam.value = withBeam
 
   if (duration <= 0 || prefersReducedMotion()) {
     displayedProgress.value = target
-    revealMilestones(target)
+    revealMilestones(target, pop)
     finish(withBeam)
     return
   }
@@ -105,7 +110,7 @@ function animateTo(target: number, duration: number, withBeam: boolean): void {
     const value = from + (target - from) * eased
 
     displayedProgress.value = value
-    revealMilestones(value)
+    revealMilestones(value, pop)
 
     if (ratio < 1) {
       frameId = requestAnimationFrame(step)
@@ -113,7 +118,7 @@ function animateTo(target: number, duration: number, withBeam: boolean): void {
     }
 
     displayedProgress.value = target
-    revealMilestones(target)
+    revealMilestones(target, pop)
     finish(withBeam)
   }
 
@@ -138,7 +143,7 @@ function finish(withBeam: boolean): void {
 
 function selectMilestone(milestone: CapitalMilestone): void {
   selectedMilestone.value = milestone
-  popoverLeft.value = milestone.progressPercent
+  popoverLeft.value = Math.min(88, Math.max(12, milestone.progressPercent))
 }
 
 function closePopover(): void {
@@ -168,7 +173,8 @@ onMounted(() => {
     return
   }
 
-  animateTo(target, withBeam ? 800 : remembered === null ? 900 : 600, withBeam)
+  const pop = remembered === null || withBeam
+  animateTo(target, withBeam ? 800 : remembered === null ? 900 : 600, withBeam, pop)
 })
 
 watch(
@@ -182,7 +188,7 @@ watch(
     }
 
     const withBeam = props.animateUpdates && target > from
-    animateTo(target, withBeam ? 800 : 600, withBeam)
+    animateTo(target, withBeam ? 800 : 600, withBeam, withBeam)
   }
 )
 
@@ -200,7 +206,7 @@ watch(
   (milestones) => {
     const keys = new Set(milestones.map(milestoneKey))
     visibleMilestones.value = visibleMilestones.value.filter((milestone) => keys.has(milestoneKey(milestone)))
-    revealMilestones(displayedProgress.value)
+    revealMilestones(displayedProgress.value, false)
 
     if (selectedMilestone.value && !keys.has(milestoneKey(selectedMilestone.value))) {
       selectedMilestone.value = null

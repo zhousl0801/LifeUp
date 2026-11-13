@@ -90,6 +90,9 @@ watch(
       Object.assign(fields, toForm(props.settings))
       clearErrors()
       sessionKey.value++
+    } else if (previewTimer) {
+      clearTimeout(previewTimer)
+      previewTimer = null
     }
   },
   { immediate: true }
@@ -181,7 +184,7 @@ function schedulePreview(): void {
   }
 
   previewTimer = setTimeout(() => {
-    if (!hasErrors()) {
+    if (props.open && !hasErrors()) {
       emit('preview', toSettings())
     }
   }, 300)
@@ -207,6 +210,10 @@ function parseInput(value: string, parser: (input: string) => number | null): nu
 }
 
 function save(): void {
+  if (props.saving) {
+    return
+  }
+
   validateFields()
 
   if (hasErrors()) {
@@ -345,6 +352,7 @@ function formatNet(value: number | null): string {
           autocomplete="off"
         />
         <small v-if="errors.incomeGrowthPercent" class="field-error">{{ errors.incomeGrowthPercent }}</small>
+        <small v-else-if="!fields.incomeGrowthPercent" class="hint">{{ percentHint(effective.incomeGrowthPercent) }}</small>
       </label>
 
       <label class="field">
@@ -357,6 +365,7 @@ function formatNet(value: number | null): string {
           autocomplete="off"
         />
         <small v-if="errors.expenseGrowthPercent" class="field-error">{{ errors.expenseGrowthPercent }}</small>
+        <small v-else-if="!fields.expenseGrowthPercent" class="hint">{{ percentHint(effective.expenseGrowthPercent) }}</small>
       </label>
 
       <div class="derived">

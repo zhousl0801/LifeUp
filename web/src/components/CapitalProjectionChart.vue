@@ -181,6 +181,9 @@ onBeforeUnmount(() => {
 }
 
 .chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   padding: 6px 10px;
   border: 0;
   border-radius: var(--radius-pill);

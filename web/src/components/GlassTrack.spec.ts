@@ -172,12 +172,14 @@ describe('GlassTrack', () => {
 
     expect(wrapper.find('.glass-beam').exists()).toBe(false)
     expect(wrapper.findAll('.glass-star')).toHaveLength(4)
+    expect(wrapper.findAll('.glass-star.is-new').length).toBeGreaterThan(0)
   })
 
   it('does not play the beam when updates are not animated', async () => {
     const wrapper = mountTrack()
     finishFrames()
     await nextTick()
+    await new Promise((resolve) => setTimeout(resolve, 350))
 
     await wrapper.setProps({
       progressPercent: 42,
@@ -192,6 +194,7 @@ describe('GlassTrack', () => {
     await nextTick()
 
     expect(wrapper.findAll('.glass-star')).toHaveLength(4)
+    expect(wrapper.findAll('.glass-star.is-new')).toHaveLength(0)
   })
 
   it('resumes from the remembered progress after remount', async () => {

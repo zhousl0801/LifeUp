@@ -91,6 +91,9 @@ const diffText = computed(() => {
 }
 
 .link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   padding: 4px 0;
   border: 0;
   background: none;

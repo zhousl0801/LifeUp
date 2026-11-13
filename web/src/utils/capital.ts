@@ -62,20 +62,16 @@ export function selectYearLabels(
     return []
   }
 
-  const future = years.filter((row) => row.year > currentYear)
-
-  if (future.length === 0) {
-    return []
-  }
-
-  const goalYear = targetYear ?? future.find((row) => row.isGoalYear)?.year ?? null
-  const goalRow = future.find((row) => row.year === goalYear)
-  const candidates = future.filter((row) => row.year !== goalYear)
+  const goalYear = targetYear ?? years.find((row) => row.isGoalYear)?.year ?? null
+  const goalRow = years.find((row) => row.year === goalYear)
+  const candidates = years.filter((row) => row.year > currentYear && row.year !== goalYear)
   const evenCandidates = candidates.filter((row) => row.year % 2 === 0)
   const pool = evenCandidates.length >= 2 ? evenCandidates : candidates
   const picked: CapitalYearRow[] = []
 
-  if (pool.length <= 2) {
+  if (goalYear !== null && goalYear - currentYear <= 2) {
+    picked.push(...years.filter((row) => row.year === goalYear))
+  } else if (pool.length <= 2) {
     picked.push(...pool)
   } else {
     picked.push(pool[Math.floor((pool.length - 1) / 3)]!)
@@ -87,7 +83,7 @@ export function selectYearLabels(
     leftPercent: percentOf(row.yearEndCapital, targetAmount)
   }))
 
-  if (goalYear !== null) {
+  if (goalYear !== null && !picked.some((row) => row.year === goalYear)) {
     labels.push({
       label: String(goalYear),
       leftPercent: goalRow ? percentOf(goalRow.yearEndCapital, targetAmount) : 100

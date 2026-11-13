@@ -32,6 +32,7 @@ const overview = ref<CapitalOverview | null>(null)
 const previewOverview = ref<CapitalOverview | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref('')
+const notInitialized = ref(false)
 const sheetOpen = ref(false)
 const saving = ref(false)
 const saveError = ref('')
@@ -74,6 +75,8 @@ const amountParts = computed(() => {
   const [integer, fraction] = formatMoney(display.value?.current.total ?? 0).split('.')
   return { integer: integer ?? '0', fraction: fraction ?? '00' }
 })
+const visibleNotes = computed(() => display.value?.projection.notes
+  .filter((note) => note !== '按当前资产结构推演') ?? [])
 const statusText = computed(() => {
   const projection = display.value?.projection
 
@@ -115,11 +118,13 @@ onMounted(load)
 async function load(): Promise<void> {
   isLoading.value = true
   errorMessage.value = ''
+  notInitialized.value = false
 
   try {
     overview.value = await fetchCapital()
     previewOverview.value = null
   } catch (error) {
+    notInitialized.value = error instanceof ApiError && error.status === 404
     errorMessage.value = getApiErrorMessage(error, '资本目标加载失败，请重试。')
   } finally {
     isLoading.value = false
@@ -127,19 +132,24 @@ async function load(): Promise<void> {
 }
 
 function openAssumptions(): void {
+  previewSequence++
   saveError.value = ''
   previewOverview.value = null
   sheetOpen.value = true
 }
 
-function closeAssumptions(): void {
+async function closeAssumptions(): Promise<void> {
   if (saving.value) {
     return
   }
 
+  previewSequence++
+  suppressAnimation.value = true
   sheetOpen.value = false
   previewOverview.value = null
   saveError.value = ''
+  await nextTick()
+  suppressAnimation.value = false
 }
 
 async function handlePreview(settings: CapitalGoalSettings): Promise<void> {
@@ -160,6 +170,7 @@ async function handlePreview(settings: CapitalGoalSettings): Promise<void> {
 }
 
 async function handleSave(settings: CapitalGoalSettings): Promise<void> {
+  previewSequence++
   saving.value = true
   saveError.value = ''
   suppressAnimation.value = true
@@ -235,7 +246,8 @@ function netTone(value: number): string {
 
     <section v-else-if="errorMessage" class="state">
       <p>{{ errorMessage }}</p>
-      <LoadingButton class="secondary-button" :loading="isLoading" loading-label="加载中…" @click="load">重新加载</LoadingButton>
+      <RouterLink v-if="notInitialized" class="state-link" to="/setup">去初始化账本</RouterLink>
+      <LoadingButton v-else class="secondary-button" :loading="isLoading" loading-label="加载中…" @click="load">重新加载</LoadingButton>
     </section>
 
     <template v-else-if="display">
@@ -283,6 +295,7 @@ function netTone(value: number): string {
         />
 
         <p class="eta-line">{{ statusText }}</p>
+        <p v-for="note in visibleNotes" :key="note" class="projection-note">{{ note }}</p>
       </section>
 
       <p v-if="display.current.note" class="coverage-note">
@@ -400,8 +413,8 @@ function netTone(value: number): string {
 
 .header-action {
   display: grid;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border: 0;
   border-radius: var(--radius-control);
@@ -523,7 +536,7 @@ function netTone(value: number): string {
 }
 
 .stat b.is-negative {
-  color: var(--color-finance-loss-on-hero);
+  color: var(--color-finance-gain-on-hero);
 }
 
 .divider {
@@ -538,6 +551,15 @@ function netTone(value: number): string {
   margin: 6px 0 0;
   color: var(--color-hero-text-secondary);
   font-size: 12px;
+}
+
+.projection-note {
+  position: relative;
+  z-index: 1;
+  margin: 4px 0 0;
+  color: var(--color-hero-text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .coverage-note {
@@ -592,6 +614,15 @@ function netTone(value: number): string {
   color: var(--color-text-secondary);
   font-size: 13px;
   text-align: center;
+}
+
+.state-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--color-brand);
+  font-weight: 600;
+  text-decoration: none;
 }
 
 .form-error {
