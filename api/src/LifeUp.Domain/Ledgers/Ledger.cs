@@ -42,6 +42,10 @@ public sealed class Ledger
 
     public string? MonthlyBudgetsJson { get; private set; }
 
+    public string? CapitalGoalJson { get; private set; }
+
+    private static readonly JsonSerializerOptions CapitalGoalJsonOptions = new(JsonSerializerDefaults.Web);
+
     public static bool TryParseBudgetMonth(string month, out DateOnly date)
     {
         return DateOnly.TryParseExact(month + "-01", "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date);
@@ -90,6 +94,54 @@ public sealed class Ledger
         try
         {
             return ReadMonthlyBudgets().All(budget => TryParseBudgetMonth(budget.Key, out _) && IsValidBudgetAmount(budget.Value));
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    public CapitalGoal? GetCapitalGoal()
+    {
+        if (CapitalGoalJson is null)
+        {
+            return null;
+        }
+
+        var goal = JsonSerializer.Deserialize<CapitalGoal>(CapitalGoalJson, CapitalGoalJsonOptions)
+            ?? throw new JsonException("资本目标格式无效。");
+
+        if (!CapitalGoal.TryValidate(goal, out var errors))
+        {
+            throw new JsonException(string.Join(" ", errors));
+        }
+
+        return goal;
+    }
+
+    public bool SetCapitalGoal(CapitalGoal? goal, DateTimeOffset now)
+    {
+        if (goal is not null && !CapitalGoal.TryValidate(goal, out var errors))
+        {
+            throw new ArgumentException(string.Join(" ", errors), nameof(goal));
+        }
+
+        var json = goal is null ? null : JsonSerializer.Serialize(goal, CapitalGoalJsonOptions);
+        if (string.Equals(CapitalGoalJson, json, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        CapitalGoalJson = json;
+        Touch(now);
+        return true;
+    }
+
+    public bool HasValidCapitalGoal()
+    {
+        try
+        {
+            return CapitalGoalJson is null || GetCapitalGoal() is not null;
         }
         catch (JsonException)
         {

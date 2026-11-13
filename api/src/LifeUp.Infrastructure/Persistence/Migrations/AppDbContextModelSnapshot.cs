@@ -780,6 +780,10 @@ namespace LifeUp.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("CapitalGoalJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("capital_goal");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("created_at");
