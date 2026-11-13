@@ -2,6 +2,11 @@ import Decimal from 'decimal.js'
 
 export const MaximumAmount = 1_000_000_000
 
+export function formatMaskedMoney(value: number): string {
+  const firstDigit = formatMoney(Math.abs(value))[0]
+  return `${value < 0 ? '−' : ''}¥${firstDigit}••••`
+}
+
 export function formatMoney(value: Decimal.Value | null | undefined): string {
   if (value === null || value === undefined) {
     return '—'
@@ -77,6 +82,18 @@ export function formatBusinessDate(value: string): string {
   }
 
   return `${year}年${month}月${day}日`
+}
+
+export function formatBusinessDateWithWeekday(value: string): string {
+  const date = new Date(`${value}T00:00:00Z`)
+  const label = formatBusinessDate(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return label
+  }
+
+  const weekdays = ['日', '一', '二', '三', '四', '五', '六']
+  return `${label} 星期${weekdays[date.getUTCDay()]}`
 }
 
 export function formatBusinessTime(value: string | null | undefined): string {

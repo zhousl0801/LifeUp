@@ -1,6 +1,12 @@
 import { mount, flushPromises } from '@vue/test-utils'
-import { beforeEach, expect, test } from 'vitest'
+import { beforeEach, expect, test, vi } from 'vitest'
 import MineView from './MineView.vue'
+
+vi.mock('vue-router', () => ({
+  RouterLink: { props: ['to'], template: '<a><slot /></a>' },
+  useRoute: () => ({ name: 'mine', query: {} }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() })
+}))
 import { profileStorageKey } from '../utils/profile'
 import { initializeTheme, setThemeMode } from '../utils/theme'
 
@@ -45,7 +51,8 @@ test('profile name is saved locally and shown in the settings row', async () => 
   await flushPromises()
 
   const profileRow = view.findAll('button').find((button) => button.text().includes('头像与昵称'))!
-  expect(profileRow.text()).toContain('未设置昵称')
+  expect(profileRow.text()).toContain('LifeUp')
+  expect(profileRow.find('.default-avatar').exists()).toBe(true)
 
   await profileRow.trigger('click')
   await flushPromises()

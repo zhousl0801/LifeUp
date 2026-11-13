@@ -3,6 +3,7 @@ using System.Text;
 using LifeUp.Application.Quotes;
 using LifeUp.Domain.Assets;
 using LifeUp.Infrastructure.Quotes;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace LifeUp.Tests.Quotes;
@@ -71,6 +72,163 @@ public sealed class QuoteProviderTests
         var exception = await Assert.ThrowsAsync<QuoteUnavailableException>(() => provider.GetLatestAsync(CancellationToken.None));
 
         Assert.Equal("系统繁忙", exception.Message);
+    }
+
+    [Fact]
+    public async Task SgeGoldQuote_ParsesSpotPriceAndDate()
+    {
+        const string payload = """
+            {"rc":0,"data":{"f43":88342,"f57":"AU9999","f58":"黄金9999","f59":2,"f86":1794296700}}
+            """;
+        var provider = new SgeGoldQuoteProvider(
+            CreateClient(_ => JsonResponse(payload)),
+            Options.Create(new QuoteProviderOptions { GoldSgeFallbackBaseUrl = "https://sge-fallback.test/" }));
+
+        var quote = await provider.GetLatestAsync(CancellationToken.None);
+
+        Assert.Equal(883.42m, quote.Quote);
+        Assert.Equal(new DateOnly(2026, 11, 10), quote.EffectiveDate);
+        Assert.Equal("eastmoney_sge", quote.Source);
+    }
+
+    [Fact]
+    public async Task SgeGoldQuote_WithEmptyData_ThrowsUnavailable()
+    {
+        const string payload = """{"rc":100,"data":null}""";
+        var provider = new SgeGoldQuoteProvider(
+            CreateClient(_ => JsonResponse(payload)),
+            Options.Create(new QuoteProviderOptions { GoldSgeFallbackBaseUrl = "https://sge-fallback.test/" }));
+
+        await Assert.ThrowsAsync<QuoteUnavailableException>(() => provider.GetLatestAsync(CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData("""{"rc":100,"data":null}""")]
+    [InlineData("""{"rc":0,"data":{"f43":88342,"f57":"AU9999","f59":2}}""")]
+    [InlineData("""{"rc":0,"data":{"f43":88342,"f57":"AU9995","f59":2,"f86":1794296700}}""")]
+    [InlineData("""{"rc":0,"data":{"f43":88342,"f57":"AU9999","f86":1794296700}}""")]
+    public async Task SgeGoldQuote_FallsBackWhenPrimaryReturnsInvalidData(string primaryPayload)
+    {
+        const string fallbackPayload = """
+            {"rc":0,"data":{"f43":88342,"f57":"AU9999","f59":2,"f86":1794296700}}
+            """;
+        var hosts = new List<string>();
+        var client = new HttpClient(new StubHandler(request =>
+        {
+            var host = request.RequestUri!.Host;
+            hosts.Add(host);
+            return JsonResponse(host == "sge-primary.test" ? primaryPayload : fallbackPayload);
+        }))
+        {
+            BaseAddress = new Uri("https://sge-primary.test/")
+        };
+        var provider = new SgeGoldQuoteProvider(
+            client,
+            Options.Create(new QuoteProviderOptions { GoldSgeFallbackBaseUrl = "https://sge-fallback.test/" }));
+
+        var quote = await provider.GetLatestAsync(CancellationToken.None);
+
+        Assert.Equal(["sge-primary.test", "sge-fallback.test"], hosts);
+        Assert.Equal(883.42m, quote.Quote);
+        Assert.Equal(new DateOnly(2026, 11, 10), quote.EffectiveDate);
+    }
+
+    [Fact]
+    public async Task SgeGoldQuote_FallsBackToSecondaryHostWhenPrimaryFails()
+    {
+        const string payload = """
+            {"rc":0,"data":{"f43":88342,"f57":"AU9999","f58":"黄金9999","f59":2,"f86":1794296700}}
+            """;
+        var hosts = new List<string>();
+        var client = new HttpClient(new StubHandler(request =>
+        {
+            hosts.Add(request.RequestUri!.Host);
+
+            if (request.RequestUri.Host == "sge-primary.test")
+            {
+                throw new HttpRequestException("An error occurred while sending the request.");
+            }
+
+            return JsonResponse(payload);
+        }))
+        {
+            BaseAddress = new Uri("https://sge-primary.test/")
+        };
+        var provider = new SgeGoldQuoteProvider(
+            client,
+            Options.Create(new QuoteProviderOptions { GoldSgeFallbackBaseUrl = "https://sge-fallback.test/" }));
+
+        var quote = await provider.GetLatestAsync(CancellationToken.None);
+
+        Assert.Equal(883.42m, quote.Quote);
+        Assert.Equal(["sge-primary.test", "sge-fallback.test"], hosts);
+    }
+
+    [Fact]
+    public async Task GoldQuoteProvider_UsesOfficialDelayedPriceBeforeTheBank()
+    {
+        const string page = """
+            <h1>上海黄金交易所2026年11月11日延时行情</h1>
+            <table>
+              <tr><th>合约</th><th>最新价</th><th>最高价</th></tr>
+              <tr><td>Au99.95</td><td>870.15</td><td>871.40</td></tr>
+              <tr><td>Au99.99</td><td><span class="colorGreen">862.05</span></td><td>873.20</td></tr>
+            </table>
+            """;
+        var spotProvider = new SgeGoldQuoteProvider(
+            CreateClient(_ => new HttpResponseMessage(System.Net.HttpStatusCode.BadGateway)),
+            Options.Create(new QuoteProviderOptions { GoldSgeFallbackBaseUrl = "https://sge-fallback.test/" }));
+        var delayedProvider = new SgeDelayedGoldQuoteProvider(CreateClient(_ => new HttpResponseMessage
+        {
+            Content = new StringContent(page)
+        }));
+        var bankProvider = new IcbcGoldQuoteProvider(CreateClient(_ => throw new InvalidOperationException("不应请求工行。")));
+        var provider = new GoldQuoteProvider(spotProvider, delayedProvider, bankProvider, NullLogger<GoldQuoteProvider>.Instance);
+
+        var quote = await provider.GetLatestAsync(CancellationToken.None);
+
+        Assert.Equal(862.05m, quote.Quote);
+        Assert.Equal(new DateOnly(2026, 11, 11), quote.EffectiveDate);
+        Assert.Equal("sge_delayed", quote.Source);
+    }
+
+    [Fact]
+    public async Task GoldQuoteProvider_FallsBackToBankQuoteWhenSpotSourceFails()
+    {
+        const string bankPayload = """
+            {"sysdate":"2026-11-10 16:45:48","TranErrorCode":"","rf":[{"goldTypeNo":"JC001","ProductName":"积存金","ActivePrice":"882.36","ActiveDate":"2026-11-10"}],"TranErrorDisplayMsg":""}
+            """;
+        var spotProvider = new SgeGoldQuoteProvider(
+            CreateClient(_ => throw new HttpRequestException("ssl failure")),
+            Options.Create(new QuoteProviderOptions { GoldSgeFallbackBaseUrl = "https://sge-fallback.test/" }));
+        var bankProvider = new IcbcGoldQuoteProvider(CreateClient(_ => JsonResponse(bankPayload)));
+        var provider = new GoldQuoteProvider(
+            spotProvider,
+            new SgeDelayedGoldQuoteProvider(CreateClient(_ => new HttpResponseMessage(System.Net.HttpStatusCode.BadGateway))),
+            bankProvider,
+            NullLogger<GoldQuoteProvider>.Instance);
+
+        var quote = await provider.GetLatestAsync(CancellationToken.None);
+
+        Assert.Equal(882.36m, quote.Quote);
+        Assert.Equal(new DateOnly(2026, 11, 10), quote.EffectiveDate);
+        Assert.Equal("icbc", quote.Source);
+    }
+
+    [Fact]
+    public async Task GoldQuoteProvider_WhenBothSourcesFail_ThrowsUnavailable()
+    {
+        var spotProvider = new SgeGoldQuoteProvider(
+            CreateClient(_ => throw new HttpRequestException("ssl failure")),
+            Options.Create(new QuoteProviderOptions { GoldSgeFallbackBaseUrl = "https://sge-fallback.test/" }));
+        var bankProvider = new IcbcGoldQuoteProvider(CreateClient(_ => throw new HttpRequestException("ssl failure")));
+        var provider = new GoldQuoteProvider(
+            spotProvider,
+            new SgeDelayedGoldQuoteProvider(CreateClient(_ => new HttpResponseMessage(System.Net.HttpStatusCode.BadGateway))),
+            bankProvider,
+            NullLogger<GoldQuoteProvider>.Instance);
+
+        await Assert.ThrowsAsync<QuoteUnavailableException>(() => provider.GetLatestAsync(CancellationToken.None));
     }
 
     [Fact]

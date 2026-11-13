@@ -1,6 +1,7 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { beforeEach, expect, test, vi } from 'vitest'
 import PlanView from './PlanView.vue'
+import { useMessages } from '../composables/useMessage'
 
 const mocks = vi.hoisted(() => ({
   overview: vi.fn(),
@@ -18,7 +19,11 @@ const mocks = vi.hoisted(() => ({
   skip: vi.fn()
 }))
 
-vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }), useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }))
+vi.mock('vue-router', () => ({
+  RouterLink: { props: ['to'], template: '<a><slot /></a>' },
+  useRoute: () => ({ name: 'plans', query: {} }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() })
+}))
 vi.mock('../api/plans', () => ({
   fetchPlanOverview: mocks.overview,
   fetchPlanOccurrences: mocks.occurrences,
@@ -62,7 +67,10 @@ const overview = {
   providentBalance: 0
 }
 
+const { messages, clear } = useMessages()
+
 beforeEach(() => {
+  clear()
   vi.clearAllMocks()
   mocks.overview.mockResolvedValue(structuredClone(overview))
   mocks.occurrences.mockResolvedValue({ items: [], page: 1, pageSize: 10, totalCount: 0 })
@@ -133,7 +141,7 @@ test('run-now reports results and the preview section is gone', async () => {
   await flushPromises()
 
   expect(mocks.run).toHaveBeenCalledTimes(1)
-  expect(view.find('.notice').text()).toContain('已记账 1')
+  expect(messages.value.at(-1)?.text ?? '').toContain('已记账 1')
   view.unmount()
 })
 

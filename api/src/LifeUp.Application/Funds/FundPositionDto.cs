@@ -23,4 +23,6 @@ public sealed record FundPositionDto(
     int ConfirmationDelayDays = 2,
     decimal DailyProfit = 0m,
     decimal? DailyProfitRate = null,
-    decimal PriorRealizedProfit = 0m);
+    decimal PriorRealizedProfit = 0m,
+    bool HasDailyProfit = true,
+    DateOnly? DailyProfitDate = null);

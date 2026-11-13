@@ -14,6 +14,8 @@ internal sealed class LedgerConfiguration : IEntityTypeConfiguration<Ledger>
         builder.HasIndex(ledger => ledger.SingletonSlot).IsUnique();
 
         builder.Property(ledger => ledger.Version).HasColumnName("version").IsConcurrencyToken();
+        builder.Property(ledger => ledger.MonthlyBudgetsJson).HasColumnName("monthly_budgets").HasColumnType("jsonb");
+        builder.Property(ledger => ledger.CapitalGoalJson).HasColumnName("capital_goal").HasColumnType("jsonb");
         builder.Property(ledger => ledger.NextFactSequence).HasColumnName("next_fact_sequence");
 
         builder.HasKey(ledger => ledger.Id);

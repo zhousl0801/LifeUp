@@ -2,6 +2,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { beforeEach, expect, test, vi } from 'vitest'
 import GoldView from './GoldView.vue'
 import { todayInBusinessTimeZone } from '../utils/format'
+import { useMessages } from '../composables/useMessage'
 
 const today = todayInBusinessTimeZone()
 
@@ -14,7 +15,12 @@ const mocks = vi.hoisted(() => ({
   refresh: vi.fn()
 }))
 
-vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }))
+vi.mock('vue-router', () => ({
+  RouterLink: { props: ['to'], template: '<a><slot /></a>' },
+  onBeforeRouteLeave: vi.fn(),
+  useRoute: () => ({ name: 'gold', query: {} }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() })
+}))
 vi.mock('../api/gold', () => ({
   fetchGoldOverview: mocks.overview,
   buyGold: mocks.buy,
@@ -46,7 +52,10 @@ const overview = {
   lastQuoteError: null
 }
 
+const { messages, clear } = useMessages()
+
 beforeEach(() => {
+  clear()
   vi.clearAllMocks()
   mocks.overview.mockResolvedValue(structuredClone(overview))
   document.body.innerHTML = ''
@@ -81,6 +90,27 @@ test('gold activity row shows action, cost per gram, time, amount and status', a
   view.unmount()
 })
 
+test('position row opens the detail sheet with total profit and total rate', async () => {
+  const view = mount(GoldView, { attachTo: document.body })
+  await flushPromises()
+
+  const row = view.find('.position-row')
+  expect(row.text()).toContain('积存金')
+  expect(row.text()).toContain('+1,400.00')
+  expect(row.text()).toContain('+5.47%')
+
+  await row.trigger('click')
+  await flushPromises()
+
+  const sheet = document.querySelector('.sheet')!.textContent ?? ''
+  expect(sheet).toContain('总收益')
+  expect(sheet).toContain('+1,400.00')
+  expect(sheet).toContain('总收益率')
+  expect(sheet).toContain('+5.47%')
+  expect(sheet).not.toContain('持有盈亏')
+  view.unmount()
+})
+
 test('gold sale uses grams and quote and records received cash by default', async () => {
   mocks.sell.mockResolvedValue({
     grams: 29,
@@ -94,8 +124,12 @@ test('gold sale uses grams and quote and records received cash by default', asyn
   const view = mount(GoldView, { attachTo: document.body })
   await flushPromises()
 
-  const sellButton = view.findAll('button').find((button) => button.text() === '卖出')!
-  await sellButton.trigger('click')
+  await view.find('.position-row').trigger('click')
+  await flushPromises()
+
+  const sellButton = Array.from(document.querySelectorAll<HTMLButtonElement>('.sheet button'))
+    .find((button) => button.textContent?.trim() === '卖出')!
+  sellButton.click()
   await flushPromises()
 
   const inputs = Array.from(document.querySelectorAll<HTMLInputElement>('.sheet form input'))
@@ -118,7 +152,7 @@ test('gold sale uses grams and quote and records received cash by default', asyn
   })
   expect(mocks.sell.mock.calls[0]![0]).not.toHaveProperty('settlement')
   expect(mocks.sell.mock.calls[0]![0]).not.toHaveProperty('relatedCashAdjustmentId')
-  expect(view.find('.notice').text()).toContain('当前现金 ¥10,898.00')
+  expect(messages.value.at(-1)?.text ?? '').toContain('当前现金 ¥10,898.00')
   view.unmount()
 })
 
@@ -135,7 +169,7 @@ test('gold buy no longer asks for a quote or cash adjustment link', async () => 
   const view = mount(GoldView, { attachTo: document.body })
   await flushPromises()
 
-  expect(view.find('.quote-panel').text()).not.toContain('已实现盈亏')
+  expect(view.find('.gold-hero').text()).toContain('总收益')
   await view.findAll('button').find((button) => button.text() === '买入')!.trigger('click')
   await flushPromises()
 
@@ -194,6 +228,24 @@ test('gold pending arrival is shown and can be received into cash', async () => 
   expect(mocks.arrive).toHaveBeenCalledTimes(1)
   expect(mocks.arrive.mock.calls[0]![0]).toBe('gp1')
   expect(mocks.arrive.mock.calls[0]![1]).toMatchObject({ amount: 898 })
+  view.unmount()
+})
+
+test('manual refresh is disabled while the page refreshes the quote on enter', async () => {
+  let resolveRefresh: () => void = () => {}
+  mocks.refresh.mockImplementation(() => new Promise<void>((resolve) => {
+    resolveRefresh = resolve
+  }))
+
+  const view = mount(GoldView, { attachTo: document.body })
+  await flushPromises()
+
+  const refreshButton = view.findAll('button').find((button) => button.text().includes('刷新'))!
+  expect(refreshButton.attributes('disabled')).toBeDefined()
+  expect(mocks.refresh).toHaveBeenCalledTimes(1)
+
+  resolveRefresh()
+  await flushPromises()
   view.unmount()
 })
 
@@ -288,9 +340,9 @@ test('holding form takes cost per gram and converts it to total cost', async () 
 
   expect(view.find('.gold-hero').text()).toContain('成本均价')
   expect(view.find('.gold-hero').text()).toContain('¥853.33 / 克')
-  expect(view.find('.quote-panel').text()).toContain('持仓成本合计')
+  expect(view.find('.gold-hero').text()).toContain('总收益率')
 
-  await view.findAll('button').find((button) => button.text() === '录入 / 核对持仓')!.trigger('click')
+  await view.findAll('button').find((button) => button.text() === '录入 / 核对')!.trigger('click')
   await flushPromises()
 
   const labels = Array.from(document.querySelectorAll('.sheet form .form-field > span')).map((node) => node.textContent)

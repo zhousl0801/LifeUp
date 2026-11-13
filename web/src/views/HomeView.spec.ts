@@ -3,8 +3,8 @@ import { createPinia } from 'pinia'
 import { beforeEach, expect, test, vi } from 'vitest'
 import HomeView from './HomeView.vue'
 import { todayInBusinessTimeZone } from '../utils/format'
+import { useMessages } from '../composables/useMessage'
 import type { MonthChange } from '../types/ledger'
-import type { AutoPlan } from '../types/plan'
 import type { AssetTrend } from '../types/trend'
 
 const mocks = vi.hoisted(() => ({
@@ -28,6 +28,7 @@ vi.mock('../api/plans', () => ({ fetchPlanOverview: mocks.plans }))
 vi.mock('../api/quotes', () => ({ refreshQuotes: mocks.quotes }))
 vi.mock('vue-router', () => ({
   RouterLink: { props: ['to'], template: '<a><slot /></a>' },
+  useRoute: () => ({ name: 'home', query: {} }),
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() })
 }))
 vi.mock('../components/AssetTrendChart.vue', () => ({ default: { template: '<div class="chart-stub" />' } }))
@@ -85,23 +86,6 @@ function point(date: string, overrides: Record<string, unknown>) {
   }
 }
 
-function plan(overrides: Partial<AutoPlan> & Pick<AutoPlan, 'id' | 'type' | 'amount' | 'nextDueDate'>): AutoPlan {
-  return {
-    name: '自动计划',
-    cycle: 'tradingDay',
-    dayOfMonth: null,
-    dayOfWeek: null,
-    time: '12:30:00',
-    startDate: today,
-    generateFrom: today,
-    isActive: true,
-    fundPositionId: null,
-    fundPositionName: null,
-    version: 0,
-    ...overrides
-  }
-}
-
 function trend(startDate: string): AssetTrend {
   return {
     range: 'month',
@@ -109,8 +93,8 @@ function trend(startDate: string): AssetTrend {
     to: today,
     notes: [],
     points: [
-      point(startDate, { cash: 244685, hasCash: true }),
-      point(today, { cash: 244685, provident: 100345, goldValue: 10821.75, hasCash: true, hasProvident: true, hasGold: true })
+      point(startDate, { cash: 244685, knownTotalAssets: 244685, hasCash: true }),
+      point(today, { cash: 244685, provident: 100345, goldValue: 10821.75, knownTotalAssets: 355851.75, hasCash: true, hasProvident: true, hasGold: true })
     ]
   }
 }
@@ -139,11 +123,43 @@ const monthChange: MonthChange = {
   hasComparableData: false
 }
 
+const { messages, clear } = useMessages()
+
 beforeEach(() => {
+  clear()
   vi.clearAllMocks()
-  mocks.plans.mockResolvedValue({ plans: [], pendingOccurrences: [] })
   mocks.dayChange.mockResolvedValue(structuredClone(monthChange))
   mocks.change.mockResolvedValue(structuredClone(monthChange))
+})
+
+test.each([
+  { income: 300, expense: 200, incomeWidth: '60%', expenseWidth: '40%', dominant: undefined },
+  { income: 400, expense: 100, incomeWidth: '80%', expenseWidth: '20%', dominant: 'income' },
+  { income: 100, expense: 400, incomeWidth: '20%', expenseWidth: '80%', dominant: 'expense' },
+  { income: 500, expense: 0, incomeWidth: '100%', expenseWidth: '0%', dominant: 'income' },
+  { income: 0, expense: 500, incomeWidth: '0%', expenseWidth: '100%', dominant: 'expense' },
+  { income: 0, expense: 0, incomeWidth: '0%', expenseWidth: '0%', dominant: undefined }
+])('shows a shared monthly scale for income $income and expense $expense', async ({
+  income, expense, incomeWidth, expenseWidth, dominant
+}) => {
+  const start = shift(today, -1)
+  mocks.ledger.mockResolvedValue(overview(start, {
+    month: { income, expense, surplus: income - expense, hasRecords: income + expense > 0 }
+  }))
+  mocks.trend.mockResolvedValue(trend(start))
+
+  const view = mount(HomeView, { global: { plugins: [createPinia()] } })
+  await flushPromises()
+
+  const card = view.get('.month-flow')
+  const segments = card.findAll<HTMLElement>('.month-flow-segment')
+  expect(segments.map((segment) => segment.element.style.width)).toEqual([incomeWidth, expenseWidth])
+  expect(card.get('.month-flow-track').attributes('data-dominant')).toBe(dominant)
+  expect(card.text()).toContain(`¥${income.toFixed(2)}`)
+  expect(card.text()).toContain(`¥${expense.toFixed(2)}`)
+  expect(card.get('.month-surplus').text()).toContain(Math.abs(income - expense).toFixed(2))
+  expect(card.text()).not.toContain('查看账本')
+  view.unmount()
 })
 
 test('shows recorded assets, no comparable month change and the seven-day trend gate', async () => {
@@ -161,14 +177,21 @@ test('shows recorded assets, no comparable month change and the seven-day trend 
   expect(view.find('.trend-panel h2').text()).toBe('资产趋势')
   expect(view.find('.trend-wait').text()).toContain('记录满 7 天后显示趋势')
   expect(view.find('.trend-wait').text()).toContain('已记录 1/7 天')
-  expect(view.find('.distribution').text()).toContain('暂未录入')
+  const distribution = view.get('.distribution')
+  expect(distribution.text()).not.toContain('管理')
+  expect(view.text()).not.toContain('自动记账')
+  expect(mocks.plans).not.toHaveBeenCalled()
+  expect(distribution.get('[aria-label="现金资产"]').text()).toContain('68.8%')
+  expect(distribution.get('[aria-label="基金资产"]').text()).toContain('暂未录入')
   expect(view.find('.chart-stub').exists()).toBe(false)
   view.unmount()
 })
 
-test('draws the scoped trend once seven days are recorded', async () => {
+test('draws the daily asset totals once seven days are recorded', async () => {
   const start = shift(today, -30)
-  mocks.ledger.mockResolvedValue(overview(start))
+  mocks.ledger.mockResolvedValue(overview(start, {
+    fund: { isConfigured: true, amount: 278788.02, note: '持有 1 只基金', notHeld: false }
+  }))
   mocks.trend.mockResolvedValue(trend(start))
 
   const view = mount(HomeView, { global: { plugins: [createPinia()] } })
@@ -177,114 +200,47 @@ test('draws the scoped trend once seven days are recorded', async () => {
   expect(mocks.trend).toHaveBeenCalledWith('week')
   expect(view.find('.range-button.active').text()).toBe('7日')
   expect(view.find('.chart-stub').exists()).toBe(true)
-  expect(view.find('.chart-readout').text()).toContain('244,685.00')
+  expect(view.get('.chart-readout').text()).toContain('¥3••••')
+  expect(view.get('.hero-value').text()).toBe('¥3••••')
+  expect(view.get('.chart-readout').text()).toContain('已记录资产')
+  expect(view.find('.distribution-head').exists()).toBe(false)
+  const card = view.get('[aria-label="现金资产"]')
+  const fundCard = view.get('[aria-label="基金资产"]')
+  expect(card.get('.card-balance').text()).toBe('¥2••••')
+  expect(card.find('.card-visibility').exists()).toBe(false)
+  await view.get('.hero-label button[aria-label="显示资产金额"]').trigger('click')
+  expect(view.get('.hero-value').text()).toBe('¥355,851.75')
+  expect(view.get('.chart-readout').text()).toContain('¥355,851.75')
+  expect(card.get('.card-balance').text()).toBe('¥244,685.00')
+  await view.get('.hero-label button[aria-label="隐藏资产金额"]').trigger('click')
+  expect(view.get('.hero-value').text()).toBe('¥3••••')
+  expect(view.get('.chart-readout').text()).toContain('¥3••••')
+  expect(card.get('.card-balance').text()).toBe('¥2••••')
+  expect(fundCard.get('.card-balance').text()).toBe('¥2••••')
+  await view.get('.hero-label button[aria-label="显示资产金额"]').trigger('click')
+  expect(fundCard.get('.card-balance').text()).toBe('¥278,788.02')
   expect(view.find('.chart-note').exists()).toBe(false)
   expect(view.find('.trend-wait').exists()).toBe(false)
   view.unmount()
 })
 
-test('groups upcoming and pending plans by type on the home preview', async () => {
+test('keeps the selected privacy state when returning to the overview', async () => {
   const start = shift(today, -30)
   mocks.ledger.mockResolvedValue(overview(start))
   mocks.trend.mockResolvedValue(trend(start))
-  mocks.plans.mockResolvedValue({
-    plans: [
-      plan({ id: 'fund-a', type: 'fundSip', name: '基金 A', amount: 640, nextDueDate: today }),
-      plan({ id: 'fund-b', type: 'fundSip', name: '基金 B', amount: 100, nextDueDate: shift(today, 1) }),
-      plan({ id: 'provident', type: 'providentDeposit', name: '公积金缴存', amount: 5440, cycle: 'monthly', nextDueDate: shift(today, 7) })
-    ],
-    pendingOccurrences: []
-  })
 
-  const view = mount(HomeView, { global: { plugins: [createPinia()] } })
+  const pinia = createPinia()
+  const mountHome = () => mount(HomeView, { global: { plugins: [pinia] } })
+  const first = mountHome()
   await flushPromises()
+  await first.get('button[aria-label="显示资产金额"]').trigger('click')
+  first.unmount()
 
-  const rows = view.findAll('.plan-row')
-  expect(rows).toHaveLength(2)
-  expect(rows[0]!.text()).toContain('基金定投')
-  expect(rows[0]!.text()).toContain('2 项 · 交易日')
-  expect(rows[0]!.text()).toContain('740.00')
-  expect(rows[1]!.text()).toContain('公积金缴存')
-  expect(rows[1]!.text()).toContain('5,440.00')
-  view.unmount()
-})
-
-test('keeps pending occurrences ahead of upcoming plans for the same type', async () => {
-  const start = shift(today, -30)
-  mocks.ledger.mockResolvedValue(overview(start))
-  mocks.trend.mockResolvedValue(trend(start))
-  mocks.plans.mockResolvedValue({
-    plans: [
-      plan({ id: 'fund-a', type: 'fundSip', name: '基金 A', amount: 640, nextDueDate: shift(today, 1) })
-    ],
-    pendingOccurrences: [
-      {
-        id: 'occurrence-a',
-        planId: 'fund-a',
-        planName: '基金 A',
-        type: 'fundSip',
-        amount: 100,
-        fee: 0,
-        dueDate: today,
-        dueTime: '12:30:00',
-        status: 'waiting',
-        relatedRecordId: null,
-        errorMessage: null,
-        executedAt: null,
-        periodKey: `T${today}`,
-        planVersion: 0
-      }
-    ]
-  })
-
-  const view = mount(HomeView, { global: { plugins: [createPinia()] } })
+  const returned = mountHome()
   await flushPromises()
-
-  const row = view.find('.plan-row')
-  expect(row.text()).toContain('基金定投')
-  expect(row.text()).toContain('待处理')
-  expect(row.text()).toContain('100.00')
-  expect(row.find('.plan-cycle.pending').exists()).toBe(true)
-  view.unmount()
-})
-
-test('adds the other active plans to a pending row so the type total stays visible', async () => {
-  const start = shift(today, -30)
-  mocks.ledger.mockResolvedValue(overview(start))
-  mocks.trend.mockResolvedValue(trend(start))
-  mocks.plans.mockResolvedValue({
-    plans: [
-      plan({ id: 'fund-a', type: 'fundSip', name: '基金 A', amount: 640, nextDueDate: shift(today, 1) }),
-      plan({ id: 'fund-b', type: 'fundSip', name: '基金 B', amount: 100, nextDueDate: shift(today, 1) })
-    ],
-    pendingOccurrences: [
-      {
-        id: 'occurrence-b',
-        planId: 'fund-b',
-        planName: '基金 B',
-        type: 'fundSip',
-        amount: 100,
-        fee: 0,
-        dueDate: today,
-        dueTime: '12:30:00',
-        status: 'waiting',
-        relatedRecordId: null,
-        errorMessage: null,
-        executedAt: null,
-        periodKey: `T${today}`,
-        planVersion: 0
-      }
-    ]
-  })
-
-  const view = mount(HomeView, { global: { plugins: [createPinia()] } })
-  await flushPromises()
-
-  const row = view.find('.plan-row')
-  expect(row.text()).toContain('待处理')
-  expect(row.text()).toContain('另有 1 项待执行')
-  expect(row.text()).toContain('740.00')
-  view.unmount()
+  expect(returned.get('.hero-value').text()).toBe('¥355,851.75')
+  expect(returned.find('button[aria-label="隐藏资产金额"]').exists()).toBe(true)
+  returned.unmount()
 })
 
 test('defaults to today change and switches to month change', async () => {
@@ -314,6 +270,14 @@ test('defaults to today change and switches to month change', async () => {
   await flushPromises()
 
   expect(view.find('.change-scope button.active').text()).toBe('当日')
+  expect(view.get('.hero-change').text()).toContain('••••')
+  expect(view.get('.hero-change').text()).not.toContain('+1,000.00')
+  expect(view.get('.hero-change').text()).not.toContain('+5.00%')
+  await view.get('.hero-change').trigger('click')
+  expect(document.body.querySelector('.breakdown-total b')?.textContent).toBe('••••')
+  document.body.querySelector<HTMLButtonElement>('.sheet-close')!.click()
+  await flushPromises()
+  await view.get('.hero-label button[aria-label="显示资产金额"]').trigger('click')
   expect(view.find('.hero-change').text()).toContain('+1,000.00')
   expect(view.find('.hero-change').text()).toContain('+5.00%')
 
@@ -342,11 +306,18 @@ test('syncs market quotes from the home header and reloads the overview', async 
   const view = mount(HomeView, { global: { plugins: [createPinia()] } })
   await flushPromises()
 
+  let finishReload!: (value: ReturnType<typeof overview>) => void
+  mocks.ledger.mockReturnValueOnce(new Promise(resolve => { finishReload = resolve }))
   await view.find('.sync-button').trigger('click')
+  await flushPromises()
+  expect(messages.value).toHaveLength(0)
+  expect(view.get('.sync-button').attributes('disabled')).toBeDefined()
+
+  finishReload(overview(start))
   await flushPromises()
 
   expect(mocks.quotes).toHaveBeenCalledWith('all')
-  expect(view.find('.sync-note').text()).toContain('更新 3 项')
+  expect(messages.value.at(-1)?.text ?? '').toContain('更新 3 项')
   expect(mocks.ledger).toHaveBeenCalledTimes(2)
   view.unmount()
 })

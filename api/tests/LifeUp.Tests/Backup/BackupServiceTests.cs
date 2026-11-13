@@ -29,6 +29,8 @@ public sealed class BackupServiceTests
         await using var source = await CreateSourceAsync();
         await using var targetDb = CreateDb();
         var target = new BackupService(targetDb, source.Dates);
+        await new LedgerService(new LedgerRepository(source.Db), source.Dates)
+            .UpdateMonthlyBudgetAsync("2026-10", 1200.50m, CancellationToken.None);
         var export = await source.Backup.ExportAsync(CancellationToken.None);
 
         Assert.NotNull(export);
@@ -72,6 +74,9 @@ public sealed class BackupServiceTests
         Assert.Equal(export.CashAdjustments.Count, afterRestore.CashAdjustments.Count);
         Assert.Equal(export.PriceObservations.Count, afterRestore.PriceObservations.Count);
         Assert.Equal(export.CashAccount.Balance, afterRestore.CashAccount.Balance);
+        var budget = await new LedgerService(new LedgerRepository(targetDb), source.Dates)
+            .GetMonthlyBudgetAsync("2026-10", CancellationToken.None);
+        Assert.Equal(1200.50m, budget?.Amount);
         Assert.Equal(export.Ledger.NextFactSequence, afterRestore.Ledger.NextFactSequence);
 
         var secondValidation = await target.ValidateAsync(afterRestore, CancellationToken.None);
@@ -86,6 +91,112 @@ public sealed class BackupServiceTests
         Assert.Equal(export.Entries.Count, afterSecondRestore.Entries.Count);
         Assert.Equal(export.AssetTransactions.Count, afterSecondRestore.AssetTransactions.Count);
         Assert.Equal(export.PlanOccurrences.Count, afterSecondRestore.PlanOccurrences.Count);
+    }
+
+    [Fact]
+    public async Task BackupRoundTrip_PreservesCapitalGoal()
+    {
+        await using var source = await CreateSourceAsync();
+        var goal = new CapitalGoal(1_000_000m, 12_000m, 7_200m, 2_000m, 3m, 2m, 5m, 1.5m);
+        var ledger = await source.Db.Ledgers.SingleAsync();
+        ledger.SetCapitalGoal(goal, Now);
+        await source.Db.SaveChangesAsync();
+
+        var export = (await source.Backup.ExportAsync(CancellationToken.None))!;
+
+        Assert.Equal(4, export.Version);
+        Assert.NotNull(export.Ledger.CapitalGoalJson);
+
+        await using var targetDb = CreateDb();
+        var target = new BackupService(targetDb, source.Dates);
+        var validation = await target.ValidateAsync(export, CancellationToken.None);
+        Assert.True(validation.IsValid, string.Join(" ", validation.Errors));
+
+        await target.RestoreAsync(
+            new RestoreBackupRequest(export, validation.ValidationToken!, false),
+            CancellationToken.None);
+
+        var restored = await targetDb.Ledgers.SingleAsync();
+        Assert.Equal(goal, restored.GetCapitalGoal());
+    }
+
+    [Fact]
+    public async Task Restore_WithInvalidCapitalGoalJson_FailsValidation()
+    {
+        await using var source = await CreateSourceAsync();
+        var export = (await source.Backup.ExportAsync(CancellationToken.None))!;
+        export.Ledger.CapitalGoalJson = "{\"targetAmount\":-1}";
+
+        var validation = await source.Backup.ValidateAsync(export, CancellationToken.None);
+
+        Assert.False(validation.IsValid);
+        Assert.Contains(validation.Errors, error => error.Contains("资本目标"));
+    }
+
+    [Fact]
+    public async Task Restore_WithVersion3WithoutCapitalGoal_Succeeds()
+    {
+        await using var source = await CreateSourceAsync();
+        var export = (await source.Backup.ExportAsync(CancellationToken.None))!;
+        export.Version = 3;
+        export.Ledger.CapitalGoalJson = null;
+
+        await using var targetDb = CreateDb();
+        var target = new BackupService(targetDb, source.Dates);
+        var validation = await target.ValidateAsync(export, CancellationToken.None);
+        Assert.True(validation.IsValid, string.Join(" ", validation.Errors));
+
+        await target.RestoreAsync(
+            new RestoreBackupRequest(export, validation.ValidationToken!, false),
+            CancellationToken.None);
+
+        var restored = await targetDb.Ledgers.SingleAsync();
+        Assert.Null(restored.GetCapitalGoal());
+    }
+
+    [Fact]
+    public async Task RestoringFlatBackup_AddsGroupsAndPreservesExistingCategoryIdsAndBalance()
+    {
+        await using var source = await CreateSourceAsync();
+        await using var targetDb = CreateDb();
+        var target = new BackupService(targetDb, source.Dates);
+        var export = (await source.Backup.ExportAsync(CancellationToken.None))!;
+        export.Version = 2;
+        export.Categories.RemoveAll(category => category.IsGroup);
+        foreach (var category in export.Categories)
+        {
+            category.ParentId = null;
+        }
+
+        var diningId = export.Categories.Single(category => category.Kind == "Expense" && category.Name == "餐饮").Id;
+        var validation = await target.ValidateAsync(export, CancellationToken.None);
+        Assert.True(validation.IsValid, string.Join(" ", validation.Errors));
+        await target.RestoreAsync(new RestoreBackupRequest(export, validation.ValidationToken!, false), CancellationToken.None);
+
+        var restored = (await target.ExportAsync(CancellationToken.None))!;
+        var dining = Assert.Single(restored.Categories, category => category.Id == diningId);
+        Assert.Contains(restored.Categories, group => group.Id == dining.ParentId && group.IsGroup && group.Name == "必要");
+        Assert.Equal(export.CashAccount.Balance, restored.CashAccount.Balance);
+        Assert.Equal(export.Entries.Select(entry => entry.Id), restored.Entries.Select(entry => entry.Id));
+    }
+
+    [Fact]
+    public async Task RestoreRejectsValidationTokenAfterCategoryMoved()
+    {
+        await using var source = await CreateSourceAsync();
+        var export = (await source.Backup.ExportAsync(CancellationToken.None))!;
+        var validation = await source.Backup.ValidateAsync(export, CancellationToken.None);
+        Assert.True(validation.IsValid);
+
+        var service = new CategoryService(new LedgerRepository(source.Db), source.Dates);
+        var dining = Assert.Single(export.Categories, category => category.Name == "餐饮");
+        var flexible = Assert.Single(export.Categories, category => category.IsGroup && category.Name == "弹性");
+        var moved = await service.UpdateAsync(dining.Id, new UpdateCategoryRequest(dining.Name, true, flexible.Id), CancellationToken.None);
+        Assert.Equal(CategoryOperationStatus.Success, moved.Status);
+
+        var error = await Assert.ThrowsAsync<BackupValidationException>(() => source.Backup.RestoreAsync(
+            new RestoreBackupRequest(export, validation.ValidationToken!, true), CancellationToken.None));
+        Assert.Contains(error.Errors, message => message.Contains("重新校验"));
     }
 
     [Fact]

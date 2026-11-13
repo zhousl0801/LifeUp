@@ -103,7 +103,7 @@ public sealed class BackupService
             }
 
             var token = errors.Count == 0
-                ? ComputeToken(backup, currentSummary, currentDocument?.Ledger.Version ?? 0)
+                ? ComputeToken(backup, currentSummary, currentDocument)
                 : null;
 
             return new BackupValidationDto(
@@ -360,7 +360,7 @@ public sealed class BackupService
         var cashAccount = await _db.CashAccounts.AsNoTracking().SingleAsync(item => item.LedgerId == ledgerId, cancellationToken);
         var provident = await _db.ProvidentFundAccounts.AsNoTracking().SingleOrDefaultAsync(item => item.LedgerId == ledgerId, cancellationToken);
         var gold = await _db.GoldHoldings.AsNoTracking().SingleOrDefaultAsync(item => item.LedgerId == ledgerId, cancellationToken);
-        var categories = await _db.EntryCategories.AsNoTracking().Where(item => item.LedgerId == ledgerId).OrderBy(item => item.Kind).ThenBy(item => item.SortOrder).ThenBy(item => item.Name).ToListAsync(cancellationToken);
+        var categories = await _db.EntryCategories.AsNoTracking().Where(item => item.LedgerId == ledgerId).OrderBy(item => item.Kind).ThenBy(item => item.SortOrder).ThenBy(item => item.Name).ThenBy(item => item.Id).ToListAsync(cancellationToken);
         var entries = await _db.LedgerEntries.AsNoTracking().Where(item => item.LedgerId == ledgerId).OrderBy(item => item.BusinessDate).ThenBy(item => item.BusinessSequence).ThenBy(item => item.Id).ToListAsync(cancellationToken);
         var adjustments = await _db.CashAdjustments.AsNoTracking().Where(item => item.LedgerId == ledgerId).OrderBy(item => item.BusinessDate).ThenBy(item => item.BusinessSequence).ThenBy(item => item.Id).ToListAsync(cancellationToken);
         var groups = await _db.FundGroups.AsNoTracking().Where(item => item.LedgerId == ledgerId).OrderBy(item => item.SortOrder).ThenBy(item => item.Name).ToListAsync(cancellationToken);
@@ -406,14 +406,22 @@ public sealed class BackupService
                 document.CashAccount ??= new BackupCashAccount();
             }
 
+            var ledger = ToEntity<Ledger>(document.Ledger);
+            var categories = document.Categories?.Select(ToEntity<EntryCategory>).ToList() ?? [];
+            var entries = document.Entries?.Select(ToEntity<LedgerEntry>).ToList() ?? [];
+            if (ledger.Id != Guid.Empty && document.Version < 3 && !categories.Any(category => category.IsGroup))
+            {
+                EntryCategoryDefaults.Upgrade(ledger.Id, categories, entries, ledger.CreatedAt);
+            }
+
             var parsed = new ParsedBackup
             {
-                Ledger = ToEntity<Ledger>(document.Ledger),
+                Ledger = ledger,
                 CashAccount = ToEntity<CashAccount>(document.CashAccount),
                 ProvidentAccount = document.ProvidentAccount is null ? null : ToEntity<ProvidentFundAccount>(document.ProvidentAccount),
                 GoldHolding = document.GoldHolding is null ? null : ToEntity<GoldHolding>(document.GoldHolding),
-                Categories = document.Categories?.Select(ToEntity<EntryCategory>).ToList() ?? [],
-                Entries = document.Entries?.Select(ToEntity<LedgerEntry>).ToList() ?? [],
+                Categories = categories,
+                Entries = entries,
                 CashAdjustments = document.CashAdjustments?.Select(ToEntity<CashAdjustment>).ToList() ?? [],
                 FundGroups = document.FundGroups?.Select(ToEntity<FundGroup>).ToList() ?? [],
                 FundPositions = document.FundPositions?.Select(ToEntity<FundPosition>).ToList() ?? [],
@@ -465,6 +473,16 @@ public sealed class BackupService
         if (!string.Equals(parsed.Ledger.TimeZone, Ledger.DefaultTimeZone, StringComparison.Ordinal))
         {
             errors.Add($"备份时区 {parsed.Ledger.TimeZone} 不受支持。");
+        }
+
+        if (!parsed.Ledger.HasValidMonthlyBudgets())
+        {
+            errors.Add("备份中的月度预算无效。");
+        }
+
+        if (!parsed.Ledger.HasValidCapitalGoal())
+        {
+            errors.Add("备份中的资本目标设置无效。");
         }
 
         if (parsed.CashAccount.Id == Guid.Empty || parsed.CashAccount.LedgerId != parsed.Ledger.Id)
@@ -551,8 +569,19 @@ public sealed class BackupService
             }
         }
 
+        var categoryGroups = parsed.Categories.Where(item => item.IsGroup).ToLookup(item => item.Id);
+        foreach (var category in parsed.Categories)
+        {
+            if (category.IsGroup ? category.ParentId is not null
+                : category.ParentId is not Guid parentId || !categoryGroups[parentId].Any(parent =>
+                    parent.Kind == category.Kind && (!category.IsActive || parent.IsActive)))
+            {
+                errors.Add($"分类「{category.Name}」的一级分类无效。");
+            }
+        }
+
         var categoryKeys = parsed.Categories
-            .GroupBy(item => (item.Kind, item.Name))
+            .GroupBy(item => (item.Kind, item.IsGroup, item.Name))
             .Where(group => group.Count() > 1)
             .Select(group => $"{group.Key.Kind}/{group.Key.Name}")
             .ToList();
@@ -564,7 +593,7 @@ public sealed class BackupService
             duplicateRisks.Add(message);
         }
 
-        var categorySet = parsed.Categories.Select(item => (item.Kind, item.Name)).ToHashSet();
+        var categorySet = parsed.Categories.Where(item => !item.IsGroup).Select(item => (item.Kind, item.Name)).ToHashSet();
         var entryIds = parsed.Entries.Select(item => item.Id).ToHashSet();
         var adjustmentIds = parsed.CashAdjustments.Select(item => item.Id).ToHashSet();
         var groupIds = parsed.FundGroups.Select(item => item.Id).ToHashSet();
@@ -1100,13 +1129,15 @@ public sealed class BackupService
     private static string ComputeToken(
         BackupDocument backup,
         BackupSummaryDto? current,
-        int currentVersion)
+        BackupDocument? currentDocument)
     {
         var payload = JsonSerializer.Serialize(backup, JsonOptions)
             + "|"
             + (current is null ? "none" : JsonSerializer.Serialize(current, JsonOptions))
             + "|"
-            + currentVersion.ToString(CultureInfo.InvariantCulture);
+            + (currentDocument?.Ledger.Version ?? 0).ToString(CultureInfo.InvariantCulture)
+            + "|"
+            + JsonSerializer.Serialize(currentDocument?.Categories, JsonOptions);
 
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)));
     }

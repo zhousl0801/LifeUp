@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { fetchMonthChange, updateAssetCoverage } from '../api/ledger'
 import { getApiErrorMessage } from '../api/client'
+import { toast } from '../composables/useMessage'
 import AppNav from '../components/AppNav.vue'
 import AnimatedMoney from '../components/AnimatedMoney.vue'
 import AssetDistribution from '../components/AssetDistribution.vue'
@@ -21,7 +22,6 @@ const monthChange = ref<MonthChange | null>(null)
 const isLoading = ref(false)
 const coverageBusyKey = ref<AssetKey | null>(null)
 const errorMessage = ref('')
-const notice = ref('')
 const maintenanceOpen = ref(false)
 
 const missingAssets = computed(() => {
@@ -35,7 +35,7 @@ const missingAssets = computed(() => {
     { label: '基金', route: '/funds', configured: ledger.fund.isConfigured, notHeld: ledger.fund.notHeld },
     { label: '股票', route: '/stocks', configured: ledger.stock.isConfigured, notHeld: ledger.stock.notHeld },
     { label: '公积金', route: '/provident', configured: ledger.providentFund.isConfigured, notHeld: ledger.providentFund.notHeld },
-    { label: '积存金', route: '/gold', configured: ledger.gold.isConfigured, notHeld: ledger.gold.notHeld }
+    { label: '贵金属', route: '/gold', configured: ledger.gold.isConfigured, notHeld: ledger.gold.notHeld }
   ].filter((asset) => !asset.configured && !asset.notHeld)
 })
 
@@ -83,7 +83,7 @@ const maintenanceRows = computed(() => {
     },
     {
       key: 'gold' as const,
-      label: '积存金',
+      label: '贵金属',
       note: ledger.gold.note ?? (ledger.gold.isConfigured ? '持仓与交易' : '尚未录入'),
       route: '/gold',
       action: ledger.gold.notHeld ? '恢复' : ledger.gold.isConfigured ? '核对' : '去录入',
@@ -132,7 +132,6 @@ async function toggleNotHeld(key: AssetKey, notHeld: boolean): Promise<void> {
 
   coverageBusyKey.value = key
   errorMessage.value = ''
-  notice.value = ''
 
   try {
     overview.value = await updateAssetCoverage({
@@ -141,7 +140,7 @@ async function toggleNotHeld(key: AssetKey, notHeld: boolean): Promise<void> {
       goldNotHeld: key === 'gold' ? notHeld : ledger.goldNotHeld,
       stockNotHeld: key === 'stock' ? notHeld : ledger.stockNotHeld
     })
-    notice.value = notHeld ? '已标记为不持有。' : '已恢复为待录入。'
+    toast.success(notHeld ? '已标记为不持有。' : '已恢复为待录入。')
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error, '保存失败，请重试。')
   } finally {
@@ -183,7 +182,6 @@ function goHome(): void {
         <h1 class="hero-value"><span class="currency">¥</span><AnimatedMoney :value="overview.totalAssets" prefix="" /></h1>
       </section>
 
-      <p v-if="notice" class="notice">{{ notice }}</p>
       <p v-if="errorMessage" class="form-error" role="alert">{{ errorMessage }}</p>
 
       <section v-if="primaryMissing" class="asset-callout">
@@ -385,15 +383,6 @@ function goHome(): void {
   font-size: 1.25rem;
   font-weight: 500;
   letter-spacing: 0;
-}
-
-.notice {
-  margin: 0 0 14px;
-  padding: 9px 11px;
-  border-radius: var(--radius-tag);
-  background: var(--color-success-bg);
-  color: var(--color-success);
-  font-size: var(--text-footnote);
 }
 
 .form-error {

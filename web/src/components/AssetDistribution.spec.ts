@@ -33,8 +33,41 @@ const changes = [
 ]
 
 const stubs = {
-  RouterLink: { props: ['to'], template: '<a><slot /></a>' }
+  RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' }
 }
+
+test('shows every asset card and keeps each balance, fill and link tied to its asset', () => {
+  const view = mount(AssetDistribution, {
+    props: {
+      overview: { ...overview, stock: { ...overview.stock, notHeld: true } },
+      cards: true,
+      amountsMasked: true
+    },
+    global: { stubs }
+  })
+
+  const cards = view.findAll('article')
+  expect(cards.map(card => card.attributes('aria-label'))).toEqual([
+    '现金资产', '基金资产', '股票资产', '公积金资产', '贵金属资产'
+  ])
+  const cash = view.get('[aria-label="现金资产"]')
+  expect(cash.get('.card-balance').text()).toBe('¥2••••')
+  expect(cash.text()).toContain('57.1%')
+  expect(cash.get('a').attributes('href')).toBe('/cash')
+  const fund = view.get('[aria-label="基金资产"]')
+  expect(fund.get('.card-balance').text()).toBe('暂未录入')
+  expect(fund.get('a').attributes('href')).toBe('/funds')
+  const stock = view.get('[aria-label="股票资产"]')
+  expect(stock.get('.card-balance').text()).toBe('不持有')
+  expect(stock.find('a').exists()).toBe(false)
+  const provident = view.get('[aria-label="公积金资产"]')
+  expect(provident.text()).toContain('28.6%')
+  expect(provident.get('a').attributes('href')).toBe('/provident')
+  const gradients = view.findAll('.card-glow linearGradient').map(gradient => gradient.attributes('id'))
+  expect(gradients).toHaveLength(3)
+  expect(new Set(gradients).size).toBe(gradients.length)
+  view.unmount()
+})
 
 test('shows recorded categories, percentages, new records and missing assets', () => {
   const view = mount(AssetDistribution, {
@@ -60,7 +93,7 @@ test('lists assets as cash, fund, stock, provident fund and gold', () => {
   })
   const labels = view.findAll('.asset-row .asset-title b').map((node) => node.text())
 
-  expect(labels).toEqual(['现金', '基金', '股票', '公积金', '积存金'])
+  expect(labels).toEqual(['现金', '基金', '股票', '公积金', '贵金属'])
   view.unmount()
 })
 

@@ -57,11 +57,8 @@ public sealed class FundService
             .Select(transaction => Map(transaction, positionNames))
             .ToList();
 
-        var activeTransactionIds = replayData.Transactions
-            .Where(transaction => !transaction.IsReversed)
-            .Select(transaction => transaction.Id)
-            .ToHashSet();
-        var replay = new LedgerReplayCalculator().Calculate(replayData, BusinessFact.From(replayData), _businessDateProvider.Today, currentDate: _businessDateProvider.Today);
+        var facts = BusinessFact.From(replayData);
+        var replay = new LedgerReplayCalculator().Calculate(replayData, facts, _businessDateProvider.Today, currentDate: _businessDateProvider.Today);
         var confirmedPendingIds = replayData.Transactions
             .Where(transaction => !transaction.IsReversed && transaction.Kind == AssetTransactionKind.FundBuyConfirm
                 && transaction.LinkedTransactionId is not null)
@@ -131,7 +128,12 @@ public sealed class FundService
         var replayStates = replay.Funds
             .Where(item => item.PositionId is not null)
             .ToDictionary(item => item.PositionId!.Value);
-        var dailyProfits = CalculateDailyProfits(replayData, positions, _businessDateProvider.Today, activeTransactionIds);
+        var dailyProfits = CalculateDailyProfits(
+            replayData,
+            facts,
+            positions,
+            _businessDateProvider.Today,
+            ledger.StartDate);
         var mappedPositions = positions.Select(position =>
         {
             var state = replayStates[position.Id];
@@ -144,8 +146,10 @@ public sealed class FundService
                 GroupName = position.FundGroupId is null
                     ? null
                     : groupNames.GetValueOrDefault(position.FundGroupId.Value),
-                DailyProfit = daily.Profit,
-                DailyProfitRate = daily.Rate
+                DailyProfit = daily.Profit ?? 0m,
+                DailyProfitRate = daily.Profit is null ? null : DailyProfitRate(daily.Profit.Value, position.Value),
+                HasDailyProfit = daily.Profit is not null,
+                DailyProfitDate = daily.Date
             };
         }).ToList();
         var funds = BuildFundSummaries(positions, pendingBuys, pendingArrivals, replayStates, groupNames, dailyProfits);
@@ -191,44 +195,63 @@ public sealed class FundService
             .ToList();
     }
 
-    private static Dictionary<Guid, (decimal Profit, decimal? Rate)> CalculateDailyProfits(
+    private static Dictionary<Guid, (decimal? Profit, DateOnly? Date)> CalculateDailyProfits(
         LedgerReplayData replayData,
+        IReadOnlyList<BusinessFact> facts,
         IReadOnlyList<FundPosition> positions,
         DateOnly today,
-        IReadOnlySet<Guid> activeTransactionIds)
+        DateOnly ledgerStart)
     {
-        var result = new Dictionary<Guid, (decimal Profit, decimal? Rate)>();
+        var activeIds = facts.Where(fact => !fact.IsReversed).Select(fact => fact.Id).ToHashSet();
+        var dateByPosition = positions.ToDictionary(
+            position => position.Id,
+            position => ResolveLatestDisclosureDate(replayData, position, today, activeIds));
+        var result = new Dictionary<Guid, (decimal? Profit, DateOnly? Date)>();
+
+        foreach (var group in positions
+            .Where(position => dateByPosition[position.Id] is not null)
+            .GroupBy(position => dateByPosition[position.Id]!.Value))
+        {
+            var groupPositions = group.ToList();
+            var profits = FundReturnService.CalculateDailyProfitsForDate(
+                replayData,
+                facts,
+                groupPositions,
+                group.Key,
+                today,
+                ledgerStart);
+
+            foreach (var position in groupPositions)
+            {
+                result[position.Id] = (profits.GetValueOrDefault(position.Id), group.Key);
+            }
+        }
 
         foreach (var position in positions)
         {
-            var observations = replayData.Prices
-                .Where(price => !price.IsSuperseded
-                    && price.AssetType == AssetType.Fund
-                    && price.FundPositionId == position.Id
-                    && price.EffectiveDate <= today
-                    && (price.SourceTransactionId is null || activeTransactionIds.Contains(price.SourceTransactionId.Value)))
-                .GroupBy(price => price.EffectiveDate)
-                .Select(group => group.OrderByDescending(price => price.RevisionOrder).First())
-                .OrderByDescending(price => price.EffectiveDate)
-                .Take(2)
-                .ToList();
-
-            if (observations.Count < 2)
+            if (!result.ContainsKey(position.Id))
             {
-                continue;
+                result[position.Id] = (null, null);
             }
-
-            var latest = observations[0];
-            var previous = observations[1];
-            var profit = decimal.Round((latest.Price - previous.Price) * position.Shares, 2);
-            var rate = previous.Price > 0
-                ? decimal.Round((latest.Price - previous.Price) / previous.Price * 100m, 2)
-                : (decimal?)null;
-
-            result[position.Id] = (profit, rate);
         }
 
         return result;
+    }
+
+    private static DateOnly? ResolveLatestDisclosureDate(
+        LedgerReplayData replayData,
+        FundPosition position,
+        DateOnly today,
+        IReadOnlySet<Guid> activeIds)
+    {
+        return replayData.Prices
+            .Where(price => !price.IsSuperseded
+                && price.AssetType == AssetType.Fund
+                && price.FundPositionId == position.Id
+                && price.EffectiveDate <= today
+                && (price.SourceTransactionId is null || activeIds.Contains(price.SourceTransactionId.Value)))
+            .Select(price => (DateOnly?)price.EffectiveDate)
+            .Max();
     }
 
     private static decimal? DailyProfitRate(decimal profit, decimal value)
@@ -237,13 +260,33 @@ public sealed class FundService
         return baseline > 0 ? decimal.Round(profit / baseline * 100m, 2) : null;
     }
 
+    private static (decimal Profit, DateOnly? Date, bool Has) AggregateDaily(
+        IReadOnlyList<FundPosition> members,
+        IReadOnlyDictionary<Guid, (decimal? Profit, DateOnly? Date)> dailyProfits)
+    {
+        var entries = members
+            .Select(member => dailyProfits.GetValueOrDefault(member.Id))
+            .Where(entry => entry.Date is not null && entry.Profit is not null)
+            .ToList();
+
+        if (entries.Count == 0)
+        {
+            return (0m, null, false);
+        }
+
+        var date = entries.Max(entry => entry.Date!.Value);
+        var onDate = entries.Where(entry => entry.Date == date).ToList();
+
+        return (decimal.Round(onDate.Sum(entry => entry.Profit!.Value), 2), date, onDate.Count == members.Count);
+    }
+
     private static IReadOnlyList<FundSummaryDto> BuildFundSummaries(
         IReadOnlyList<FundPosition> positions,
         IReadOnlyList<PendingFundBuyDto> pendingBuys,
         IReadOnlyList<PendingFundArrivalDto> pendingArrivals,
         IReadOnlyDictionary<Guid, HoldingReplay> replayStates,
         IReadOnlyDictionary<Guid, string> groupNames,
-        IReadOnlyDictionary<Guid, (decimal Profit, decimal? Rate)> dailyProfits)
+        IReadOnlyDictionary<Guid, (decimal? Profit, DateOnly? Date)> dailyProfits)
     {
         var pendingBuyAmounts = pendingBuys
             .GroupBy(item => item.PositionId)
@@ -271,7 +314,8 @@ public sealed class FundService
                         var netValues = classMembers.Select(position => position.NetValue).Distinct().ToList();
                         var netValueDates = classMembers.Select(position => position.NetValueDate).Distinct().ToList();
                         var classValue = decimal.Round(classMembers.Sum(position => position.Value), 2);
-                        var classDailyProfit = decimal.Round(classMembers.Sum(position => dailyProfits.GetValueOrDefault(position.Id).Profit), 2);
+                        var (classDailyProfit, classDailyProfitDate, classHasDailyProfit) =
+                            AggregateDaily(classMembers, dailyProfits);
 
                         return new FundShareClassDto(
                             string.IsNullOrWhiteSpace(classMembers[0].ShareClass) ? null : FundIdentity.Normalize(classMembers[0].ShareClass),
@@ -297,14 +341,20 @@ public sealed class FundService
                                 position.TotalRealizedProfit,
                                 replayStates[position.Id].Value is not null,
                                 position.ConfirmationDelayDays,
-                                dailyProfits.GetValueOrDefault(position.Id).Profit,
-                                dailyProfits.GetValueOrDefault(position.Id).Rate,
-                                position.PriorRealizedProfit)).ToList(),
+                                dailyProfits.GetValueOrDefault(position.Id).Profit ?? 0m,
+                                dailyProfits.GetValueOrDefault(position.Id).Profit is decimal positionDailyProfit
+                                    ? DailyProfitRate(positionDailyProfit, position.Value)
+                                    : null,
+                                position.PriorRealizedProfit,
+                                dailyProfits.GetValueOrDefault(position.Id).Profit is not null,
+                                dailyProfits.GetValueOrDefault(position.Id).Date)).ToList(),
                             classGroup.Key,
                             classMembers[0].Code,
                             string.IsNullOrWhiteSpace(classMembers[0].Code) ? "按规范化基金名称和类别匹配" : "按基金代码和类别匹配",
                             classDailyProfit,
-                            DailyProfitRate(classDailyProfit, classValue));
+                            classHasDailyProfit ? DailyProfitRate(classDailyProfit, classValue) : null,
+                            classHasDailyProfit,
+                            classDailyProfitDate);
                     })
                     .OrderBy(fundClass => fundClass.ShareClass, StringComparer.Ordinal)
                     .ToList();
@@ -313,7 +363,7 @@ public sealed class FundService
                 // 待确认的份额在 T 日就定了，估值要按 T 日净值折算，不能拿承诺金额顶替。
                 var pendingBuyValue = decimal.Round(members.Sum(position => replayStates[position.Id].PendingValue), 2);
                 var value = decimal.Round(members.Sum(position => position.Value), 2);
-                var dailyProfit = decimal.Round(members.Sum(position => dailyProfits.GetValueOrDefault(position.Id).Profit), 2);
+                var (dailyProfit, dailyProfitDate, hasDailyProfit) = AggregateDaily(members, dailyProfits);
                 var groupId = effectiveGroupIds[members[0].Id];
                 var platformCount = members
                     .Select(position => position.Platform)
@@ -339,7 +389,9 @@ public sealed class FundService
                     members.All(position => replayStates[position.Id].Value is not null),
                     classes,
                     dailyProfit,
-                    DailyProfitRate(dailyProfit, value));
+                    hasDailyProfit ? DailyProfitRate(dailyProfit, value) : null,
+                    hasDailyProfit,
+                    dailyProfitDate);
             })
             .OrderBy(fund => fund.Name, StringComparer.Ordinal)
             .ToList();
@@ -558,7 +610,7 @@ public sealed class FundService
         {
             var now = _businessDateProvider.UtcNow;
             var tradingScope = ResolveTradingScope(position);
-            var tradeDate = request.TradeDate ?? ResolveBuyTradeDate(request.BusinessDate, now, tradingScope);
+            var tradeDate = request.TradeDate ?? ResolveBuyTradeDate(request.BusinessDate, request.OrderTime, now, tradingScope);
             var transaction = AssetTransaction.CreateFundBuyPending(
                 ledger.Id,
                 position.Id,
@@ -1516,8 +1568,26 @@ public sealed class FundService
             : AutoPlanTradingScope.China;
     }
 
-    private DateOnly ResolveBuyTradeDate(DateOnly requestedDate, DateTimeOffset now, AutoPlanTradingScope tradingScope)
+    private DateOnly ResolveBuyTradeDate(
+        DateOnly requestedDate,
+        TimeOnly? orderTime,
+        DateTimeOffset now,
+        AutoPlanTradingScope tradingScope)
     {
+        // 计划执行可能晚于到期时刻，T 日要按计划的下单时间算，不能按实际补跑时刻算。
+        // 到期日不是交易日时，15:00 截止没有意义，直接顺延到下一个交易日。
+        if (orderTime is TimeOnly scheduledTime)
+        {
+            if (!TradingCalendar.Default.IsTradingDay(requestedDate, tradingScope))
+            {
+                return TradingCalendar.Default.NextTradingDay(requestedDate.AddDays(-1), tradingScope);
+            }
+
+            return scheduledTime < new TimeOnly(15, 0)
+                ? requestedDate
+                : TradingCalendar.Default.NextTradingDay(requestedDate, tradingScope);
+        }
+
         var today = _businessDateProvider.Today;
 
         if (requestedDate != today)

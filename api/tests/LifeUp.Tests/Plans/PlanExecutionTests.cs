@@ -361,6 +361,62 @@ public sealed class PlanExecutionTests
     }
 
     [Fact]
+    public async Task TradingDayRun_AfterCutoff_UsesPlanDueDateAsTradeDate()
+    {
+        await using var context = await CreateAsync(1000m);
+        var position = await CreatePositionAsync(context);
+        await SavePlanAsync(context, AutoPlanType.FundSip, 100m, position, AutoPlanCycle.TradingDay, new TimeOnly(12, 30), Today);
+
+        var lateDates = new BusinessDateProvider(new FixedTimeProvider(Now.AddHours(8)));
+        var lateFunds = new FundService(context.Repository, lateDates);
+        var lateExecution = new PlanExecutionService(
+            context.Repository,
+            context.PlanRepo,
+            lateDates,
+            new LedgerEntryService(context.Repository, lateDates),
+            new ProvidentFundService(context.Repository, lateDates),
+            lateFunds);
+
+        var result = await lateExecution.RunDueAsync(CancellationToken.None);
+
+        Assert.Equal(1, result.Completed);
+        var pending = Assert.Single(
+            await context.Repository.GetAssetTransactionsAsync(
+                context.LedgerId, AssetType.Fund, null, null, 100, CancellationToken.None),
+            transaction => transaction.Kind == AssetTransactionKind.FundBuyPending);
+        Assert.Equal(Today, pending.FundTradeDate);
+        var overview = await lateFunds.GetOverviewAsync(CancellationToken.None);
+        Assert.Equal(Today.AddDays(2), Assert.Single(overview!.PendingBuys!).ConfirmationDate);
+    }
+
+    [Fact]
+    public async Task TradingDayRun_PlanTimeAfterCutoff_UsesNextTradingDayAsTradeDate()
+    {
+        await using var context = await CreateAsync(1000m);
+        var position = await CreatePositionAsync(context);
+        await SavePlanAsync(context, AutoPlanType.FundSip, 100m, position, AutoPlanCycle.TradingDay, new TimeOnly(16, 0), Today);
+
+        var lateDates = new BusinessDateProvider(new FixedTimeProvider(Now.AddHours(8)));
+        var lateFunds = new FundService(context.Repository, lateDates);
+        var lateExecution = new PlanExecutionService(
+            context.Repository,
+            context.PlanRepo,
+            lateDates,
+            new LedgerEntryService(context.Repository, lateDates),
+            new ProvidentFundService(context.Repository, lateDates),
+            lateFunds);
+
+        var result = await lateExecution.RunDueAsync(CancellationToken.None);
+
+        Assert.Equal(1, result.Completed);
+        var pending = Assert.Single(
+            await context.Repository.GetAssetTransactionsAsync(
+                context.LedgerId, AssetType.Fund, null, null, 100, CancellationToken.None),
+            transaction => transaction.Kind == AssetTransactionKind.FundBuyPending);
+        Assert.Equal(Today.AddDays(1), pending.FundTradeDate);
+    }
+
+    [Fact]
     public async Task DuplicateSip_AcrossSourcesEditAndResume_ReturnsConflict()
     {
         await using var context = await CreateAsync(1000m);

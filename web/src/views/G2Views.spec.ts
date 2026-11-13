@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
   refresh: vi.fn()
 }))
 
-vi.mock('vue-router', () => ({ useRoute: () => ({ params: {}, path: '/funds' }), useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }))
+vi.mock('vue-router', () => ({ onBeforeRouteLeave: vi.fn(), useRoute: () => ({ params: {}, path: '/funds' }), useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }))
 vi.mock('../api/funds', () => ({
   fetchFundOverview: mocks.overview,
   buyFund: mocks.buy,
@@ -89,7 +89,7 @@ test('pending buy displays transaction details without editable fields or save a
   const view = mount(FundsView, { attachTo: document.body })
   await flushPromises()
   await showActivities(view)
-  expect(view.find('.metrics-note').text()).toContain('含待确认 ¥300.00')
+  expect(view.get('.funds-metrics .hero-foot').text()).toContain('含待确认 ¥300.00')
   const row = view.find('.activity-row.is-pending')
   expect(row.text()).toContain('基金 | 纳指基金')
   expect(row.text()).toContain('待确认 · 10月23日自动确认')

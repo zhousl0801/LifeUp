@@ -13,10 +13,11 @@ const mocks = vi.hoisted(() => ({
   search: vi.fn(),
   createPosition: vi.fn(),
   confirmBuy: vi.fn(),
-  correctShares: vi.fn()
+  correctShares: vi.fn(),
+  quoteStatus: vi.fn()
 }))
 
-vi.mock('vue-router', () => ({ useRoute: () => ({ params: {}, path: '/funds' }), useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }))
+vi.mock('vue-router', () => ({ onBeforeRouteLeave: vi.fn(), useRoute: () => ({ params: {}, path: '/funds' }), useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }))
 vi.mock('../api/funds', () => ({
   fetchFundOverview: mocks.overview,
   buyFund: vi.fn(),
@@ -35,6 +36,7 @@ vi.mock('../api/funds', () => ({
   assignFundGroup: mocks.assignGroup
 }))
 vi.mock('../api/plans', () => ({ fetchPlanOverview: mocks.plans }))
+vi.mock('../api/quotes', () => ({ fetchQuoteStatus: mocks.quoteStatus, refreshQuotes: vi.fn() }))
 
 const positionA = {
   historyConfirmed: true,
@@ -58,7 +60,9 @@ const positionA = {
   groupId: 'g1',
   groupName: '纳斯达克指数',
   dailyProfit: 12,
-  dailyProfitRate: 1.01
+  dailyProfitRate: 1.01,
+  hasDailyProfit: true,
+  dailyProfitDate: '2026-10-20'
 }
 
 const positionC = {
@@ -107,6 +111,8 @@ const fundA = {
   hasEffectiveQuotes: true,
   dailyProfit: 24,
   dailyProfitRate: 1.35,
+  hasDailyProfit: true,
+  dailyProfitDate: '2026-10-20',
   classes: [
     {
       shareClass: 'A',
@@ -119,11 +125,13 @@ const fundA = {
       netValueDate: '2026-10-20',
       dailyProfit: 16,
       dailyProfitRate: 1.35,
+      hasDailyProfit: true,
+      dailyProfitDate: '2026-10-20',
       platforms: [{
         positionId: 'a', platform: '平台甲', name: '纳指基金', code: '000001', shareClass: 'A',
         shares: 100, cost: 1000, netValue: 12, netValueDate: '2026-10-20', value: 1200,
         holdingProfit: 200, realizedProfit: 2762.09, priorRealizedProfit: 2762.09,
-        hasEffectiveQuote: true, dailyProfit: 16, dailyProfitRate: 1.35
+        hasEffectiveQuote: true, dailyProfit: 16, dailyProfitRate: 1.35, hasDailyProfit: true, dailyProfitDate: '2026-10-20'
       }]
     },
     {
@@ -137,10 +145,12 @@ const fundA = {
       netValueDate: '2026-10-20',
       dailyProfit: 8,
       dailyProfitRate: 1.35,
+      hasDailyProfit: true,
+      dailyProfitDate: '2026-10-20',
       platforms: [{
         positionId: 'c', platform: '平台乙', name: '纳指基金', code: '000002', shareClass: 'C',
         shares: 50, cost: 500, netValue: 12, netValueDate: '2026-10-20', value: 600,
-        holdingProfit: 100, realizedProfit: 0, hasEffectiveQuote: true, dailyProfit: 8, dailyProfitRate: 1.35
+        holdingProfit: 100, realizedProfit: 0, hasEffectiveQuote: true, dailyProfit: 8, dailyProfitRate: 1.35, hasDailyProfit: true, dailyProfitDate: '2026-10-20'
       }]
     }
   ]
@@ -164,6 +174,8 @@ const fundB = {
   hasEffectiveQuotes: true,
   dailyProfit: -5,
   dailyProfitRate: -0.83,
+  hasDailyProfit: true,
+  dailyProfitDate: '2026-10-20',
   classes: [{
     shareClass: null,
     shares: 200,
@@ -175,10 +187,12 @@ const fundB = {
     netValueDate: '2026-10-20',
     dailyProfit: -5,
     dailyProfitRate: -0.83,
+    hasDailyProfit: true,
+    dailyProfitDate: '2026-10-20',
     platforms: [{
       positionId: 'b', platform: '平台丙', name: '债券基金', code: '100001', shareClass: null,
       shares: 200, cost: 200, netValue: 1.5, netValueDate: '2026-10-20', value: 300,
-      holdingProfit: 100, realizedProfit: 0, hasEffectiveQuote: true, dailyProfit: -5, dailyProfitRate: -0.83
+      holdingProfit: 100, realizedProfit: 0, hasEffectiveQuote: true, dailyProfit: -5, dailyProfitRate: -0.83, hasDailyProfit: true, dailyProfitDate: '2026-10-20'
     }]
   }]
 }
@@ -211,10 +225,21 @@ const overview = {
   funds: [fundA, fundB]
 }
 
+const quoteStatus = {
+  schedulerEnabled: false,
+  intervalSeconds: 3600,
+  nextRunAt: null,
+  isRunning: false,
+  lastRun: null,
+  items: [],
+  checkedAt: '2026-10-21T02:00:00Z'
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
   mocks.overview.mockResolvedValue(structuredClone(overview))
+  mocks.quoteStatus.mockResolvedValue(structuredClone(quoteStatus))
   mocks.assignGroup.mockResolvedValue({ groupId: 'g1', positionIds: ['b'] })
   mocks.createGroup.mockResolvedValue({ id: 'g2', name: '美股科技', sortOrder: 1, fundCount: 0, positionCount: 0, confirmedValue: 0 })
   mocks.search.mockResolvedValue([{
@@ -394,9 +419,12 @@ test('today profit is calculated from the selected group and today\'s disclosed 
   const data = structuredClone(overview)
 
   for (const fund of data.funds) {
+    fund.dailyProfitDate = today
     for (const fundClass of fund.classes) {
+      fundClass.dailyProfitDate = today
       for (const platform of fundClass.platforms) {
         platform.netValueDate = today
+        platform.dailyProfitDate = today
         platform.hasEffectiveQuote = true
       }
     }
@@ -412,6 +440,145 @@ test('today profit is calculated from the selected group and today\'s disclosed 
   await groupTab.trigger('click')
   await flushPromises()
   expect(view.find('.hero-today').text()).toContain('+24.00')
+
+  view.unmount()
+})
+
+test('today profit only sums funds disclosed on the latest net value date', async () => {
+  const data = structuredClone(overview)
+  data.funds[1]!.hasDailyProfit = false
+  mocks.overview.mockResolvedValue(data)
+
+  const view = mount(FundsView)
+  await flushPromises()
+
+  expect(view.find('.hero-today').text()).toContain('+24.00')
+  expect(view.find('.hero-metrics .hero-update').exists()).toBe(false)
+  expect(view.get('.funds-metrics > .hero-update').text()).toMatch(/\d+月\d+日净值 · 1\/2 只已披露/)
+  expect(view.find('.hero-update .update-ring-face').exists()).toBe(false)
+  expect(view.get('.hero-update .update-ring').attributes('aria-valuetext')).toBe('1/2')
+
+  const bondCard = view.findAll('.fund-card').find((item) => item.text().includes('债券基金'))!
+  const dailyMetric = bondCard.findAll('.fund-metric').find((item) => item.text().includes('日收益'))!
+  expect(dailyMetric.find('.fund-metric-value b').text()).toBe('—')
+  expect(dailyMetric.find('.fund-metric-sub').exists()).toBe(false)
+
+  view.unmount()
+})
+
+test('shows an indeterminate ring while quotes are updating', async () => {
+  mocks.quoteStatus.mockResolvedValue({ ...quoteStatus, isRunning: true })
+
+  const view = mount(FundsView)
+  await flushPromises()
+
+  expect(view.find('.hero-update.is-updating').exists()).toBe(true)
+  expect(view.find('.hero-update .update-ring.is-indeterminate').exists()).toBe(true)
+  expect(view.find('.hero-update').text()).toContain('更新中')
+
+  view.unmount()
+})
+
+test.each([
+  { profit: 12, label: '2/2，收益为正', face: true },
+  { profit: -12, label: '2/2，收益为负', face: true },
+  { profit: 0, label: undefined, face: false }
+])('shows the appropriate completed update face for profit $profit', async ({ profit, label, face }) => {
+  const data = structuredClone(overview)
+  for (const fund of data.funds) {
+    fund.dailyProfitDate = todayInBusinessTimeZone()
+    fund.dailyProfit = profit / data.funds.length
+  }
+  mocks.overview.mockResolvedValue(data)
+
+  const view = mount(FundsView)
+  try {
+    await flushPromises()
+    expect(view.find('.hero-update .update-ring-face').exists()).toBe(face)
+    expect(view.find('.hero-update .update-ring').exists()).toBe(face)
+    if (face) {
+      expect(view.get('.hero-update .update-ring').attributes('aria-valuetext')).toBe(label)
+    }
+  } finally {
+    view.unmount()
+  }
+})
+
+test('waits for refreshed fund data before showing the completed update face', async () => {
+  vi.useFakeTimers()
+  mocks.quoteStatus.mockResolvedValueOnce({ ...quoteStatus, isRunning: true })
+  let resolveOverview!: (data: typeof overview) => void
+  mocks.overview.mockImplementationOnce(async () => structuredClone(overview))
+    .mockImplementationOnce(() => new Promise<typeof overview>((resolve) => { resolveOverview = resolve }))
+
+  const view = mount(FundsView)
+  try {
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(15000)
+    expect(view.get('.hero-update .update-ring').attributes('aria-busy')).toBe('true')
+    expect(view.find('.hero-update .update-ring-face').exists()).toBe(false)
+
+    const updated = structuredClone(overview)
+    updated.funds[0]!.dailyProfit = -24
+    resolveOverview(updated)
+    await flushPromises()
+    expect(view.get('.hero-update .update-ring').attributes('aria-valuetext')).toBe('2/2，收益为负')
+  } finally {
+    view.unmount()
+    vi.useRealTimers()
+  }
+})
+
+test('shows a warning ring when the last quote refresh had failures', async () => {
+  mocks.quoteStatus.mockResolvedValue({
+    ...quoteStatus,
+    lastRun: {
+      trigger: 'scheduler',
+      scope: 'all',
+      startedAt: '2026-10-21T02:00:00Z',
+      completedAt: '2026-10-21T02:00:10Z',
+      durationMs: 10000,
+      fundAttempted: 8,
+      fundSucceeded: 6,
+      fundFailed: 2,
+      goldAttempted: 0,
+      goldSucceeded: 0,
+      goldFailed: 0,
+      stockAttempted: 0,
+      stockSucceeded: 0,
+      stockFailed: 0,
+      updated: 0,
+      items: [],
+      errors: []
+    }
+  })
+
+  const view = mount(FundsView)
+  await flushPromises()
+
+  expect(view.find('.hero-update.is-warning').exists()).toBe(true)
+  expect(view.find('.hero-update').text()).toContain('更新失败')
+  expect(view.find('.hero-update .update-ring-face').exists()).toBe(false)
+
+  view.unmount()
+})
+
+test.each([null, '["daily","cumulativeRate","cumulative"]'])('fund list uses the new default metric order with saved metrics %s', async (storedMetrics) => {
+  if (storedMetrics !== null) {
+    localStorage.setItem('lifeup.fund.metrics.v3', storedMetrics)
+  }
+
+  const view = mount(FundsView)
+  await flushPromises()
+
+  const card = view.findAll('.fund-card').find((item) => item.text().includes('纳指基金'))!
+  const [dailyMetric, cumulativeMetric, cumulativeRateMetric] = card.findAll('.fund-metric')
+  expect(dailyMetric!.find('.fund-metric-label').text()).toContain('日收益')
+  expect(cumulativeMetric!.find('.fund-metric-label').text()).toBe('累计收益')
+  expect(cumulativeRateMetric!.find('.fund-metric-label').text()).toBe('累计收益率')
+  expect(cumulativeRateMetric!.find('.fund-metric-value b').text()).toBe('+20.00%')
+  expect(dailyMetric!.find('.fund-metric-label .fund-metric-sub').text()).toBe('+1.35%')
+  expect(dailyMetric!.find('.fund-metric-value b').text()).toBe('+24.00')
 
   view.unmount()
 })

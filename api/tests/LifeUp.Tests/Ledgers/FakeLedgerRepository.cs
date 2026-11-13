@@ -227,6 +227,7 @@ internal sealed class FakeLedgerRepository : ILedgerRepository
         return Task.FromResult(_categories.SingleOrDefault(category =>
             category.LedgerId == ledgerId
             && category.Kind == kind
+            && !category.IsGroup
             && string.Equals(category.Name, normalized, StringComparison.Ordinal)));
     }
 

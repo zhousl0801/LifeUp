@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { buildScopedTrend, buildTrendOption, trendAxisLabel, trendTooltip } from './trend'
+import { buildAssetTrend, buildTrendOption, trendAxisLabel, trendTooltip } from './trend'
 import type { AssetTrend, AssetTrendPoint } from '../types/trend'
 
 function point(overrides: Partial<AssetTrendPoint>): AssetTrendPoint {
@@ -23,69 +23,32 @@ function point(overrides: Partial<AssetTrendPoint>): AssetTrendPoint {
   }
 }
 
-const trend: AssetTrend = {
-  range: 'month',
-  from: '2026-10-01',
-  to: '2026-10-02',
-  notes: [],
-  points: [
-    point({
-      date: '2026-10-01',
-      cash: 1000,
-      provident: 0,
-      fundValue: 0,
-      goldValue: 0,
-      hasCash: true,
-      hasProvident: true,
-      hasFunds: true,
-      hasGold: true,
-      isComplete: true
-    }),
-    point({
-      date: '2026-10-02',
-      cash: 1200,
-      provident: null,
-      fundValue: 0,
-      goldValue: 0,
-      hasCash: true,
-      hasProvident: false,
-      hasFunds: true,
-      hasGold: true
-    })
-  ]
-}
-
-test('scoped trend keeps the baseline categories and leaves incomplete dates empty', () => {
-  const scoped = buildScopedTrend(trend)
-  const option = buildTrendOption(trend, scoped) as {
-    series: { data: (number | null)[]; markLine: { data: unknown[] } }[]
-  }
-
-  expect(scoped.baselineTypes).toEqual(['cash', 'providentFund', 'fund', 'gold'])
-  expect(option.series[0]!.data).toEqual([1000, null])
-  expect(option.series[0]!.markLine.data).toEqual([])
-  expect(trendAxisLabel('2026-10-02', 'month')).toBe('10-02')
-  expect(trendAxisLabel('2026-10-02', 'all')).toBe('2026-10')
-  expect(trendTooltip(trend.points[1]!, scoped)).toContain('同口径资产依据不足')
-  expect(trendTooltip(trend.points[1]!, scoped)).toContain('公积金 依据不足')
-})
-
-test('new categories are excluded from the line and marked on their first day', () => {
-  const withAddition: AssetTrend = {
-    ...trend,
+test('uses the complete daily total and the recorded subtotal on incomplete dates', () => {
+  const trend: AssetTrend = {
+    range: 'month',
+    from: '2026-10-01',
+    to: '2026-10-04',
+    notes: [],
     points: [
-      point({ date: '2026-10-01', cash: 1000, hasCash: true }),
-      point({ date: '2026-10-02', cash: 1000, goldValue: 500, hasCash: true, hasGold: true })
+      point({ date: '2026-10-01' }),
+      point({ date: '2026-10-02', cash: 1000, knownTotalAssets: 1000, hasCash: true }),
+      point({ date: '2026-10-03', cash: 900, goldValue: 500, knownTotalAssets: 1400, hasCash: true, hasGold: true }),
+      point({ date: '2026-10-04', cash: 850, goldValue: 600, totalAssets: 1450, knownTotalAssets: 1450, isComplete: true, hasCash: true, hasGold: true })
     ]
   }
-  const scoped = buildScopedTrend(withAddition)
-  const option = buildTrendOption(withAddition, scoped) as {
-    series: { data: (number | null)[]; markLine: { data: { xAxis: string }[] } }[]
-  }
 
-  expect(scoped.baselineTypes).toEqual(['cash'])
-  expect(scoped.additions).toEqual([{ date: '2026-10-02', types: ['gold'] }])
-  expect(option.series[0]!.data).toEqual([1000, 1000])
-  expect(option.series[0]!.markLine.data[0]!.xAxis).toBe('2026-10-02')
-  expect(trendTooltip(withAddition.points[1]!, scoped)).toContain('新增记录 积存金')
+  const series = buildAssetTrend(trend)
+  const option = buildTrendOption(trend, series)
+  expect(option.series[0]!.data).toEqual([null, 1000, 1400, 1450])
+  expect(series.latest?.value).toBe(1450)
+  expect(option.series[0]!.markPoint.data).toEqual([
+    expect.objectContaining({ coord: ['2026-10-03', 1400], symbol: 'circle', symbolSize: 12 })
+  ])
+  expect(trendTooltip(series.points[1]!, true)).toContain('¥1••••')
+  expect(option.series[0]!.markPoint.label.show).toBe(false)
+  expect(trendTooltip(series.points[2]!)).toContain('已记录资产 ¥1,400.00')
+  expect(trendTooltip(series.points[2]!)).not.toContain('新增')
+  expect(trendTooltip(series.points[3]!)).toContain('总资产 ¥1,450.00')
+  expect(trendAxisLabel('2026-10-02', 'month')).toBe('10-02')
+  expect(trendAxisLabel('2026-10-02', 'all')).toBe('2026-10')
 })

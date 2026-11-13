@@ -1,4 +1,5 @@
 using LifeUp.Application.Ledgers;
+using LifeUp.Domain.Ledgers;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 
@@ -40,6 +41,45 @@ public sealed class LedgerController : ControllerBase
         }
 
         return Ok(overview);
+    }
+
+    [HttpGet("monthly-budget")]
+    public async Task<IActionResult> GetMonthlyBudget([FromQuery] string month, CancellationToken cancellationToken)
+    {
+        if (!Ledger.TryParseBudgetMonth(month, out _))
+        {
+            return BadRequest(new ProblemDetails { Detail = "预算月份应使用 YYYY-MM 格式。" });
+        }
+
+        var budget = await _ledgerService.GetMonthlyBudgetAsync(month, cancellationToken);
+        return budget is null ? NotFound() : Ok(budget);
+    }
+
+    [HttpPut("monthly-budget")]
+    public async Task<IActionResult> UpdateMonthlyBudget(
+        [FromQuery] string month,
+        [FromBody] UpdateMonthlyBudgetRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!Ledger.TryParseBudgetMonth(month, out _))
+        {
+            return BadRequest(new ProblemDetails { Detail = "预算月份应使用 YYYY-MM 格式。" });
+        }
+
+        if (!Ledger.IsValidBudgetAmount(request.Amount))
+        {
+            return BadRequest(new ProblemDetails { Detail = "预算必须大于零，最多保留两位小数，且不能超过 10 亿元。" });
+        }
+
+        try
+        {
+            var budget = await _ledgerService.UpdateMonthlyBudgetAsync(month, request.Amount, cancellationToken);
+            return budget is null ? NotFound() : Ok(budget);
+        }
+        catch (ConcurrencyConflictException)
+        {
+            return Conflict(new ProblemDetails { Detail = "账本有新变化，请刷新预算后重试。" });
+        }
     }
 
     [HttpGet("trend")]

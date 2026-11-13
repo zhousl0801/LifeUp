@@ -718,6 +718,10 @@ namespace LifeUp.Infrastructure.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");
 
+                    b.Property<bool>("IsGroup")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_group");
+
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -733,6 +737,10 @@ namespace LifeUp.Infrastructure.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("name");
+
+                    b.Property<Guid?>("ParentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("parent_id");
 
                     b.Property<int>("SortOrder")
                         .HasColumnType("integer")
@@ -756,10 +764,12 @@ namespace LifeUp.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("LedgerId", "Kind", "Name")
-                        .IsUnique();
+                    b.HasIndex("ParentId");
 
                     b.HasIndex("LedgerId", "Kind", "SortOrder");
+
+                    b.HasIndex("LedgerId", "Kind", "IsGroup", "Name")
+                        .IsUnique();
 
                     b.ToTable("entry_categories", (string)null);
                 });
@@ -769,6 +779,10 @@ namespace LifeUp.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<string>("CapitalGoalJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("capital_goal");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamptz")
@@ -791,6 +805,10 @@ namespace LifeUp.Infrastructure.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(false)
                         .HasColumnName("gold_not_held");
+
+                    b.Property<string>("MonthlyBudgetsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("monthly_budgets");
 
                     b.Property<long>("NextFactSequence")
                         .HasColumnType("bigint")
@@ -1379,6 +1397,11 @@ namespace LifeUp.Infrastructure.Persistence.Migrations
                         .HasForeignKey("LedgerId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("LifeUp.Domain.Ledgers.EntryCategory", null)
+                        .WithMany()
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("LifeUp.Domain.Ledgers.LedgerEntry", b =>

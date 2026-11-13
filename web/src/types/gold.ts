@@ -39,6 +39,7 @@ export interface GoldOverview {
   pendingArrivals: PendingGoldArrival[]
   lastQuoteAttemptAt: string | null
   lastQuoteSource: string | null
+  quoteSource?: string | null
   lastQuoteError: string | null
 }
 

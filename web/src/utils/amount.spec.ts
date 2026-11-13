@@ -61,3 +61,11 @@ describe('evaluateAmountExpression', () => {
     expect(evaluateAmountExpression('1000000000.01')).toBeNull()
   })
 })
+
+it('evaluates multiplication before addition and rounds division to cents', () => {
+  expect(evaluateAmountExpression('3+4*2')).toBe(11)
+  expect(evaluateAmountExpression('10/3')).toBe(3.33)
+  expect(evaluateAmountExpression('1/0')).toBeNull()
+  expect(applyAmountKey('1.2', '00')).toBe('1.20')
+  expect(applyAmountKey('3+4*2', '=')).toBe('11')
+})

@@ -15,7 +15,7 @@ export function createCategory(input: CreateCategoryInput): Promise<EntryCategor
 
 export function updateCategory(
   categoryId: string,
-  input: { name: string; isActive: boolean }
+  input: { name: string; isActive: boolean; parentId?: string }
 ): Promise<EntryCategory> {
   return apiRequest<EntryCategory>(`/api/ledger/categories/${encodeURIComponent(categoryId)}`, {
     method: 'PUT',
@@ -23,10 +23,10 @@ export function updateCategory(
   })
 }
 
-export function reorderCategories(kind: EntryKind, ids: string[]): Promise<void> {
+export function reorderCategories(kind: EntryKind, ids: string[], scope?: { isGroup?: boolean; parentId?: string }): Promise<void> {
   return apiRequest<void>('/api/ledger/categories/order', {
     method: 'PUT',
-    body: JSON.stringify({ kind, ids })
+    body: JSON.stringify({ kind, ids, ...scope })
   })
 }
 

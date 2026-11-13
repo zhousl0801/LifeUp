@@ -35,6 +35,7 @@ export interface EntryPeriodSummary {
 export interface EntryStatsPoint {
   date: string
   label: string
+  category?: string | null
   income: number
   expense: number
 }
@@ -59,6 +60,8 @@ export interface EntryStats {
   points: EntryStatsPoint[]
   incomeCategories: EntryStatsCategory[]
   expenseCategories: EntryStatsCategory[]
+  incomeGroups?: EntryStatsCategory[]
+  expenseGroups?: EntryStatsCategory[]
   note: string | null
 }
 

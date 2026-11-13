@@ -19,4 +19,5 @@ public sealed record GoldOverviewDto(
     IReadOnlyList<PendingGoldArrivalDto>? PendingArrivals = null,
     DateTimeOffset? LastQuoteAttemptAt = null,
     string? LastQuoteSource = null,
-    string? LastQuoteError = null);
+    string? LastQuoteError = null,
+    string? QuoteSource = null);

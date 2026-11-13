@@ -4,6 +4,7 @@ import Decimal from 'decimal.js'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ApiError, getApiErrorMessage } from '../api/client'
+import { toast } from '../composables/useMessage'
 import { buyStock, fetchStockOverview, fetchStockQuote, refreshStockQuote, refreshStockQuotes, saveStockHolding, searchStocks, sellStock } from '../api/stocks'
 import { fetchLedger, updateAssetCoverage } from '../api/ledger'
 import AppNav from '../components/AppNav.vue'
@@ -13,6 +14,8 @@ import LoadingButton from '../components/LoadingButton.vue'
 import LoadingState from '../components/LoadingState.vue'
 import InvestmentActivityList, { type InvestmentActivityRow } from '../components/InvestmentActivityList.vue'
 import BottomSheet from '../components/BottomSheet.vue'
+import { useUnsavedSheet } from '../composables/useUnsavedSheet'
+import ConfirmSheet from '../components/ConfirmSheet.vue'
 import {
   amountTone,
   formatBusinessDate,
@@ -44,7 +47,6 @@ const overview = ref<StockOverview | null>(null)
 const isLoading = ref(false)
 const isRefreshing = ref(false)
 const errorMessage = ref('')
-const notice = ref('')
 const sheet = ref<SheetKind | null>(null)
 const selectedPosition = ref<StockPosition | null>(null)
 const selectedStock = ref<StockSearchResult | null>(null)
@@ -67,6 +69,18 @@ const form = reactive({
   priceDate: today,
   note: ''
 })
+
+const { discardOpen, requestClose, resolveDiscard, updateDefault } = useUnsavedSheet(
+  () => requestId.value,
+  () => sheet.value !== null && sheet.value !== 'detail',
+  () => isSaving.value,
+  () => ({
+    ...form,
+    search: searchQuery.value,
+    stock: selectedStock.value ? `${selectedStock.value.market}:${selectedStock.value.code}` : ''
+  }),
+  closeSheet
+)
 
 const marketLabels: Record<StockMarket, string> = {
   shanghai: '沪市',
@@ -154,6 +168,23 @@ const totalTodayPercent = computed(() => {
   }
 
   return data.todayProfit / previousValue * 100
+})
+
+// 总收益按持有收益加已实现收益展示，总收益率用剩余持仓成本作分母。
+const totalProfit = computed<number | null>(() => {
+  const data = overview.value
+
+  return data ? data.holdingProfit + data.realizedProfit : null
+})
+
+const totalRate = computed<number | null>(() => {
+  const data = overview.value
+
+  if (!data || data.totalCost <= 0) {
+    return null
+  }
+
+  return (data.holdingProfit + data.realizedProfit) / data.totalCost * 100
 })
 
 const shareMax = computed(() => selectedPosition.value?.shares ?? 0)
@@ -312,17 +343,22 @@ async function loadOverview(): Promise<void> {
 }
 
 async function refreshOnEnter(): Promise<void> {
-  if (!overview.value || activePositions.value.length === 0) {
+  if (!overview.value || activePositions.value.length === 0 || isRefreshing.value) {
     return
   }
 
-  try {
-    await refreshStockQuotes()
-  } catch {
-    // 失败原因由持仓的行情状态记录，下面重新读取以展示缓存值。
-  }
+  isRefreshing.value = true
 
-  await loadOverview()
+  try {
+    try {
+      await refreshStockQuotes()
+    } catch {
+      // 失败原因由持仓的行情状态记录，下面重新读取以展示缓存值。
+    }
+    await loadOverview()
+  } finally {
+    isRefreshing.value = false
+  }
 }
 
 async function refreshQuotes(): Promise<void> {
@@ -332,14 +368,21 @@ async function refreshQuotes(): Promise<void> {
 
   isRefreshing.value = true
   errorMessage.value = ''
-  notice.value = ''
 
   try {
     const result = await refreshStockQuotes()
-    notice.value = result.failed > 0
-      ? `行情刷新完成：成功 ${result.succeeded} 只，失败 ${result.failed} 只${result.errors[0] ? `；${result.errors[0]}` : ''}`
-      : `行情刷新完成：更新 ${result.updated} 只股票。`
     await loadOverview()
+    if (!overview.value) return
+
+    if (result.failed > 0) {
+      toast.info(`行情刷新结果：成功 ${result.succeeded} 只，失败 ${result.failed} 只${result.errors[0] ? `；${result.errors[0]}` : ''}`)
+    } else if (result.succeeded === 0) {
+      toast.info('暂无可刷新的行情。')
+    } else if (result.updated === 0) {
+      toast.info('行情已是最新。')
+    } else {
+      toast.success(`行情已更新：更新 ${result.updated} 只股票。`)
+    }
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error, '行情刷新失败，请稍后重试。')
   } finally {
@@ -373,6 +416,7 @@ function openSheet(kind: SheetKind, position: StockPosition | null = null): void
   form.priceDate = position?.priceDate ?? today
   form.note = ''
   quoteError.value = ''
+  quoteLoading.value = false
 
   if (kind === 'holding' && position) {
     form.shares = String(position.shares)
@@ -390,19 +434,34 @@ function openSheet(kind: SheetKind, position: StockPosition | null = null): void
   }
 }
 
+let latestQuoteRequest: symbol | undefined
+
 async function loadQuote(market: StockMarket, code: string): Promise<void> {
+  const quoteRequest = Symbol()
+  latestQuoteRequest = quoteRequest
+  const formSession = requestId.value
+  const stock = selectedStock.value
+  const previousPrice = form.price
   quoteLoading.value = true
   quoteError.value = ''
 
+  const isCurrent = () => latestQuoteRequest === quoteRequest
+    && requestId.value === formSession && selectedStock.value === stock && sheet.value !== null
+
   try {
     const quote = await fetchStockQuote(market, code)
+    if (!isCurrent() || form.price !== previousPrice) return
 
     form.price = String(quote.price)
     form.priceDate = quote.priceDate
+    if (sheet.value === 'holding') {
+      updateDefault('price', form.price)
+      updateDefault('priceDate', form.priceDate)
+    }
   } catch (error) {
-    quoteError.value = getApiErrorMessage(error, '行情获取失败，请稍后重试。')
+    if (isCurrent()) quoteError.value = getApiErrorMessage(error, '行情获取失败，请稍后重试。')
   } finally {
-    quoteLoading.value = false
+    if (latestQuoteRequest === quoteRequest) quoteLoading.value = false
   }
 }
 
@@ -525,7 +584,7 @@ async function submitBuy(): Promise<void> {
     note: form.note.trim(),
     requestId: requestId.value
   })
-  notice.value = `已买入 ${formatShares(result.activity.shares)} 股，当前现金 ¥${formatMoney(result.cashBalance)}。`
+  toast.success(`已买入 ${formatShares(result.activity.shares)} 股，当前现金 ¥${formatMoney(result.cashBalance)}。`)
   sheet.value = null
 
   // 当天买入还没有行情记录时，今日盈亏会空着；成交成功后顺手拉一次行情。
@@ -562,7 +621,7 @@ async function submitSell(): Promise<void> {
     note: form.note.trim(),
     requestId: requestId.value
   })
-  notice.value = `已卖出 ${formatShares(result.activity.shares)} 股，当前现金 ¥${formatMoney(result.cashBalance)}。`
+  toast.success(`已卖出 ${formatShares(result.activity.shares)} 股，当前现金 ¥${formatMoney(result.cashBalance)}。`)
   sheet.value = null
   await loadOverview()
 }
@@ -597,7 +656,7 @@ async function submitHolding(): Promise<void> {
     expectedVersion: expectedVersion.value,
     positionId: selectedPosition.value?.id
   })
-  notice.value = '股票持仓已保存。'
+  toast.success('股票持仓已保存。')
   sheet.value = null
   await loadOverview()
 }
@@ -637,6 +696,14 @@ function formatPercent(value: number | null): string {
 
 function positionAverageCostText(position: StockPosition): string {
   return position.averageCost === null ? '—' : `¥${formatUnitPrice(position.averageCost)}`
+}
+
+function positionTotalProfit(position: StockPosition): number {
+  return position.holdingProfit + position.realizedProfit
+}
+
+function positionTotalRate(position: StockPosition): number | null {
+  return position.cost > 0 ? positionTotalProfit(position) / position.cost * 100 : null
 }
 
 async function markNotHeld(): Promise<void> {
@@ -793,12 +860,12 @@ function goBack(): void {
     </section>
 
     <template v-else-if="overview">
-      <section class="stock-hero">
+      <section class="stock-hero investment-hero">
         <p class="hero-label">
           股票资产
           <span class="hero-tag">沪深北 · 含 ETF / LOF</span>
         </p>
-        <h2 class="hero-balance"><span>¥</span><AnimatedMoney :value="overview.totalValue" prefix="" /></h2>
+        <h2 class="hero-balance"><span class="hero-currency">¥</span><AnimatedMoney :value="overview.totalValue" prefix="" /></h2>
         <p class="hero-meta">
           持有 {{ activePositions.length }} 只
           <template v-if="overview.todayProfitDate"> · 行情 {{ formatBusinessDate(overview.todayProfitDate) }}</template>
@@ -814,14 +881,12 @@ function goBack(): void {
             </b>
           </div>
           <div>
-            <span>持仓收益</span>
-            <b :class="amountTone(overview.holdingProfit)">{{ formatSignedMoney(overview.holdingProfit) }}</b>
+            <span>总收益</span>
+            <b :class="amountTone(totalProfit)">{{ formatSignedMoney(totalProfit) }}</b>
           </div>
           <div>
-            <span>累计收益</span>
-            <b :class="amountTone(overview.holdingProfit + overview.realizedProfit)">
-              {{ formatSignedMoney(overview.holdingProfit + overview.realizedProfit) }}
-            </b>
+            <span>总收益率</span>
+            <b :class="amountTone(totalRate)">{{ totalRate === null ? '—' : formatPercent(totalRate) }}</b>
           </div>
         </div>
         <p class="hero-foot">可用现金 ¥{{ formatMoney(overview.cashBalance) }}</p>
@@ -835,7 +900,6 @@ function goBack(): void {
         </LoadingButton>
       </div>
 
-      <p v-if="notice" class="notice" role="status">{{ notice }}</p>
       <p v-if="errorMessage" class="form-error" role="alert">{{ errorMessage }}</p>
 
       <section v-if="overview.positions.length === 0" class="empty-stock">
@@ -946,7 +1010,7 @@ function goBack(): void {
       :open="sheet === 'detail'"
       :title="sheetTitle"
       :subtitle="sheetSubtitle"
-      @close="closeSheet"
+      @close="requestClose"
     >
       <template v-if="selectedPosition">
         <div class="detail-metrics">
@@ -955,17 +1019,17 @@ function goBack(): void {
             <b>¥{{ formatMoney(selectedPosition.value) }}</b>
           </div>
           <div>
-            <span>持仓收益</span>
-            <b :class="amountTone(selectedPosition.holdingProfit)">{{ formatSignedMoney(selectedPosition.holdingProfit) }}</b>
+            <span>总收益</span>
+            <b :class="amountTone(positionTotalProfit(selectedPosition))">{{ formatSignedMoney(positionTotalProfit(selectedPosition)) }}</b>
           </div>
           <div>
             <span>{{ todayProfitLabel }}</span>
             <b :class="amountTone(selectedPosition.todayProfit)">{{ positionTodayText(selectedPosition) }}</b>
           </div>
           <div>
-            <span>累计收益</span>
-            <b :class="amountTone(selectedPosition.holdingProfit + selectedPosition.realizedProfit)">
-              {{ formatSignedMoney(selectedPosition.holdingProfit + selectedPosition.realizedProfit) }}
+            <span>总收益率</span>
+            <b :class="amountTone(positionTotalRate(selectedPosition))">
+              {{ positionTotalRate(selectedPosition) === null ? '—' : formatPercent(positionTotalRate(selectedPosition)) }}
             </b>
           </div>
         </div>
@@ -996,7 +1060,7 @@ function goBack(): void {
       :title="sheetTitle"
       :subtitle="sheetSubtitle"
       :close-disabled="isSaving"
-      @close="closeSheet"
+      @close="requestClose"
     >
       <div class="sheet-summary">
         <div class="summary-line">
@@ -1145,7 +1209,7 @@ function goBack(): void {
         <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
 
         <div class="form-actions">
-          <button type="button" class="secondary-button" :disabled="isSaving" @click="closeSheet">取消</button>
+          <button type="button" class="secondary-button" :disabled="isSaving" @click="requestClose">取消</button>
           <LoadingButton class="primary-button" type="submit" :loading="isSaving" :disabled="!canSubmit" loading-label="保存中…">
             保存
           </LoadingButton>
@@ -1153,6 +1217,16 @@ function goBack(): void {
       </form>
     </BottomSheet>
 
+    <ConfirmSheet
+      :open="discardOpen"
+      title="放弃修改？"
+      message="离开后，本次填写的内容会丢失。"
+      confirm-label="放弃修改"
+      cancel-label="继续编辑"
+      danger
+      @confirm="resolveDiscard(true)"
+      @cancel="resolveDiscard(false)"
+    />
     <AppNav />
   </main>
 </template>
@@ -1181,105 +1255,12 @@ function goBack(): void {
 }
 
 
-.stock-hero {
-  padding: var(--card-padding);
-  border-radius: var(--radius-card);
-  background: linear-gradient(180deg, var(--color-hero-bg) 0%, var(--color-hero-bg-end) 100%);
-  box-shadow: var(--shadow-hero);
-  color: var(--color-hero-text);
-}
-
-.hero-label {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 7px;
-  margin: 0;
-  color: var(--color-hero-text-secondary);
-  font-size: var(--text-footnote);
-}
-
-.hero-tag {
-  padding: 3px 9px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-hero-surface);
-  color: var(--color-hero-text-secondary);
-  font-size: var(--text-caption);
-}
-
-.hero-balance {
-  margin: 10px 0 8px;
-  color: var(--color-hero-text);
-  font-size: 2.375rem;
-  font-weight: 700;
-  letter-spacing: -0.04em;
-  line-height: 1.15;
-  font-variant-numeric: tabular-nums;
-}
-
-.hero-balance span {
-  margin-right: 5px;
-  color: var(--color-hero-text-secondary);
-  font-size: 1.25rem;
-  font-weight: 500;
-  letter-spacing: 0;
-}
-
-.hero-meta {
-  margin: 0;
-  color: var(--color-hero-text-secondary);
-  font-size: var(--text-caption);
-  line-height: 1.6;
-}
-
-.hero-metrics {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid var(--color-hero-border);
-}
-
-.hero-metrics > div + div {
-  padding-left: 12px;
-  border-left: 1px solid var(--color-hero-border);
-}
-
-.hero-metrics span {
-  display: block;
-  min-height: 2.4em;
-  color: var(--color-hero-text-secondary);
-  font-size: var(--text-caption);
-  line-height: 1.35;
-}
-
-.hero-metrics b {
-  display: block;
-  margin-top: 7px;
-  color: var(--color-hero-text);
-  font-size: 0.9375rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-}
-
 .metric-percent {
   margin-left: 4px;
   font-size: var(--text-caption);
   font-style: normal;
   font-weight: 500;
   opacity: 0.85;
-}
-
-.hero-foot {
-  margin: 16px 0 0;
-  padding-top: 12px;
-  border-top: 1px solid var(--color-hero-border);
-  color: var(--color-hero-text-secondary);
-  font-size: var(--text-caption);
-  font-variant-numeric: tabular-nums;
 }
 
 .stock-actions {
@@ -1322,16 +1303,6 @@ function goBack(): void {
 .action-secondary:disabled {
   background: var(--color-bg-disabled);
   color: var(--color-text-disabled);
-}
-
-.notice {
-  margin: 14px 0 0;
-  padding: 10px 12px;
-  border-radius: var(--radius-tag);
-  background: var(--color-success-bg);
-  color: var(--color-success);
-  font-size: 0.75rem;
-  line-height: 1.7;
 }
 
 .form-error {
@@ -1884,14 +1855,5 @@ function goBack(): void {
     grid-column: 1 / -1;
   }
 
-  .hero-metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .hero-metrics > div:nth-child(3) {
-    grid-column: 1 / -1;
-    padding-left: 0;
-    border-left: 0;
-  }
 }
 </style>

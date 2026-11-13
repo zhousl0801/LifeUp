@@ -9,6 +9,7 @@ withDefaults(defineProps<{
   confirmLabel?: string
   cancelLabel?: string
   danger?: boolean
+  closeIcon?: boolean
   busy?: boolean
 }>(), {
   confirmLabel: '确认',
@@ -21,7 +22,7 @@ defineEmits<{ confirm: []; cancel: [] }>()
 </script>
 
 <template>
-  <BottomSheet :open="open" :title="title" :close-disabled="busy" @close="$emit('cancel')">
+  <BottomSheet :open="open" :title="title" :close-disabled="busy" :close-icon="closeIcon" @close="$emit('cancel')">
     <p class="confirm-message">{{ message }}</p>
     <div class="confirm-actions">
       <button type="button" class="secondary-button" :disabled="busy" @click="$emit('cancel')">

@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import AppIcon from '../components/AppIcon.vue'
 import AppNav from '../components/AppNav.vue'
 import BottomSheet from '../components/BottomSheet.vue'
+import DefaultAvatar from '../components/DefaultAvatar.vue'
 import { fileToAvatar, loadProfile, normalizeProfileName, saveProfile, type UserProfile } from '../utils/profile'
 import { useTheme, type ThemeMode } from '../utils/theme'
 
@@ -22,7 +23,7 @@ const themeOptions: { value: ThemeMode; label: string; description: string }[] =
 ]
 const themeLabel = computed(() =>
   themeOptions.find((option) => option.value === mode.value)?.label ?? '跟随系统')
-const displayName = computed(() => profile.value.name || '未设置昵称')
+const displayName = computed(() => profile.value.name || 'LifeUp')
 
 function openProfileSheet(): void {
   draftName.value = profile.value.name
@@ -92,7 +93,7 @@ function chooseTheme(value: ThemeMode): void {
         <span class="list-value">
           <span class="avatar avatar-row">
             <img v-if="profile.avatar" :src="profile.avatar" alt="" />
-            <AppIcon v-else name="user" />
+            <DefaultAvatar v-else />
           </span>
           <b>{{ displayName }} ›</b>
         </span>
@@ -118,7 +119,7 @@ function chooseTheme(value: ThemeMode): void {
         <div class="avatar-editor">
           <span class="avatar avatar-large">
             <img v-if="draftAvatar" :src="draftAvatar" alt="头像预览" />
-            <AppIcon v-else name="user" />
+            <DefaultAvatar v-else />
           </span>
           <span class="avatar-actions">
             <button type="button" class="link-action" :disabled="avatarBusy" @click="chooseAvatar">
@@ -179,7 +180,6 @@ function chooseTheme(value: ThemeMode): void {
 </template>
 
 <style scoped>
-.data-title { margin-top: 24px; }
 .mine-header {
   margin: 4px 0 22px;
 }
@@ -196,6 +196,10 @@ function chooseTheme(value: ThemeMode): void {
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
   font-weight: 600;
+}
+
+.settings-title.data-title {
+  margin-top: var(--space-6);
 }
 
 .list-box {
@@ -271,19 +275,9 @@ function chooseTheme(value: ThemeMode): void {
   height: 28px;
 }
 
-.avatar-row .app-icon {
-  width: 16px;
-  height: 16px;
-}
-
 .avatar-large {
   width: 76px;
   height: 76px;
-}
-
-.avatar-large .app-icon {
-  width: 34px;
-  height: 34px;
 }
 
 .profile-editor {

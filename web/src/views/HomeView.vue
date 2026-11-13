@@ -3,43 +3,24 @@ import { storeToRefs } from 'pinia'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { fetchAssetTrend, fetchDayChange, fetchMonthChange } from '../api/ledger'
-import { fetchPlanOverview } from '../api/plans'
 import { refreshQuotes } from '../api/quotes'
 import { getApiErrorMessage } from '../api/client'
+import { toast } from '../composables/useMessage'
 import AppIcon from '../components/AppIcon.vue'
 import AppNav from '../components/AppNav.vue'
 import AnimatedMoney from '../components/AnimatedMoney.vue'
 import AssetDistribution from '../components/AssetDistribution.vue'
 import AssetTrendChart from '../components/AssetTrendChart.vue'
 import BottomSheet from '../components/BottomSheet.vue'
-import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
 import LoadingButton from '../components/LoadingButton.vue'
+import { useHomePreferencesStore } from '../stores/homePreferences'
 import { useLedgerStore } from '../stores/ledger'
-import { amountTone, formatBusinessDate, formatMoney, formatSignedMoney, sumAmounts, todayInBusinessTimeZone } from '../utils/format'
+import { amountTone, formatBusinessDate, formatMaskedMoney, formatMoney, formatSignedMoney, todayInBusinessTimeZone } from '../utils/format'
 import { useCountUp } from '../utils/countUp'
-import { buildScopedTrend } from '../utils/trend'
+import { buildAssetTrend, trendAmountLabel } from '../utils/trend'
 import type { MonthChange } from '../types/ledger'
-import type { PlanCycle, PlanOverview, PlanType } from '../types/plan'
 import type { AssetTrend, AssetTrendPoint, TrendRange } from '../types/trend'
-
-interface PlanPreviewRow {
-  key: string
-  date: string
-  title: string
-  cycleLabel: string
-  amount: number
-  pending: boolean
-  hint?: string
-}
-
-const planTypeOrder: PlanType[] = ['fundSip', 'providentDeposit', 'providentWithdrawal', 'salaryIncome']
-const planTypeLabels: Record<PlanType, string> = {
-  fundSip: '基金定投',
-  providentDeposit: '公积金缴存',
-  providentWithdrawal: '公积金提取',
-  salaryIncome: '定期收入'
-}
 
 const rangeOptions: { value: TrendRange; label: string }[] = [
   { value: 'week', label: '7日' },
@@ -54,6 +35,7 @@ const { overview, isLoading, errorMessage } = storeToRefs(ledgerStore)
 const today = todayInBusinessTimeZone()
 const trend = ref<AssetTrend | null>(null)
 const trendRange = ref<TrendRange>('week')
+const { amountsMasked } = storeToRefs(useHomePreferencesStore())
 const trendSelection = ref<AssetTrendPoint | null>(null)
 const trendLoading = ref(false)
 const trendError = ref('')
@@ -62,13 +44,23 @@ const monthChange = ref<MonthChange | null>(null)
 const changeScope = ref<'day' | 'month'>('day')
 const dayChangeError = ref('')
 const monthChangeError = ref('')
-const planOverview = ref<PlanOverview | null>(null)
-const planError = ref('')
-const planLoading = ref(false)
 const changeSheetOpen = ref(false)
 const quoteRefreshing = ref(false)
-const quoteNotice = ref('')
 const quoteError = ref('')
+
+const monthFlow = computed(() => {
+  const { income = 0, expense = 0 } = overview.value?.month ?? {}
+  const total = income + expense
+  const dominant = total === 0 ? undefined
+    : income >= expense * 4 ? 'income'
+    : expense >= income * 4 ? 'expense' : undefined
+
+  return {
+    incomeWidth: total > 0 ? `${income / total * 100}%` : '0%',
+    expenseWidth: total > 0 ? `${expense / total * 100}%` : '0%',
+    dominant
+  }
+})
 
 const daysRecorded = computed(() => {
   if (!overview.value) {
@@ -86,17 +78,17 @@ const totalAmountParts = computed(() => {
   const [integer, fraction = '00'] = formatMoney(animatedTotal.value ?? 0).split('.')
   return { integer: integer ?? '0', fraction }
 })
-const scopedTrend = computed(() => trend.value ? buildScopedTrend(trend.value) : null)
+const assetTrendSeries = computed(() => trend.value ? buildAssetTrend(trend.value) : null)
 const selectedPoint = computed(() => {
-  const scoped = scopedTrend.value
+  const series = assetTrendSeries.value
 
-  if (!scoped) {
+  if (!series) {
     return null
   }
 
   const date = trendSelection.value?.date
 
-  return scoped.points.find((point) => point.date === date) ?? scoped.latest
+  return series.points.find((point) => point.date === date) ?? series.latest
 })
 const activeChange = computed(() => changeScope.value === 'day' ? dayChange.value : monthChange.value)
 const activeChangeError = computed(() =>
@@ -113,78 +105,6 @@ const changePercent = computed(() => {
   return change.comparableChange / change.comparableBase * 100
 })
 
-const planPreview = computed<PlanPreviewRow[]>(() => {
-  const data = planOverview.value
-
-  if (!data) {
-    return []
-  }
-
-  const rows: PlanPreviewRow[] = []
-
-  for (const type of planTypeOrder) {
-    const pending = data.pendingOccurrences
-      .filter((occurrence) => occurrence.type === type)
-      .sort((first, second) => first.dueDate.localeCompare(second.dueDate))
-    const plans = data.plans.filter((plan) => plan.type === type && plan.isActive)
-    const pendingPlanIds = new Set(pending.map((occurrence) => occurrence.planId))
-    const remainingPlans = plans.filter((plan) => !pendingPlanIds.has(plan.id))
-    const dates = [
-      ...pending.map((occurrence) => occurrence.dueDate),
-      ...remainingPlans
-        .map((plan) => plan.nextDueDate)
-        .filter((date): date is string => date !== null)
-    ].sort()
-
-    if (!dates.length && !pending.length) {
-      continue
-    }
-
-    const cycle = cycleSummary(remainingPlans.map((plan) => plan.cycle))
-    let cycleLabel: string
-
-    if (pending.length) {
-      cycleLabel = pending.length > 1 ? `${pending.length} 项待处理` : '待处理'
-    } else {
-      cycleLabel = plans.length > 1 ? `${plans.length} 项 · ${cycle}` : cycle
-    }
-
-    rows.push({
-      key: pending.length ? `pending-${type}` : `plan-${type}`,
-      date: dates[0]!,
-      title: planTypeLabels[type],
-      cycleLabel,
-      amount: sumAmounts(pending.map((occurrence) => occurrence.amount))
-        + sumAmounts(remainingPlans.map((plan) => plan.amount)),
-      pending: pending.length > 0,
-      hint: pending.length && remainingPlans.length ? `另有 ${remainingPlans.length} 项待执行` : undefined
-    })
-  }
-
-  return rows.sort((first, second) => first.date.localeCompare(second.date))
-})
-
-function cycleSummary(cycles: (PlanCycle | undefined)[]): string {
-  const unique = [...new Set(cycles.filter((cycle): cycle is PlanCycle => cycle !== undefined))]
-
-  if (unique.length === 0) {
-    return ''
-  }
-
-  if (unique.length > 1) {
-    return '多类型'
-  }
-
-  switch (unique[0]) {
-    case 'monthly':
-      return '每月'
-    case 'weekly':
-      return '每周'
-    case 'tradingDay':
-      return '交易日'
-  }
-}
-
 function daysBetween(from: string, to: string): number {
   const start = Date.parse(`${from}T00:00:00Z`)
   const end = Date.parse(`${to}T00:00:00Z`)
@@ -194,14 +114,6 @@ function daysBetween(from: string, to: string): number {
   }
 
   return Math.round((end - start) / 86_400_000)
-}
-
-function monthLabel(date: string): string {
-  return `${Number(date.slice(5, 7))}月`
-}
-
-function dayLabel(date: string): string {
-  return date.slice(8, 10)
 }
 
 function percentLabel(value: number | null): string {
@@ -220,7 +132,7 @@ function selectPoint(point: AssetTrendPoint): void {
 
 async function loadLedger(): Promise<void> {
   const statusPromise = ledgerStore.load()
-  const detailPromise = Promise.all([loadTrend(trendRange.value), loadChanges(), loadPlans()])
+  const detailPromise = Promise.all([loadTrend(trendRange.value), loadChanges()])
   const status = await statusPromise
 
   if (status === 'missing') {
@@ -276,27 +188,12 @@ async function loadMonthChange(): Promise<void> {
   }
 }
 
-async function loadPlans(): Promise<void> {
-  planError.value = ''
-  planLoading.value = true
-
-  try {
-    planOverview.value = await fetchPlanOverview()
-  } catch {
-    planOverview.value = null
-    planError.value = '自动记账计划暂时无法读取，请稍后重试。'
-  } finally {
-    planLoading.value = false
-  }
-}
-
 async function syncQuotes(): Promise<void> {
   if (quoteRefreshing.value) {
     return
   }
 
   quoteRefreshing.value = true
-  quoteNotice.value = ''
   quoteError.value = ''
 
   try {
@@ -304,11 +201,18 @@ async function syncQuotes(): Promise<void> {
     const failed = run.fundFailed + run.goldFailed + run.stockFailed
     const succeeded = run.fundSucceeded + run.goldSucceeded + run.stockSucceeded
 
-    quoteNotice.value = failed > 0
-      ? `行情同步完成：成功 ${succeeded} 项，失败 ${failed} 项。`
-      : `行情已同步：更新 ${run.updated} 项。`
+    const [status] = await Promise.all([ledgerStore.load(), loadTrend(trendRange.value), loadChanges()])
+    if (status !== 'ready' || trendError.value || dayChangeError.value || monthChangeError.value) {
+      quoteError.value = failed > 0
+        ? `行情刷新失败 ${failed} 项，且页面数据未能完整重新加载。`
+        : '行情请求已完成，但页面数据未能完整重新加载。'
+      return
+    }
 
-    await Promise.all([ledgerStore.load(), loadTrend(trendRange.value), loadChanges()])
+    if (failed > 0) toast.info(`行情刷新结果：成功 ${succeeded} 项，失败 ${failed} 项。`)
+    else if (succeeded === 0) toast.info('暂无可刷新的行情。')
+    else if (run.updated === 0) toast.info('行情已是最新。')
+    else toast.success(`行情已更新：更新 ${run.updated} 项。`)
   } catch (error) {
     quoteError.value = getApiErrorMessage(error, '行情同步失败，请稍后重试。')
   } finally {
@@ -359,18 +263,15 @@ onBeforeUnmount(() => {
         </div>
       </header>
 
-      <p v-if="quoteNotice" class="sync-note" role="status">{{ quoteNotice }}</p>
-      <p v-else-if="quoteError" class="sync-note error" role="alert">{{ quoteError }}</p>
+      <p v-if="quoteError" class="sync-note error" role="alert">{{ quoteError }}</p>
 
-      <LoadingState v-if="isLoading" variant="hero" label="正在读取账本" />
+      <LoadingState v-if="isLoading && !overview" variant="hero" label="正在读取账本" />
 
-      <template v-if="isLoading">
-        <section class="metric-grid">
-          <article class="metric-card"><LoadingState variant="text" compact label="正在读取本月收入" /></article>
-          <article class="metric-card"><LoadingState variant="text" compact label="正在读取本月支出" /></article>
+      <template v-if="isLoading && !overview">
+        <section class="month-flow">
+          <LoadingState variant="text" :rows="3" compact label="正在读取本月收支" />
         </section>
         <LoadingState variant="list" :rows="3" compact label="正在读取资产分布" />
-        <LoadingState variant="list" :rows="3" compact label="正在读取自动记账" />
       </template>
 
       <section v-else-if="errorMessage" class="hero-error">
@@ -383,9 +284,22 @@ onBeforeUnmount(() => {
           <p class="hero-label">
             {{ overview.coverageComplete ? '总资产' : '已记录资产' }}
             <span class="tag">{{ overview.currency }}</span>
+            <button
+              type="button"
+              class="hero-visibility"
+              :aria-label="amountsMasked ? '显示资产金额' : '隐藏资产金额'"
+              @click="amountsMasked = !amountsMasked"
+            >
+              <AppIcon :name="amountsMasked ? 'eye-off' : 'eye'" />
+            </button>
           </p>
           <h2 class="hero-value">
-            <span class="currency">¥</span>{{ totalAmountParts.integer }}<span class="fraction">.{{ totalAmountParts.fraction }}</span>
+            <template v-if="amountsMasked">
+              <span class="currency">¥</span>{{ formatMaskedMoney(overview.totalAssets ?? 0).replace('¥', '') }}
+            </template>
+            <template v-else>
+              <span class="currency">¥</span>{{ totalAmountParts.integer }}<span class="fraction">.{{ totalAmountParts.fraction }}</span>
+            </template>
           </h2>
 
           <div class="hero-change-row">
@@ -398,10 +312,10 @@ onBeforeUnmount(() => {
             >
               <span class="change-arrow" aria-hidden="true" :class="amountTone(activeChange.comparableChange)">{{ (activeChange.comparableChange ?? 0) > 0 ? '▲' : (activeChange.comparableChange ?? 0) < 0 ? '▼' : '—' }}</span>
               <b :class="amountTone(activeChange.comparableChange)">
-                {{ formatSignedMoney(activeChange.comparableChange ?? 0) }}
+                {{ amountsMasked ? '••••' : formatSignedMoney(activeChange.comparableChange ?? 0) }}
               </b>
               <span v-if="changePercent !== null" class="change-percent" :class="amountTone(changePercent)">
-                {{ percentLabel(changePercent) }}
+                {{ amountsMasked ? '••••' : percentLabel(changePercent) }}
               </span>
               <span class="info-mark">ⓘ</span>
             </button>
@@ -440,15 +354,16 @@ onBeforeUnmount(() => {
             <div class="chart-readout">
               <span>{{ selectedPoint ? formatBusinessDate(selectedPoint.date) : '按日重算' }}</span>
               <b :class="{ faint: !selectedPoint || selectedPoint.value === null }">
-                {{ selectedPoint?.value == null ? '依据不足' : `¥${formatMoney(selectedPoint.value)}` }}
+                {{ selectedPoint?.value != null && selectedPoint.source.totalAssets === null ? '已记录资产 ' : '' }}{{ trendAmountLabel(selectedPoint, amountsMasked) }}
               </b>
             </div>
             <LoadingState v-if="trendLoading && !trend" variant="chart" compact label="正在读取趋势" />
             <p v-else-if="trendError" class="hero-hint">{{ trendError }}</p>
             <AssetTrendChart
-              v-else-if="trend && scopedTrend"
+              v-else-if="trend && assetTrendSeries"
               :trend="trend"
               variant="hero"
+              :amounts-masked="amountsMasked"
               @select="selectPoint"
             />
             <p v-else class="hero-hint">还没有可展示的趋势数据。</p>
@@ -481,69 +396,40 @@ onBeforeUnmount(() => {
 
     <p v-if="activeChangeError" class="home-error">{{ activeChangeError }}</p>
 
-    <template v-if="!isLoading && !errorMessage && overview">
-      <section class="metric-grid">
-        <article class="metric-card">
-          <span class="metric-label"><i class="metric-dot income" />本月收入</span>
-          <b class="metric-value"><AnimatedMoney :value="overview.month.income" /></b>
-        </article>
-        <article class="metric-card">
-          <span class="metric-label"><i class="metric-dot expense" />本月支出</span>
-          <b class="metric-value"><AnimatedMoney :value="overview.month.expense" /></b>
-        </article>
-      </section>
-
-      <div class="month-summary">
+    <template v-if="!errorMessage && overview">
+      <section class="month-flow" aria-label="本月收支">
+        <div class="month-flow-values">
+          <div>
+            <span class="metric-label"><i class="metric-dot income" />本月收入</span>
+            <b class="metric-value"><AnimatedMoney :value="overview.month.income" /></b>
+          </div>
+          <div>
+            <span class="metric-label"><i class="metric-dot expense" />本月支出</span>
+            <b class="metric-value"><AnimatedMoney :value="overview.month.expense" /></b>
+          </div>
+        </div>
+        <div class="month-flow-track" :data-dominant="monthFlow.dominant" aria-hidden="true">
+          <span class="month-flow-segment income" :style="{ width: monthFlow.incomeWidth }" />
+          <span class="month-flow-segment expense" :style="{ width: monthFlow.expenseWidth }" />
+        </div>
         <p class="month-surplus">
           <span>本月结余</span>
-          <b :class="amountTone(overview.month.hasRecords ? overview.month.surplus : null)">
-            <AnimatedMoney :value="overview.month.surplus" signed tone />
-          </b>
+          <b><AnimatedMoney :value="overview.month.surplus" signed /></b>
         </p>
-        <RouterLink class="text-btn" :to="{ name: 'ledger' }">查看账本 ›</RouterLink>
-      </div>
-      <p v-if="!overview.month.hasRecords" class="month-empty">
-        本月还没有收支记录。<RouterLink class="text-btn" :to="{ name: 'entry' }">去记一笔 ›</RouterLink>
-      </p>
+        <p v-if="!overview.month.hasRecords" class="month-empty">
+          本月还没有收支记录。<RouterLink class="text-btn" :to="{ name: 'entry' }">去记一笔 ›</RouterLink>
+        </p>
+      </section>
 
       <AssetDistribution
         :overview="overview"
         :changes="activeChange?.assetChanges"
         :comparable="activeChange?.hasComparableData ?? false"
         :change-scope="changeScope"
-        manage-to="/assets"
+        cards
+        :amounts-masked="amountsMasked"
         hide-fund-count
       />
-
-      <div class="section-head">
-        <h2>自动记账</h2>
-        <RouterLink v-if="planPreview.length" class="text-btn" to="/plans">管理计划 ›</RouterLink>
-      </div>
-      <div v-if="planOverview" class="plan-box">
-        <RouterLink
-          v-for="(row, index) in planPreview"
-          :key="row.key"
-          class="plan-row stagger-item"
-          :style="{ '--stagger': Math.min(index, 8) }"
-          to="/plans"
-        >
-          <span class="date-box">
-            <small>{{ monthLabel(row.date) }}</small>
-            <b>{{ dayLabel(row.date) }}</b>
-          </span>
-          <span class="plan-main">
-            <span class="plan-title-row">
-              <b>{{ row.title }}</b>
-              <em v-if="row.cycleLabel" class="plan-cycle" :class="{ pending: row.pending }">{{ row.cycleLabel }}</em>
-            </span>
-            <small v-if="row.hint" class="plan-hint">{{ row.hint }}</small>
-          </span>
-          <span class="plan-amount"><AnimatedMoney :value="row.amount" /></span>
-        </RouterLink>
-        <EmptyState v-if="!planPreview.length" compact icon="clock" title="让固定收支自动记录" description="工资、缴存和定投，到期后按计划记账。" action-label="设置自动记账" @action="router.push('/plans')" />
-      </div>
-      <LoadingState v-else-if="planLoading" variant="list" :rows="3" compact label="正在读取自动记账" />
-      <p v-else-if="planError" class="hint">{{ planError }}</p>
     </template>
 
     <AppNav />
@@ -553,15 +439,15 @@ onBeforeUnmount(() => {
         <template v-if="activeChange.hasComparableData">
           <div class="breakdown-row">
             <span>市值变动</span>
-            <b :class="amountTone(activeChange.marketValueChange)">{{ formatSignedMoney(activeChange.marketValueChange ?? 0) }}</b>
+            <b :class="amountTone(activeChange.marketValueChange)">{{ amountsMasked ? '••••' : formatSignedMoney(activeChange.marketValueChange ?? 0) }}</b>
           </div>
           <div class="breakdown-row">
             <span>净存入·转账</span>
-            <b :class="amountTone(activeChange.netDeposit)">{{ formatSignedMoney(activeChange.netDeposit ?? 0) }}</b>
+            <b :class="amountTone(activeChange.netDeposit)">{{ amountsMasked ? '••••' : formatSignedMoney(activeChange.netDeposit ?? 0) }}</b>
           </div>
           <div class="breakdown-total">
             <span>{{ changeScope === 'day' ? '当日变化' : '本月变化' }}</span>
-            <b :class="amountTone(activeChange.comparableChange)">{{ formatSignedMoney(activeChange.comparableChange ?? 0) }}</b>
+            <b :class="amountTone(activeChange.comparableChange)">{{ amountsMasked ? '••••' : formatSignedMoney(activeChange.comparableChange ?? 0) }}</b>
           </div>
         </template>
         <p v-else class="hint">
@@ -571,12 +457,12 @@ onBeforeUnmount(() => {
         </p>
         <div v-if="addedRecords > 0" class="breakdown-row new-record">
           <span>新增记录（不计入变化）</span>
-          <b>{{ formatSignedMoney(addedRecords) }}</b>
+          <b>{{ amountsMasked ? '••••' : formatSignedMoney(addedRecords) }}</b>
         </div>
         <p class="sheet-note">
           {{ changeScope === 'day'
-            ? '只比较昨天和今天都已记录的类别；现金和公积金只叫余额变化，基金和积存金的市值变化才叫收益。'
-            : '只比较月初和今天都已记录的类别；现金和公积金只叫余额变化，基金和积存金的市值变化才叫收益。' }}
+            ? '只比较昨天和今天都已记录的类别；现金和公积金只叫余额变化，基金和贵金属的市值变化才叫收益。'
+            : '只比较月初和今天都已记录的类别；现金和公积金只叫余额变化，基金和贵金属的市值变化才叫收益。' }}
         </p>
       </div>
       <p v-else class="hint">{{ activeChangeError || '资产变化暂时无法读取。' }}</p>
@@ -671,15 +557,15 @@ onBeforeUnmount(() => {
   margin: 14px 0 0;
   padding: 9px 12px;
   border-radius: var(--radius-tag);
-  background: var(--color-accent-mint-soft);
-  color: var(--color-accent-mint);
+  background: var(--color-hero-note-bg);
+  color: var(--color-hero-note-text);
   font-size: var(--text-caption);
   line-height: 1.6;
 }
 
 .sync-note.error {
-  background: rgba(255, 122, 122, 0.12);
-  color: #FF9B9B;
+  background: var(--color-hero-note-error-bg);
+  color: var(--color-hero-note-error-text);
 }
 
 .hero-error {
@@ -718,10 +604,29 @@ onBeforeUnmount(() => {
   font-weight: 500;
 }
 
+.hero-visibility {
+  display: grid;
+  place-items: center;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  margin-block: -8px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-hero-text-secondary);
+  cursor: pointer;
+}
+
+.hero-visibility .app-icon {
+  width: 18px;
+  height: 18px;
+}
+
 .tag {
   padding: 2px 7px;
   border-radius: var(--radius-pill);
-  background: var(--color-hero-surface);
+  background: var(--color-hero-chip);
   color: var(--color-hero-text-secondary);
   font-size: var(--text-caption);
 }
@@ -771,7 +676,7 @@ onBeforeUnmount(() => {
   padding: 7px 12px;
   border: 0;
   border-radius: var(--radius-pill);
-  background: var(--color-hero-surface);
+  background: var(--color-hero-chip);
   color: var(--color-hero-text-secondary);
   font-size: var(--text-footnote);
   line-height: 1.4;
@@ -801,7 +706,7 @@ onBeforeUnmount(() => {
   gap: 2px;
   padding: 3px;
   border-radius: var(--radius-pill);
-  background: var(--color-hero-surface);
+  background: var(--color-hero-chip);
 }
 
 .change-scope button {
@@ -816,8 +721,8 @@ onBeforeUnmount(() => {
 }
 
 .change-scope button.active {
-  background: var(--color-hero-surface-strong);
-  color: var(--color-hero-text);
+  background: var(--color-hero-active);
+  color: var(--color-hero-active-text);
   font-weight: 600;
 }
 
@@ -927,7 +832,7 @@ onBeforeUnmount(() => {
   margin-top: 12px;
   padding: 4px;
   border-radius: var(--radius-pill);
-  background: var(--color-hero-surface);
+  background: var(--color-hero-chip);
 }
 
 .range-button {
@@ -956,18 +861,26 @@ onBeforeUnmount(() => {
   opacity: 0.6;
 }
 
-.metric-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 14px;
-}
-
-.metric-card {
-  padding: 18px;
+.month-flow {
+  margin-bottom: 18px;
+  padding: var(--card-padding);
   border-radius: var(--radius-card);
   background: var(--color-bg-surface);
   box-shadow: var(--shadow-card);
+}
+
+.month-flow-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.month-flow-values > :last-child {
+  text-align: right;
+}
+
+.month-flow-values > :last-child .metric-label {
+  justify-content: flex-end;
 }
 
 .metric-label {
@@ -986,30 +899,64 @@ onBeforeUnmount(() => {
 }
 
 .metric-dot.income {
-  background: var(--color-finance-income);
+  background: var(--color-month-flow-income);
 }
 
 .metric-dot.expense {
-  background: var(--color-finance-expense);
+  background: var(--color-month-flow-expense);
 }
 
 .metric-value {
   display: block;
   margin-top: 10px;
   color: var(--color-text-primary);
-  font-size: 1.5rem;
+  font-size: clamp(1rem, 5.4vw, 1.5rem);
   font-weight: 700;
   letter-spacing: -0.04em;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 
-.month-summary {
+.month-flow-track {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  margin: 0 4px 18px;
+  overflow: hidden;
+  height: 16px;
+  margin: 14px 0 12px;
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-subtle);
+}
+
+.month-flow-segment {
+  flex: none;
+  height: 100%;
+  transition: width var(--motion-sheet) var(--ease-standard), height var(--motion-fast) ease;
+}
+
+.month-flow-segment.income {
+  background: var(--color-month-flow-income);
+}
+
+.month-flow-segment.expense {
+  background: var(--color-month-flow-expense);
+}
+
+.month-flow-track[data-dominant] .month-flow-segment {
+  height: 6px;
+  border-radius: var(--radius-pill);
+}
+
+.month-flow-track[data-dominant='income'] .income,
+.month-flow-track[data-dominant='expense'] .expense {
+  height: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .month-flow-segment {
+    transition: none;
+  }
 }
 
 .month-surplus {
@@ -1029,24 +976,9 @@ onBeforeUnmount(() => {
 }
 
 .month-empty {
-  margin: -8px 4px 18px;
+  margin: 8px 0 0;
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
-}
-
-.section-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  margin: 24px 0 12px;
-}
-
-.section-head h2 {
-  margin: 0;
-  font-size: 1.125rem;
-  font-weight: 700;
-  letter-spacing: -0.3px;
 }
 
 .text-btn {
@@ -1061,108 +993,6 @@ onBeforeUnmount(() => {
 
 .text-btn:hover {
   color: var(--color-brand-hover);
-}
-
-.plan-box {
-  overflow: hidden;
-  border-radius: var(--radius-card);
-  background: var(--color-bg-surface);
-  box-shadow: var(--shadow-card);
-}
-
-.plan-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  box-sizing: border-box;
-  padding: 16px;
-  color: inherit;
-  text-decoration: none;
-}
-
-.plan-row + .plan-row {
-  border-top: 1px solid var(--color-border-subtle);
-}
-
-.plan-row:hover {
-  background: var(--color-bg-hover);
-}
-
-.date-box {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  min-width: 44px;
-  padding: 8px;
-  border-radius: var(--radius-control);
-  background: var(--color-brand-soft);
-  color: var(--color-brand);
-  font-size: var(--text-caption);
-}
-
-.date-box b {
-  margin-top: 3px;
-  font-size: 0.9375rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.plan-main {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 5px;
-  min-width: 0;
-}
-
-.plan-title-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.plan-main b {
-  overflow: hidden;
-  font-size: 0.875rem;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.plan-cycle {
-  flex: 0 0 auto;
-  padding: 2px 7px;
-  border-radius: var(--radius-pill);
-  background: var(--color-brand-soft);
-  color: var(--color-brand);
-  font-size: 0.6875rem;
-  font-style: normal;
-  font-weight: 600;
-  line-height: 1.4;
-  white-space: nowrap;
-}
-
-.plan-cycle.pending {
-  background: var(--color-error-bg);
-  color: var(--color-error);
-}
-
-.plan-hint {
-  overflow: hidden;
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-  line-height: 1.4;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.plan-amount {
-  color: var(--color-text-primary);
-  font-size: 0.875rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
 
 .hint {

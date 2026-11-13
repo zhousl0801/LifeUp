@@ -540,6 +540,109 @@ public sealed class FundServiceTests
     }
 
     [Fact]
+    public async Task BuyAsync_WithOrderTimeOnNonTradingDay_UsesNextTradingDay()
+    {
+        var context = await CreateContextAsync(startDate: new DateOnly(2026, 10, 15));
+        var position = await TestFundQuotes.CreatePositionAsync(
+            context.Repository,
+            new BusinessDateProvider(new FixedTimeProvider(Now)),
+            new CreateFundPositionRequest(
+                "债券基金", "000003", "A", "示例平台", 100m, 1000m, 12m,
+                BusinessToday, "已有持仓", Guid.NewGuid(),
+                HoldingDate: BusinessToday),
+            CancellationToken.None);
+
+        await context.Funds.BuyAsync(
+            new BuyFundRequest(
+                position.Result!.Position.Id,
+                130m,
+                new DateOnly(2026, 10, 18),
+                null,
+                Guid.NewGuid(),
+                OrderTime: new TimeOnly(16, 0)),
+            CancellationToken.None);
+
+        var pending = Assert.Single(
+            context.Repository.AssetTransactions,
+            transaction => transaction.Kind == AssetTransactionKind.FundBuyPending);
+        Assert.Equal(new DateOnly(2026, 10, 19), pending.FundTradeDate);
+    }
+
+    [Fact]
+    public async Task GetOverview_DailyProfitUsesLatestDisclosureDateOnly()
+    {
+        var context = await CreateContextAsync(startDate: new DateOnly(2026, 10, 15));
+        var dates = new BusinessDateProvider(new FixedTimeProvider(Now));
+        var first = await TestFundQuotes.CreatePositionAsync(
+            context.Repository,
+            dates,
+            new CreateFundPositionRequest(
+                "债券基金甲", "000003", "A", "示例平台", 100m, 1000m, 10m,
+                new DateOnly(2026, 10, 19), "已有持仓", Guid.NewGuid(),
+                HoldingDate: new DateOnly(2026, 10, 15)),
+            CancellationToken.None);
+        var second = await TestFundQuotes.CreatePositionAsync(
+            context.Repository,
+            dates,
+            new CreateFundPositionRequest(
+                "债券基金乙", "000004", "A", "示例平台", 100m, 2000m, 20m,
+                new DateOnly(2026, 10, 20), "已有持仓", Guid.NewGuid(),
+                HoldingDate: new DateOnly(2026, 10, 15)),
+            CancellationToken.None);
+        await TestFundQuotes.RefreshAsync(context.Repository, dates, first.Result!.Position.Id, 10.5m, new DateOnly(2026, 10, 20));
+        await TestFundQuotes.RefreshAsync(context.Repository, dates, second.Result!.Position.Id, 21m, new DateOnly(2026, 10, 21));
+
+        var overview = (await context.Funds.GetOverviewAsync(CancellationToken.None))!;
+
+        var firstDto = Assert.Single(overview.Positions, position => position.Id == first.Result.Position.Id);
+        var secondDto = Assert.Single(overview.Positions, position => position.Id == second.Result.Position.Id);
+        Assert.True(firstDto.HasDailyProfit);
+        Assert.Equal(new DateOnly(2026, 10, 20), firstDto.DailyProfitDate);
+        Assert.Equal(50m, firstDto.DailyProfit);
+        Assert.True(secondDto.HasDailyProfit);
+        Assert.Equal(new DateOnly(2026, 10, 21), secondDto.DailyProfitDate);
+        Assert.Equal(100m, secondDto.DailyProfit);
+        Assert.Equal(
+            new DateOnly(2026, 10, 20),
+            Assert.Single(overview.Funds!, fund => fund.Name == "债券基金甲").DailyProfitDate);
+        Assert.Equal(
+            new DateOnly(2026, 10, 21),
+            Assert.Single(overview.Funds!, fund => fund.Name == "债券基金乙").DailyProfitDate);
+    }
+
+    [Fact]
+    public async Task GetOverview_DailyProfitExcludesBuyMadeOnDisclosureDate()
+    {
+        var context = await CreateContextAsync(startDate: new DateOnly(2026, 10, 15));
+        var dates = new BusinessDateProvider(new FixedTimeProvider(Now));
+        var position = await TestFundQuotes.CreatePositionAsync(
+            context.Repository,
+            dates,
+            new CreateFundPositionRequest(
+                "债券基金", "000003", "A", "示例平台", 100m, 1000m, 10m,
+                new DateOnly(2026, 10, 20), "已有持仓", Guid.NewGuid(),
+                HoldingDate: new DateOnly(2026, 10, 15)),
+            CancellationToken.None);
+        await context.Funds.BuyAsync(
+            new BuyFundRequest(
+                position.Result!.Position.Id,
+                130m,
+                new DateOnly(2026, 10, 21),
+                null,
+                Guid.NewGuid(),
+                TradeDate: new DateOnly(2026, 10, 21)),
+            CancellationToken.None);
+        await TestFundQuotes.RefreshAsync(context.Repository, dates, position.Result.Position.Id, 11m, new DateOnly(2026, 10, 21));
+
+        var overview = (await context.Funds.GetOverviewAsync(CancellationToken.None))!;
+        var daily = Assert.Single(overview.Positions, item => item.Id == position.Result.Position.Id);
+
+        Assert.True(daily.HasDailyProfit);
+        Assert.Equal(new DateOnly(2026, 10, 21), daily.DailyProfitDate);
+        Assert.Equal(100m, daily.DailyProfit);
+    }
+
+    [Fact]
     public async Task BuyAsync_WithTradeDateBeforeBusinessDate_ReturnsInvalid()
     {
         var context = await CreateContextAsync(startDate: new DateOnly(2026, 10, 15));

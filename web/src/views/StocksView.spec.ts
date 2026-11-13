@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, expect, test, vi } from 'vitest'
 import StocksView from './StocksView.vue'
 import { todayInBusinessTimeZone } from '../utils/format'
+import { useMessages } from '../composables/useMessage'
 
 const today = todayInBusinessTimeZone()
 
@@ -14,10 +15,16 @@ const mocks = vi.hoisted(() => ({
   refresh: vi.fn(),
   refreshOne: vi.fn(),
   quote: vi.fn(),
-  ledger: vi.fn()
+  ledger: vi.fn(),
+  beforeRouteLeave: vi.fn<(guard: () => boolean | Promise<boolean>) => void>()
 }))
 
-vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }))
+vi.mock('vue-router', () => ({
+  RouterLink: { props: ['to'], template: '<a><slot /></a>' },
+  onBeforeRouteLeave: mocks.beforeRouteLeave,
+  useRoute: () => ({ name: 'stocks', query: {} }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() })
+}))
 vi.mock('../api/stocks', () => ({
   fetchStockOverview: mocks.overview,
   searchStocks: mocks.search,
@@ -91,7 +98,10 @@ const overview = {
   hasEffectiveQuotes: true
 }
 
+const { messages, clear } = useMessages()
+
 beforeEach(() => {
+  clear()
   vi.clearAllMocks()
   mocks.ledger.mockResolvedValue({ startDate: today, fundNotHeld: false, providentFundNotHeld: false, goldNotHeld: false, stockNotHeld: false })
   mocks.quote.mockResolvedValue({ market: 'shenzhen', code: '159915', price: 2.435, priceDate: today, previousClose: 2.5, source: 'eastmoney' })
@@ -146,8 +156,28 @@ test('shows stock positions and today profit', async () => {
   expect(view.text()).toContain('贵州茅台')
   expect(view.text()).toContain('今日盈亏')
   expect(view.text()).toContain('+50.00')
+  expect(view.text()).toContain('总收益')
+  expect(view.text()).toContain('总收益率')
+  expect(view.text()).not.toContain('持仓收益')
   expect(view.text()).toContain('沪市')
   expect(mocks.refresh).toHaveBeenCalled()
+  view.unmount()
+})
+
+test('detail shows total profit and total rate instead of holding profit', async () => {
+  const view = mount(StocksView, { attachTo: document.body })
+  await flushPromises()
+
+  await view.find('.position-row').trigger('click')
+  await flushPromises()
+
+  const sheet = document.querySelector('.sheet')!.textContent ?? ''
+  expect(sheet).toContain('总收益')
+  expect(sheet).toContain('+50.00')
+  expect(sheet).toContain('总收益率')
+  expect(sheet).toContain('+5.00%')
+  expect(sheet).not.toContain('持仓收益')
+  expect(sheet).not.toContain('累计收益')
   view.unmount()
 })
 
@@ -187,7 +217,7 @@ test('buying an existing position sends market code and computed amount fields',
     price: 10
   })
   expect(mocks.buy.mock.calls[0]![0]).not.toHaveProperty('fee')
-  expect(view.find('.notice').text()).toContain('当前现金 ¥7,999.00')
+  expect(messages.value.at(-1)?.text ?? '').toContain('当前现金 ¥7,999.00')
   view.unmount()
 })
 
@@ -384,5 +414,42 @@ test('holding sheet takes cost per share and picks up the latest quote automatic
     cost: 27720,
     price: 2.435
   })
+  view.unmount()
+})
+
+test('asks before discarding an edited stock trade and keeps fields when continuing', async () => {
+  const view = mount(StocksView, { attachTo: document.body })
+  await flushPromises()
+
+  await view.get('.position-row').trigger('click')
+  const buy = Array.from(document.querySelectorAll<HTMLButtonElement>('.sheet button'))
+    .find(button => button.textContent?.trim() === '买入')!
+  buy.click()
+  await flushPromises()
+  const shares = document.querySelector<HTMLInputElement>('.sheet form input')!
+  shares.value = '10'
+  shares.dispatchEvent(new Event('input', { bubbles: true }))
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+  await flushPromises()
+
+  const action = (label: string) => Array.from(document.querySelectorAll<HTMLButtonElement>('.sheet button'))
+    .find(button => button.textContent?.trim() === label)
+  expect(action('继续编辑')).toBeDefined()
+  action('继续编辑')!.click()
+  await flushPromises()
+  expect(shares.isConnected).toBe(true)
+  expect(shares.value).toBe('10')
+
+  const attemptLeave = mocks.beforeRouteLeave.mock.lastCall![0]()
+  await flushPromises()
+  action('继续编辑')!.click()
+  expect(await attemptLeave).toBe(false)
+  await flushPromises()
+
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+  await flushPromises()
+  action('放弃修改')!.click()
+  await flushPromises()
+  expect(shares.isConnected).toBe(false)
   view.unmount()
 })

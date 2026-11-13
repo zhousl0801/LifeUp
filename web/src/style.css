@@ -402,16 +402,6 @@ summary:focus-visible {
 }
 
 
-.page-enter-active,
-.page-leave-active {
-  transition: opacity 160ms ease;
-}
-
-.page-enter-from,
-.page-leave-to {
-  opacity: 0;
-}
-
 @media (min-width: 600px) {
   body {
     background: var(--color-bg-canvas);
@@ -698,7 +688,8 @@ summary:focus-visible {
   .skeleton,
   .app-nav,
   .trend-panel,
-  .chart-card {
+  .chart-card,
+  .distribution-card {
     border: 1px solid CanvasText;
   }
 

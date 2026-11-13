@@ -3,24 +3,24 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { ECharts } from 'echarts/core'
 import type { EChartsOption } from 'echarts'
 import { loadChartRuntime } from '../utils/chartRuntime'
-import { assetLabels, buildScopedTrend, buildTrendOption } from '../utils/trend'
+import { buildAssetTrend, buildTrendOption, trendAmountLabel } from '../utils/trend'
 import { resolvedTheme } from '../utils/theme'
 import type { AssetTrend, AssetTrendPoint } from '../types/trend'
 
 const props = defineProps<{
   trend: AssetTrend
   variant?: 'default' | 'hero'
+  amountsMasked?: boolean
 }>()
 
 const emit = defineEmits<{ select: [point: AssetTrendPoint] }>()
 
 const container = ref<HTMLElement | null>(null)
-const scoped = computed(() => buildScopedTrend(props.trend))
+const series = computed(() => buildAssetTrend(props.trend))
 const chartLabel = computed(() => {
-  const latest = scoped.value.latest
-  const latestText = latest?.value == null ? '最新依据不足' : `最新同口径资产 ${latest.value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} 元`
-  const types = scoped.value.baselineTypes.map((key) => assetLabels[key]).join('、')
-  return `资产趋势图，${props.trend.from} 至 ${props.trend.to}；${latestText}${types ? `；包含${types}` : ''}`
+  const latest = series.value.latest
+  const label = latest?.source.totalAssets == null ? '已记录资产' : '总资产'
+  return `资产趋势图，${props.trend.from} 至 ${props.trend.to}；最新${label} ${trendAmountLabel(latest, props.amountsMasked)}`
 })
 let chart: ECharts | null = null
 let disposed = false
@@ -31,7 +31,7 @@ function resize(): void {
 
 function render(): void {
   chart?.setOption(
-    buildTrendOption(props.trend, scoped.value, props.variant ?? 'default') as EChartsOption,
+    buildTrendOption(props.trend, series.value, props.variant ?? 'default', props.amountsMasked) as EChartsOption,
     { notMerge: true }
   )
 }
@@ -67,7 +67,7 @@ watch(
 )
 
 watch(
-  () => props.variant,
+  () => [props.variant, props.amountsMasked],
   () => render()
 )
 

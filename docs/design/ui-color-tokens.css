@@ -1,5 +1,5 @@
 /* LifeUp · Midnight Mint 午夜薄荷金融风 · v2.0 · 2026-11-04
- * 深色 Hero + 浅色内容；品牌紫负责导航与选择，薄荷绿负责正向强调，
+ * 彩色 Hero + 浅色内容；品牌紫负责导航与选择，薄荷绿负责正向强调，
  * 青色与橙色只用于图表分类。浅色为默认主题，通过 data-color-scheme="light|dark" 切换深色。
  * 应用在 html 根节点设置 data-theme="midnight-mint" 后生效。
  */
@@ -77,21 +77,26 @@
   --color-border-disabled: var(--palette-lilac-300);
   --color-bg-readonly: var(--palette-lilac-50);
 
-  /* 深色 Hero 与薄荷强调，首页及深色头部共用。
-   * 浅色主题使用“日光版”：比深色主题更亮、更紫、阴影更轻，避免白天像一块黑板。 */
-  --color-hero-bg: #262047;
-  --color-hero-bg-end: #3B3270;
-  --color-hero-surface: rgba(255, 255, 255, 0.10);
-  --color-hero-surface-strong: #453C7A;
-  --color-hero-track: #322B5E;
+  /* Hero 与薄荷强调，首页及各页头部共用。
+   * 浅色主题使用“白日紫”：品牌紫渐变 + 白字，深色主题用夜色紫。两者共用同一套白字与薄荷曲线。 */
+  --color-hero-bg: #4840C2;
+  --color-hero-bg-end: #5A4BD0;
+  --color-hero-surface: rgba(255, 255, 255, 0.14);
+  --color-hero-surface-strong: rgba(255, 255, 255, 0.24);
+  --color-hero-track: rgba(255, 255, 255, 0.18);
+  --color-hero-chip: rgba(14, 10, 44, 0.18);
   --color-hero-text: var(--palette-white);
-  --color-hero-text-secondary: #C2BCE0;
-  --color-hero-text-muted: #A8A2CC;
-  --color-hero-border: rgba(255, 255, 255, 0.16);
+  --color-hero-text-secondary: #F1EDFF;
+  --color-hero-text-muted: #CFC7F2;
+  --color-hero-border: rgba(255, 255, 255, 0.20);
   --color-hero-active: var(--palette-white);
-  --color-hero-active-text: var(--palette-ink-900);
+  --color-hero-active-text: #2A2270;
   --color-hero-line: var(--palette-mint);
-  --color-hero-line-area: rgba(124, 231, 177, 0.20);
+  --color-hero-line-area: rgba(124, 231, 177, 0.22);
+  --color-hero-note-bg: rgba(124, 231, 177, 0.16);
+  --color-hero-note-text: #E9FFF4;
+  --color-hero-note-error-bg: rgba(255, 214, 214, 0.16);
+  --color-hero-note-error-text: #FFE3E3;
   --color-accent-mint: var(--palette-mint);
   --color-accent-mint-strong: var(--palette-mint-strong);
   --color-accent-mint-soft: rgba(124, 231, 177, 0.14);
@@ -115,14 +120,16 @@
 
   /* 财务：保留红盈绿亏，薄荷绿只承担品牌和图表强调。 */
   --color-finance-gain: #C23838;
-  --color-finance-gain-on-hero: #FF9292;
-  --color-finance-loss-on-hero: #7CE7B1;
+  --color-finance-gain-on-hero: #FFD6D6;
+  --color-finance-loss-on-hero: #B5FFD9;
   --color-finance-loss: #237A58;
   --color-finance-gain-bg: var(--palette-red-soft);
   --color-finance-loss-bg: var(--palette-green-soft);
   --color-finance-flat: var(--palette-lilac-600);
   --color-finance-income: #237A58;
   --color-finance-expense: var(--palette-ink-text);
+  --color-month-flow-income: #4278C7;
+  --color-month-flow-expense: var(--palette-violet-500);
   --color-finance-transfer: var(--palette-violet-500);
   --color-finance-net-change: var(--palette-ink-text);
   --color-finance-liability: var(--palette-ink-text);
@@ -143,6 +150,22 @@
   --color-chart-separator: var(--palette-white);
   --color-chart-reference: var(--palette-lilac-600);
 
+  /* 首页资产卡（扑克卡）：浅色用白卡分层，分类色只出现在图标、占比、链接与右侧流光。 */
+  --color-asset-card-bg: var(--palette-white);
+  --color-asset-card-bg-end: var(--palette-white);
+  --color-asset-card-border: transparent;
+  --color-asset-card-text: var(--color-text-primary);
+  --color-asset-card-note: var(--color-text-secondary);
+  --color-asset-card-shadow: var(--shadow-card), 0 1px 0 rgba(30, 27, 56, 0.04);
+  --color-asset-card-veil: linear-gradient(90deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.35) 55%, rgba(255, 255, 255, 0));
+  --color-asset-glow-soft: 0.14;
+  --color-asset-glow-strong: 0.36;
+  --color-asset-accent-cash: #187A5B;
+  --color-asset-accent-fund: #5A4BC8;
+  --color-asset-accent-stock: #C33F58;
+  --color-asset-accent-provident: #17718F;
+  --color-asset-accent-gold: #8F6412;
+
   /* 浮层与临时状态。 */
   --color-bg-popover: var(--palette-white);
   --color-bg-tooltip: var(--palette-ink-900);
@@ -150,7 +173,7 @@
   --color-overlay: rgba(18, 15, 36, 0.48);
   --color-shadow: rgba(30, 27, 56, 0.06);
   --color-shadow-strong: rgba(30, 27, 56, 0.14);
-  --color-shadow-hero: rgba(38, 32, 71, 0.18);
+  --color-shadow-hero: rgba(82, 74, 205, 0.28);
   --color-skeleton-base: var(--palette-lilac-100);
   --color-skeleton-highlight: var(--palette-lilac-50);
   --color-text-selection-bg: var(--palette-violet-200);
@@ -197,6 +220,7 @@
   --color-hero-surface: rgba(255, 255, 255, 0.07);
   --color-hero-surface-strong: #2B2547;
   --color-hero-track: #2B2547;
+  --color-hero-chip: rgba(255, 255, 255, 0.07);
   --color-hero-text: #F7F5FF;
   --color-hero-text-secondary: #A9A6C5;
   --color-hero-text-muted: #8F8BAC;
@@ -205,6 +229,10 @@
   --color-hero-active-text: #1A1730;
   --color-hero-line: #7CE7B1;
   --color-hero-line-area: rgba(124, 231, 177, 0.18);
+  --color-hero-note-bg: rgba(124, 231, 177, 0.14);
+  --color-hero-note-text: #7CE7B1;
+  --color-hero-note-error-bg: rgba(255, 122, 122, 0.12);
+  --color-hero-note-error-text: #FF9B9B;
 
   --color-info: #A9A4FF;
   --color-info-bg: #29244A;
@@ -220,12 +248,16 @@
   --color-on-danger: #0F0D1A;
 
   --color-finance-gain: #FF7A7A;
+  --color-finance-gain-on-hero: #FF9292;
+  --color-finance-loss-on-hero: #7CE7B1;
   --color-finance-loss: #4ED39B;
   --color-finance-gain-bg: #2E1414;
   --color-finance-loss-bg: #123526;
   --color-finance-flat: #A9A6C5;
   --color-finance-income: #4ED39B;
   --color-finance-expense: #F7F5FF;
+  --color-month-flow-income: #79B4FF;
+  --color-month-flow-expense: #A591F6;
   --color-finance-transfer: #A9A4FF;
   --color-finance-net-change: #F7F5FF;
   --color-finance-liability: #F7F5FF;
@@ -244,6 +276,22 @@
   --color-chart-track: rgba(255, 255, 255, 0.12);
   --color-chart-separator: #1A1730;
   --color-chart-reference: #8F8BAC;
+
+  /* 深色资产卡：比 surface 抬高一层，靠分类光晕和 1px 内高光浮起，不用黑色投影。 */
+  --color-asset-card-bg: #262142;
+  --color-asset-card-bg-end: #1E1A36;
+  --color-asset-card-border: rgba(255, 255, 255, 0.08);
+  --color-asset-card-text: #FFFFFF;
+  --color-asset-card-note: #C2BDDA;
+  --color-asset-card-shadow: 0 8px 18px -10px rgba(0, 0, 0, 0.70), inset 0 1px rgba(255, 255, 255, 0.12);
+  --color-asset-card-veil: linear-gradient(90deg, rgba(16, 14, 28, 0.72), rgba(16, 14, 28, 0.08) 52%, rgba(16, 14, 28, 0.40));
+  --color-asset-glow-soft: 0.24;
+  --color-asset-glow-strong: 0.78;
+  --color-asset-accent-cash: #B5FFDF;
+  --color-asset-accent-fund: #E7CDFF;
+  --color-asset-accent-stock: #FFB191;
+  --color-asset-accent-provident: #B5F3FF;
+  --color-asset-accent-gold: #FFF2A1;
 
   --color-bg-popover: #1A1730;
   --color-bg-tooltip: #F7F5FF;

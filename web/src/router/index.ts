@@ -8,6 +8,7 @@ const router = createRouter({
   },
   routes: [
     { path: '/plans', name: 'plans', component: () => import('../views/PlanView.vue') },
+    { path: '/capital', name: 'capital', component: () => import('../views/CapitalView.vue') },
     {
       path: '/',
       name: 'home',
@@ -28,6 +29,7 @@ const router = createRouter({
       name: 'ledger',
       component: () => import('../views/LedgerView.vue')
     },
+    { path: '/categories', name: 'categories', component: () => import('../views/CategoriesView.vue') },
     {
       path: '/mine',
       name: 'mine',
