@@ -195,7 +195,7 @@ public sealed class CashService
     {
         var activities = new List<(DateOnly BusinessDate, DateTimeOffset CreatedAt, CashActivityDto Activity)>();
 
-        foreach (var entry in entries)
+        foreach (var entry in entries.Where(entry => entry.CashEffect != 0m))
         {
             activities.Add((
                 entry.BusinessDate,

@@ -248,7 +248,7 @@ public sealed class BackupService
             entry.Kind == LedgerEntryKind.Income ? "日常收入" : "日常支出",
             entry.Kind == LedgerEntryKind.Income ? "收入" : "支出",
             entry.Amount,
-            entry.Kind == LedgerEntryKind.Income ? entry.Amount : -entry.Amount,
+            entry.CashEffect,
             null,
             null,
             null,
@@ -1296,6 +1296,7 @@ public sealed class BackupService
         {
             LedgerEntrySource.Automatic => "自动",
             LedgerEntrySource.Import => "导入",
+            LedgerEntrySource.MonthlyImport => "历史月度汇总",
             _ => "手动"
         };
     }

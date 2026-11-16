@@ -1,5 +1,5 @@
 export type EntryKind = 'income' | 'expense'
-export type EntrySource = 'manual' | 'automatic' | 'import'
+export type EntrySource = 'manual' | 'automatic' | 'import' | 'monthlyImport'
 export type EntryStatus = 'active' | 'reversed'
 export type EntryPeriod = 'day' | 'month' | 'year'
 

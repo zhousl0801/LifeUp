@@ -305,7 +305,8 @@ public sealed class HistoryService
                 throw new HistoryValidationException(string.Join(" ", errors));
             }
 
-            cashEffect = request.EntryKind == Domain.Ledgers.LedgerEntryKind.Income ? request.Amount : -request.Amount;
+            var entry = data.Entries.Single(item => item.Id == original.Id);
+            cashEffect = entry.CalculateCashEffect(request.EntryKind!.Value, request.Amount);
         }
         else if (original.Source == "asset")
         {
