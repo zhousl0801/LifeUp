@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { categoryIcon } from '../constants/categoryIcons'
 
-withDefaults(defineProps<{ name: string; group?: boolean; size?: number }>(), { size: 24 })
+withDefaults(defineProps<{ name: string; group?: boolean; iconKey?: string | null; size?: number }>(), { size: 24 })
 </script>
 
 <template>
-  <img class="category-icon" :src="categoryIcon(name, group)" :width="size" :height="size" alt="" />
+  <img class="category-icon" :src="categoryIcon(name, group, iconKey)" :width="size" :height="size" alt="" />
 </template>
 
 <style scoped>

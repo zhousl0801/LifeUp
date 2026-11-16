@@ -7,6 +7,7 @@ export interface EntryCategory {
   sortOrder: number
   isActive: boolean
   systemKey: string | null
+  iconKey?: string | null
   parentId?: string | null
   isGroup?: boolean
 }
@@ -14,6 +15,7 @@ export interface EntryCategory {
 export interface CreateCategoryInput {
   kind: EntryKind
   name: string
+  iconKey?: string
   parentId?: string
   isGroup?: boolean
 }

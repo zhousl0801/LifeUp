@@ -38,6 +38,7 @@ export interface EntryStatsPoint {
   category?: string | null
   income: number
   expense: number
+  iconKey?: string | null
 }
 
 export interface EntryStatsCategory {

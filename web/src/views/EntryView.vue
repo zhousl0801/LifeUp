@@ -23,6 +23,7 @@ import type { EntryKind, EntryMutationResult, EntryStatus, LedgerEntry } from '.
 interface CategoryOption {
   id: string
   name: string
+  iconKey?: string | null
   deletable: boolean
 }
 
@@ -104,6 +105,7 @@ const categoryOptions = computed<CategoryOption[]>(() => {
     const options: CategoryOption[] = active.map((category) => ({
       id: category.id,
       name: category.name,
+      iconKey: category.iconKey,
       deletable: category.systemKey !== 'salary'
     }))
 
@@ -820,7 +822,7 @@ function handleKeydown(event: KeyboardEvent): void {
         <div v-if="hasGroups" class="category-groups" role="group" aria-label="一级分类">
           <button v-for="group in groupOptions" :key="group.id" type="button" :disabled="!canEdit || isSaving"
             :aria-pressed="activeGroup?.id === group.id" @click="selectGroup(group.id)">
-            <CategoryIcon :name="group.name" group :size="16" />{{ group.name }}{{ group.isActive ? '' : '（停用）' }}
+            <CategoryIcon :name="group.name" :icon-key="group.iconKey" group :size="16" />{{ group.name }}{{ group.isActive ? '' : '（停用）' }}
           </button>
         </div>
         <p v-else class="category-label">分类<span v-if="!form.category"> · 请选择</span></p>
@@ -852,7 +854,7 @@ function handleKeydown(event: KeyboardEvent): void {
           >
             <span class="category-mark-wrap">
               <span class="category-mark" aria-hidden="true">
-                <CategoryIcon :name="option.name" />
+                <CategoryIcon :name="option.name" :icon-key="option.iconKey" />
               </span>
               <span
                 v-if="categoryEditMode && option.deletable"

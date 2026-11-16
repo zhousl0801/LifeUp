@@ -73,6 +73,10 @@ let restorePosition = savedContext
 let restorePages = savedContext?.page ?? 1
 const summary = ref<EntryPeriodSummary | null>(null)
 const categoryItems = ref<EntryCategory[]>([])
+const categoryIconsByKind = computed(() => new Map(
+  categoryItems.value.filter(category => !category.isGroup)
+    .map(category => [`${category.kind}:${category.name}`, category.iconKey])
+))
 const isLoading = ref(false)
 const errorMessage = ref('')
 let searchTimer: number | undefined
@@ -545,7 +549,7 @@ function openEntry(entryId?: string): void {
             :style="{ '--stagger': Math.min(index, 8) }"
             @click="openEntry(entry.id)"
           >
-            <span class="entry-mark"><CategoryIcon :name="entry.category" /></span>
+            <span class="entry-mark"><CategoryIcon :name="entry.category" :icon-key="categoryIconsByKind.get(`${entry.kind}:${entry.category}`)" /></span>
             <span class="entry-copy">
               <span class="entry-title">{{ entry.note?.trim() || entry.category }}</span>
               <small v-if="(entry.note?.trim() && entry.note.trim() !== entry.category) || entry.source === 'automatic'">

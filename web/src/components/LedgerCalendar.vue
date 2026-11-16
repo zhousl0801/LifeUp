@@ -18,7 +18,7 @@ const cells = computed(() => {
     const date = props.month.slice(0, 7) + '-' + String(day).padStart(2, '0')
     const point = points.get(date)
     const net = point ? sumAmounts([point.income, -point.expense]) : 0
-    return { date, day, category: point?.category ?? '', net, hasEntries: Boolean(point && (point.income || point.expense)) }
+    return { date, day, category: point?.category ?? '', iconKey: point?.iconKey, net, hasEntries: Boolean(point && (point.income || point.expense)) }
   })
 })
 
@@ -41,7 +41,7 @@ function shortAmount(amount: number, compact = false): string {
         :class="{ recorded: cell.hasEntries, positive: cell.hasEntries && cell.net > 0, selected: cell.date === selected }"
         @click="$emit('select', cell.date)">
         <span>{{ cell.day }}</span>
-        <CategoryIcon v-if="cell.hasEntries" :name="cell.category" :size="16" />
+        <CategoryIcon v-if="cell.hasEntries" :name="cell.category" :icon-key="cell.iconKey" :size="16" />
         <template v-if="cell.hasEntries">
           <small class="day-amount" aria-hidden="true">{{ shortAmount(cell.net) }}</small>
           <small class="day-amount-compact" aria-hidden="true">{{ shortAmount(cell.net, true) }}</small>

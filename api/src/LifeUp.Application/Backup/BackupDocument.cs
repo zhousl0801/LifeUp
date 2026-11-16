@@ -113,6 +113,9 @@ public sealed class BackupEntryCategory
     public int SortOrder { get; set; }
     public bool IsActive { get; set; }
     public string? SystemKey { get; set; }
+
+    public string? IconKey { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public int Version { get; set; }

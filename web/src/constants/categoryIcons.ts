@@ -32,7 +32,22 @@ const categoryIcons: Record<string, string> = {
   其他收入: '1f4b5'
 }
 
-export function categoryIcon(name: string, isGroup = false): string {
-  const icon = Object.hasOwn(categoryIcons, name) ? categoryIcons[name] : isGroup ? '1f4c1' : '1f3f7'
-  return assets[`../assets/category-icons/emoji_u${icon}.svg`]!
+export const categoryIconOptions = [
+  ['1f3e0', '房屋'], ['1f6d2', '购物车'], ['1f6cd', '购物袋'], ['1f4e6', '包裹'],
+  ['1f5d3', '日历'], ['1f37d', '餐具'], ['1f68c', '公交'], ['1f3ae', '游戏'],
+  ['1f4b0', '钱袋'], ['1f4b5', '纸币'], ['1f4bc', '公文包'], ['1f381', '礼物'],
+  ['1f48a', '药品'], ['1f43e', '宠物'], ['1f4da', '书本'], ['1f9f3', '行李'],
+  ['1f45f', '运动鞋'], ['1f455', '衣服'], ['1f6cb', '沙发'], ['1f9f4', '日用品'],
+  ['1f4f6', '信号'], ['1f3f7', '标签'], ['1f4c1', '文件夹']
+] as const
+
+const iconAsset = (key: string) => assets[`../assets/category-icons/emoji_u${key}.svg`]
+
+export function resolveCategoryIconKey(name: string, isGroup = false, iconKey?: string | null): string {
+  if (iconKey && iconAsset(iconKey)) return iconKey
+  return Object.hasOwn(categoryIcons, name) ? categoryIcons[name] : isGroup ? '1f4c1' : '1f3f7'
+}
+
+export function categoryIcon(name: string, isGroup = false, iconKey?: string | null): string {
+  return iconAsset(resolveCategoryIconKey(name, isGroup, iconKey))!
 }

@@ -43,7 +43,6 @@ public sealed class EntryStatsService
         var expense = entries.Where(entry => entry.Kind == LedgerEntryKind.Expense).Sum(entry => entry.Amount);
         var coverageStart = from < ledger.StartDate ? ledger.StartDate : from;
         var coveredDays = CalculateCoveredDays(period, coverageStart, dataFrom > dataTo ? from.AddDays(-1) : dataTo);
-        var points = BuildPoints(period, from, dataTo, entries);
         var note = BuildNote(from, dataFrom, dataTo, ledger.StartDate);
 
         var categories = await _ledgerRepository.GetCategoriesAsync(ledger.Id, cancellationToken);
@@ -51,6 +50,10 @@ public sealed class EntryStatsService
         var groupsByCategory = categories.Where(category => !category.IsGroup).ToDictionary(
             category => (category.Kind, category.Name),
             category => category.ParentId is Guid parent && groupNames.TryGetValue(parent, out var name) ? name : "未归类");
+
+        var iconsByCategory = categories.Where(category => !category.IsGroup)
+            .ToDictionary(category => (category.Kind, category.Name), category => category.IconKey);
+        var points = BuildPoints(period, from, dataTo, entries, iconsByCategory);
 
         return new EntryStatsDto(
             period,
@@ -76,7 +79,8 @@ public sealed class EntryStatsService
         EntryPeriod period,
         DateOnly from,
         DateOnly to,
-        IReadOnlyList<LedgerEntry> entries)
+        IReadOnlyList<LedgerEntry> entries,
+        IReadOnlyDictionary<(LedgerEntryKind Kind, string Name), string?> iconsByCategory)
     {
         if (to < from || from > to)
         {
@@ -101,12 +105,14 @@ public sealed class EntryStatsService
             for (var date = from; date <= to; date = date.AddDays(1))
             {
                 var dayEntries = entries.Where(entry => entry.BusinessDate == date).ToList();
+                var representative = dayEntries.OrderByDescending(entry => entry.Amount).ThenBy(entry => entry.Id).FirstOrDefault();
                 points.Add(new EntryStatsPointDto(
                     date,
                     $"{date.Day}日",
                     Round(dayEntries.Where(entry => entry.Kind == LedgerEntryKind.Income).Sum(entry => entry.Amount)),
                     Round(dayEntries.Where(entry => entry.Kind == LedgerEntryKind.Expense).Sum(entry => entry.Amount)),
-                    dayEntries.OrderByDescending(entry => entry.Amount).ThenBy(entry => entry.Id).FirstOrDefault()?.Category));
+                    representative?.Category,
+                    representative is null ? null : iconsByCategory.GetValueOrDefault((representative.Kind, representative.Category))));
             }
 
             return points;

@@ -120,6 +120,79 @@ public sealed class CategoryEndpointsTests
         Assert.Equal(35.60m, group.GetProperty("amount").GetDecimal());
     }
 
+    [Fact]
+    public async Task UpdateIconAndRename_PersistsIconOnTheSameCategory()
+    {
+        using var factory = new LifeUpApiFactory();
+        using var client = factory.CreateClient();
+        await InitializeAsync(client);
+        var categories = (await client.GetFromJsonAsync<JsonElement[]>("/api/ledger/categories"))!;
+        var dining = categories.Single(category => category.GetProperty("name").GetString() == "餐饮");
+        var id = dining.GetProperty("id").GetGuid();
+
+        var icon = await client.PutAsJsonAsync($"/api/ledger/categories/{id}", new
+        {
+            name = "餐饮",
+            isActive = true,
+            iconKey = "1f381"
+        });
+        var rename = await client.PutAsJsonAsync($"/api/ledger/categories/{id}", new
+        {
+            name = "外食",
+            isActive = true
+        });
+
+        Assert.Equal(HttpStatusCode.OK, icon.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, rename.StatusCode);
+        var saved = (await client.GetFromJsonAsync<JsonElement[]>("/api/ledger/categories"))!
+            .Single(category => category.GetProperty("id").GetGuid() == id);
+        Assert.Equal("外食", saved.GetProperty("name").GetString());
+        Assert.Equal("1f381", saved.GetProperty("iconKey").GetString());
+    }
+
+    [Fact]
+    public async Task Reorder_MovesChildToRequestedPositionAndRejectsInvalidOrder()
+    {
+        using var factory = new LifeUpApiFactory();
+        using var client = factory.CreateClient();
+        await InitializeAsync(client);
+        var categories = (await client.GetFromJsonAsync<List<EntryCategoryDto>>("/api/ledger/categories", JsonOptions))!;
+        var dining = categories.Single(category => category.Name == "餐饮");
+        var target = categories.Single(category => category.Name == "弹性");
+        var targetIds = categories.Where(category => category.ParentId == target.Id)
+            .OrderBy(category => category.SortOrder)
+            .Select(category => category.Id)
+            .ToList();
+        targetIds.Insert(1, dining.Id);
+
+        var invalid = await client.PutAsJsonAsync("/api/ledger/categories/order", new
+        {
+            kind = "expense",
+            ids = new[] { dining.Id },
+            parentId = target.Id,
+            movingId = dining.Id,
+            sourceParentId = dining.ParentId
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        var unchanged = (await client.GetFromJsonAsync<List<EntryCategoryDto>>("/api/ledger/categories", JsonOptions))!;
+        Assert.Equal(dining.ParentId, unchanged.Single(category => category.Id == dining.Id).ParentId);
+
+        var moved = await client.PutAsJsonAsync("/api/ledger/categories/order", new
+        {
+            kind = "expense",
+            ids = targetIds,
+            parentId = target.Id,
+            movingId = dining.Id,
+            sourceParentId = dining.ParentId
+        });
+
+        Assert.Equal(HttpStatusCode.NoContent, moved.StatusCode);
+        var saved = (await client.GetFromJsonAsync<List<EntryCategoryDto>>("/api/ledger/categories", JsonOptions))!;
+        Assert.Equal(targetIds, saved.Where(category => category.ParentId == target.Id)
+            .OrderBy(category => category.SortOrder)
+            .Select(category => category.Id));
+    }
+
     private static Task InitializeAsync(HttpClient client)
     {
         return client.PostAsJsonAsync("/api/ledger/initialize", new
