@@ -1673,35 +1673,16 @@ function goBack(): void {
   margin-top: 2px;
 }
 
-.sheet-summary {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.summary-line {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  padding: 11px 14px;
-  border-radius: var(--radius-control);
-  background: var(--color-bg-subtle);
-  color: var(--color-text-secondary);
-  font-size: var(--text-footnote);
-}
-
-.summary-line b {
-  color: var(--color-text-primary);
-  font-size: var(--text-footnote);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
 .search-block {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.search-block > .form-field {
+  border-radius: 16px;
+  border-bottom: 0;
 }
 
 .search-row {
@@ -1712,6 +1693,8 @@ function goBack(): void {
 .search-row input {
   flex: 1;
   min-width: 0;
+  text-align: left;
+  text-align-last: left;
 }
 
 .search-button {

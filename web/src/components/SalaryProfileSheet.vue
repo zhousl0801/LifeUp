@@ -259,49 +259,90 @@ function confirmDisableProfile(): void {
 
 <style scoped>
 .salary-form {
-  display: grid;
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
   min-width: 0;
 }
 
 .salary-field {
-  display: grid;
-  gap: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 46px;
+  padding: 8px 14px;
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border-subtle);
   min-width: 0;
+  transition: background-color 0.15s ease;
+}
+
+.salary-field:focus-within {
+  background: color-mix(in srgb, var(--color-brand) 4%, var(--color-bg-surface));
+}
+
+.salary-form > .salary-field:first-child {
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
 }
 
 .salary-field label {
   display: grid;
-  gap: 6px;
-  color: var(--color-text-secondary);
-  font-size: var(--text-footnote);
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  color: var(--color-text-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
 }
 
 .salary-field input,
 .salary-field select {
+  appearance: none;
+  -webkit-appearance: none;
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  min-height: 44px;
-  padding: 10px 12px;
-  border: 1px solid var(--color-border-default);
-  border-radius: 12px;
-  background: var(--color-bg-subtle);
+  min-height: 30px;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--color-text-primary);
   font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  text-align-last: right;
+}
+
+.salary-field select {
+  padding-right: 16px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238A8E9E' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right center;
+  background-size: 12px 12px;
 }
 
 .salary-field input:focus,
 .salary-field select:focus {
   outline: none;
-  border-color: var(--color-border-focus);
+  box-shadow: none;
 }
 
 .salary-pair {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
   min-width: 0;
+}
+
+.salary-form > .salary-pair:last-of-type > .salary-field:last-child {
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
+  border-bottom: 0;
+  margin-bottom: 10px;
 }
 
 .salary-pair > * {
@@ -311,15 +352,22 @@ function confirmDisableProfile(): void {
 .hint {
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
-  line-height: 1.5;
+  line-height: 1.45;
+}
+
+.field-error {
+  color: var(--color-error);
+  font-size: var(--text-caption);
+  line-height: 1.45;
 }
 
 .salary-preview {
   display: grid;
   gap: 8px;
-  padding: 14px;
+  margin-bottom: 10px;
+  padding: 12px 14px;
   border-radius: 14px;
-  background: var(--color-bg-subtle);
+  background: color-mix(in srgb, var(--color-brand) 7%, var(--color-bg-surface));
 }
 
 .salary-preview > div {

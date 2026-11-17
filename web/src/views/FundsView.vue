@@ -3464,7 +3464,7 @@ function goBack(): void {
 }
 
 .form-field input[readonly] {
-  background: var(--color-bg-subtle);
+  background: transparent;
   color: var(--color-text-secondary);
 }
 
@@ -3476,6 +3476,8 @@ function goBack(): void {
 .group-create-row input {
   flex: 1;
   min-width: 0;
+  text-align: left;
+  text-align-last: left;
 }
 
 .group-create-row button {

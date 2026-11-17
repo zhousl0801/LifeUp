@@ -1371,37 +1371,12 @@ function goBack(): void {
   margin-top: 16px;
 }
 
-.sheet-summary {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.summary-line {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  padding: 11px 14px;
-  border-radius: var(--radius-control);
-  background: var(--color-bg-subtle);
-  color: var(--color-text-secondary);
-  font-size: var(--text-footnote);
-}
-
-.summary-line b {
-  color: var(--color-text-primary);
-  font-size: var(--text-footnote);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
 .sell-preview {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: 8px;
-  padding: 0;
+  padding: 6px 6px 2px;
   background: transparent;
 }
 

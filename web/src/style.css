@@ -322,102 +322,224 @@ summary:focus-visible {
 .form-stack {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 0;
+}
+
+.form-stack > :not(.form-field):not(.form-row) + :not(.form-field):not(.form-row) {
+  margin-top: 10px;
 }
 
 .form-row {
   display: flex;
-  gap: 10px;
+  flex-direction: column;
+  gap: 0;
+  overflow: hidden;
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 
 .form-row > .form-field {
   flex: 1;
   min-width: 0;
+  border-radius: 0;
+  margin-bottom: 0;
+}
+
+.form-row > .form-field:last-child {
+  border-bottom: 0;
 }
 
 .form-field {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  color: var(--color-text-secondary);
-  font-size: var(--text-footnote);
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 4px;
+  min-height: 46px;
+  padding: 8px 14px;
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border-subtle);
+  color: var(--color-text-primary);
+  font-size: 0.875rem;
+  transition: background-color 0.15s ease;
+}
+
+.form-stack > :is(.form-field, .form-row):not(:is(.form-field, .form-row) + *) {
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+}
+
+.form-stack > :is(.form-field, .form-row):not(:has(+ :is(.form-field, .form-row))) {
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
+  border-bottom-color: transparent;
+  margin-bottom: 10px;
+}
+
+.form-field > span:first-child {
+  color: var(--color-text-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.form-field > b {
+  justify-self: end;
+  color: var(--color-text-primary);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .form-field input,
 .form-field select {
+  appearance: none;
+  -webkit-appearance: none;
   box-sizing: border-box;
   width: 100%;
-  min-height: 52px;
-  padding: 0 14px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-control);
-  background: var(--color-bg-subtle);
+  min-width: 0;
+  max-width: 100%;
+  min-height: 30px;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--color-text-primary);
-  font-size: 1rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  text-align-last: right;
 }
 
-.form-field input:hover,
-.form-field select:hover {
-  border-color: var(--color-border-default);
+.form-field input::placeholder {
+  color: var(--color-text-secondary);
+  opacity: 0.65;
+  font-weight: 400;
+}
+
+.form-field select {
+  padding-right: 16px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238A8E9E' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right center;
+  background-size: 12px 12px;
+}
+
+.form-field input[type='date'],
+.form-field input[type='time'] {
+  justify-self: end;
+  width: auto;
+  min-height: 30px;
+  padding-right: 2px;
+  text-align: right;
+}
+
+.form-field input[type='date']::-webkit-date-and-time-value,
+.form-field input[type='time']::-webkit-date-and-time-value {
+  margin: 0;
+  text-align: right;
 }
 
 .form-field input:focus-visible,
 .form-field select:focus-visible {
-  border-color: var(--color-border-focus);
-  background: var(--color-bg-surface);
+  outline: none;
+  box-shadow: none;
+}
+
+.form-field:focus-within {
+  background: color-mix(in srgb, var(--color-brand) 4%, var(--color-bg-surface));
+}
+
+.form-field > small,
+.form-field > .form-note,
+.form-field > .fund-selected,
+.form-field > .fund-search-results,
+.form-field > .group-create-row,
+.form-field > .search-row {
+  grid-column: 1 / -1;
+}
+
+.form-field > small {
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  line-height: 1.45;
 }
 
 .form-hint {
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
-  line-height: 1.6;
+  line-height: 1.5;
+  padding: 0 4px;
 }
 
 .form-note {
   margin: 0;
-  padding: 10px 12px;
-  border-radius: var(--radius-control);
-  background: var(--color-bg-subtle);
+  padding: 6px 6px 2px;
+  border-radius: 0;
+  background: transparent;
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
-  line-height: 1.7;
+  line-height: 1.55;
 }
 
 .form-error {
   margin: 0;
-  padding: 10px 12px;
-  border-radius: var(--radius-control);
+  padding: 9px 12px;
+  border-radius: 12px;
   background: var(--color-error-bg);
   color: var(--color-error);
   font-size: var(--text-footnote);
-  line-height: 1.7;
+  line-height: 1.55;
 }
 
 .form-actions {
   display: flex;
   gap: 10px;
+  margin-top: 10px;
 }
 
 .form-actions > * {
   flex: 1;
 }
 
+.sheet-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow: hidden;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-brand) 7%, var(--color-bg-surface));
+}
+
 .summary-line {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
   gap: 12px;
-  padding: 11px 12px;
-  border-radius: var(--radius-control);
-  background: var(--color-bg-subtle);
+  padding: 8px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-brand) 10%, transparent);
+  border-radius: 0;
+  background: transparent;
   color: var(--color-text-secondary);
-  font-size: var(--text-footnote);
+  font-size: var(--text-caption);
+}
+
+.summary-line:only-child {
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-brand) 7%, var(--color-bg-surface));
+  border-bottom: 0;
+}
+
+.sheet-summary > .summary-line:last-child {
+  border-bottom: 0;
 }
 
 .summary-line b {
-  color: var(--color-text-primary);
-  font-size: var(--text-subhead);
-  font-weight: 600;
+  color: var(--color-brand);
+  font-size: 0.875rem;
+  font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
 

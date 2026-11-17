@@ -629,14 +629,37 @@ function formatNet(value: number | null): string {
 
 <style scoped>
 .form {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
 .field {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   min-width: 0;
+  min-height: 46px;
+  padding: 8px 14px;
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border-subtle);
+  transition: background-color 0.15s ease;
+}
+
+.field:focus-within {
+  background: color-mix(in srgb, var(--color-brand) 4%, var(--color-bg-surface));
+}
+
+.form > .field:not(.field + *) {
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+}
+
+.form > .field:not(:has(+ .field)) {
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
+  border-bottom: 0;
+  margin-bottom: 10px;
 }
 
 .field.full {
@@ -644,61 +667,81 @@ function formatNet(value: number | null): string {
 }
 
 .field-control {
-  display: block;
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
 }
 
 .field-control > span:not(.input-unit) {
-  display: block;
-  margin-bottom: 5px;
-  color: var(--color-text-secondary);
-  font-size: 12px;
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
 }
 
-.field input {
+.field input,
+.field select {
+  appearance: none;
+  -webkit-appearance: none;
   width: 100%;
-  height: 44px;
+  min-width: 0;
+  min-height: 30px;
   box-sizing: border-box;
-  padding: 0 12px;
+  padding: 2px 0;
   border: 0;
-  border-radius: var(--radius-control);
+  border-radius: 0;
   outline: none;
-  background: var(--color-bg-subtle);
+  background: transparent;
   color: var(--color-text-primary);
   font: inherit;
-  font-size: 15px;
+  font-size: 0.9375rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  text-align: right;
+  text-align-last: right;
 }
 
-.field input:focus {
-  box-shadow: 0 0 0 2px var(--color-focus-ring);
+.field select {
+  padding-right: 16px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238A8E9E' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right center;
+  background-size: 12px 12px;
+}
+
+.field input:focus,
+.field select:focus {
+  box-shadow: none;
 }
 
 .input-unit {
   position: relative;
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .input-unit input {
-  padding-right: 48px;
+  padding-right: 0;
 }
 
 .input-unit .unit {
-  position: absolute;
-  top: 50%;
-  right: 12px;
-  transform: translateY(-50%);
+  position: static;
+  transform: none;
   color: var(--color-text-secondary);
   font-size: 12px;
   font-style: normal;
   font-weight: 500;
   pointer-events: none;
+  flex-shrink: 0;
 }
 
 .hint,
 .field-error {
   display: block;
-  margin-top: 4px;
+  margin-top: 2px;
   font-size: 11px;
   font-weight: 400;
   line-height: 1.4;
@@ -716,9 +759,10 @@ function formatNet(value: number | null): string {
 .preset {
   display: inline-flex;
   align-items: center;
-  min-height: 32px;
-  margin-top: 5px;
-  padding: 4px 9px;
+  align-self: flex-start;
+  min-height: 28px;
+  margin-top: 4px;
+  padding: 2px 9px;
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-pill);
   background: var(--color-bg-subtle);
@@ -737,7 +781,7 @@ function formatNet(value: number | null): string {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 5px;
+  margin-top: 4px;
 }
 
 .presets .preset {
@@ -748,11 +792,10 @@ function formatNet(value: number | null): string {
   display: flex;
   align-items: center;
   gap: 8px;
-  grid-column: 1 / -1;
-  margin-top: 2px;
-  padding: 11px 12px;
-  border-radius: var(--radius-control);
-  background: var(--color-brand-soft);
+  margin-bottom: 10px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-brand) 7%, var(--color-bg-surface));
   color: var(--color-text-secondary);
   font-size: 12px;
 }
@@ -765,18 +808,16 @@ function formatNet(value: number | null): string {
 }
 
 .form-error {
-  grid-column: 1 / -1;
-  margin: 0;
+  margin: 0 0 10px;
   color: var(--color-error);
   font-size: 12px;
 }
 
 .actions {
   display: grid;
-  grid-column: 1 / -1;
   grid-template-columns: 1fr 1.4fr;
   gap: 10px;
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 .ghost,
@@ -789,7 +830,7 @@ function formatNet(value: number | null): string {
 }
 
 .ghost {
-  background: var(--color-bg-subtle);
+  background: var(--color-bg-surface);
   color: var(--color-text-primary);
 }
 
@@ -803,9 +844,10 @@ function formatNet(value: number | null): string {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 12px 14px;
-  border-radius: var(--radius-card);
-  background: var(--color-brand-soft);
+  margin-bottom: 10px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-brand) 8%, var(--color-bg-surface));
 }
 
 .follow-banner > div {
@@ -824,17 +866,27 @@ function formatNet(value: number | null): string {
 }
 
 .follow-banner.warning {
-  background: var(--color-bg-subtle);
+  background: var(--color-bg-surface);
 }
 
 .readonly-control {
-  display: grid;
-  gap: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.readonly-control > span {
+  color: var(--color-text-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
 }
 
 .readonly-control b {
-  font-size: var(--text-subhead);
+  margin-left: auto;
+  font-size: 0.9375rem;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .source-badge {
@@ -847,9 +899,12 @@ function formatNet(value: number | null): string {
 }
 
 .bonus-hint {
-  margin: 0;
+  margin: 0 0 10px;
+  padding: 2px 6px;
+  background: transparent;
+  border: 0;
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
-  line-height: 1.6;
+  line-height: 1.55;
 }
 </style>

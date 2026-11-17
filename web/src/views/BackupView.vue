@@ -372,6 +372,16 @@ function summaryItems(summary: BackupSummary): { label: string; value: string }[
   gap: 10px;
 }
 
+.backup-card > .form-row {
+  margin-top: 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 14px;
+}
+
+.backup-card > .form-row > .form-field {
+  background: var(--color-bg-subtle);
+}
+
 .backup-card h2 {
   margin: 0;
   font-size: 0.875rem;

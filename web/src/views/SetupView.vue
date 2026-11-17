@@ -171,47 +171,90 @@ function clearErrors(): void {
 .setup-form {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 0;
 }
 
 .field {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  color: var(--color-text-secondary);
-  font-size: 0.75rem;
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 4px;
+  min-height: 48px;
+  padding: 10px 14px;
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border-subtle);
+  color: var(--color-text-primary);
+  font-size: 0.875rem;
+}
+
+.setup-form > .field:first-of-type {
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+}
+
+.setup-form > .field:last-of-type {
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
+  border-bottom: 0;
+  margin-bottom: 14px;
+}
+
+.field > span {
+  font-weight: 500;
 }
 
 .field input {
+  appearance: none;
+  -webkit-appearance: none;
   box-sizing: border-box;
   width: 100%;
-  min-height: 48px;
-  padding: 0 13px;
-  border: 1px solid var(--color-border-control);
-  border-radius: var(--radius-control);
-  background: var(--color-bg-surface);
+  min-width: 0;
+  min-height: 30px;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--color-text-primary);
-  font-size: 1rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
-.field input:hover {
-  border-color: var(--color-border-hover);
+.field input[type='date'] {
+  justify-self: end;
+  width: auto;
+}
+
+.field input[type='date']::-webkit-date-and-time-value {
+  margin: 0;
+  text-align: right;
 }
 
 .field input:focus-visible {
-  border-color: var(--color-border-focus);
+  outline: none;
+  box-shadow: none;
+}
+
+.field:focus-within {
+  background: color-mix(in srgb, var(--color-brand) 4%, var(--color-bg-surface));
+}
+
+.field > small {
+  grid-column: 1 / -1;
 }
 
 .field-hint {
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
-  line-height: 1.7;
+  line-height: 1.5;
 }
 
 .field-error {
   color: var(--color-error);
-  font-size: var(--text-footnote);
-  line-height: 1.6;
+  font-size: var(--text-caption);
+  line-height: 1.5;
 }
 
 .form-error {

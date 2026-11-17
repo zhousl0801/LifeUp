@@ -793,16 +793,18 @@ function goBack(): void {
 .monthly-setting {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 16px;
-  border-radius: var(--radius-card);
-  background: var(--color-bg-subtle);
+  gap: 0;
+  margin-bottom: 10px;
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--color-bg-surface);
 }
 
 .monthly-toggle {
   display: flex;
   align-items: flex-start;
   gap: 10px;
+  padding: 12px 14px;
   cursor: pointer;
 }
 
@@ -834,6 +836,11 @@ function goBack(): void {
 .monthly-fields {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.monthly-fields > .form-hint {
+  padding: 6px 14px 10px;
 }
 </style>

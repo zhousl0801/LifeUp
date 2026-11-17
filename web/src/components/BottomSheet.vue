@@ -259,9 +259,9 @@ async function endDrag(event: PointerEvent): Promise<void> {
   width: min(100%, 430px);
   max-height: 88dvh;
   overflow-y: auto;
-  padding: 0 var(--page-gutter) calc(24px + env(safe-area-inset-bottom));
+  padding: 0 var(--page-gutter) calc(20px + env(safe-area-inset-bottom));
   border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
-  background: var(--color-bg-surface);
+  background: var(--color-bg-page);
   box-shadow: 0 -8px 30px var(--color-shadow);
   outline: none;
   transform: translateY(var(--sheet-drag-y, 0px));
@@ -313,50 +313,52 @@ async function endDrag(event: PointerEvent): Promise<void> {
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 
 .sheet-head h2 {
   margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
+  font-size: 1.125rem;
+  font-weight: 700;
   letter-spacing: -0.3px;
 }
 
 .sheet-head p {
-  margin: 5px 0 0;
+  margin: 3px 0 0;
   color: var(--color-text-secondary);
-  font-size: var(--text-footnote);
-  line-height: 1.5;
+  font-size: var(--text-caption);
+  line-height: 1.45;
 }
 
 .sheet-close {
-  min-width: var(--touch-target);
-  min-height: var(--touch-target);
-  margin: -8px -4px 0 0;
-  padding: 0 8px;
+  min-width: 32px;
+  min-height: 32px;
+  margin: -2px 0 0;
+  padding: 0 10px;
   border: 0;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--color-brand);
-  font-size: 0.875rem;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+  font-weight: 600;
 }
 
 .sheet-close-icon {
   display: block;
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   margin: auto;
 }
 
 .sheet-close:hover:not(:disabled) {
   background: var(--color-brand-soft);
+  color: var(--color-brand);
 }
 
 .sheet-body {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 10px;
 }
 
 @media (min-width: 600px) {

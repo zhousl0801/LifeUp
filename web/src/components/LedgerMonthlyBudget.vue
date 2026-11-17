@@ -156,12 +156,21 @@ onMounted(load)
   min-height: var(--touch-target); padding: 0 6px; border: 0; border-radius: var(--radius-control);
   color: var(--color-brand); background: transparent; font-size: var(--text-footnote);
 }
-.budget-form { display: grid; gap: 8px; }
-.budget-form input {
-  box-sizing: border-box; width: 100%; min-height: var(--touch-target); padding: 0 12px;
-  border: 0; border-radius: var(--radius-control); background: var(--color-bg-subtle); color: var(--color-text-primary);
+.budget-form {
+  display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); align-items: center; gap: 10px 12px;
 }
-.budget-form p { margin: 0; color: var(--color-danger); }
-.budget-form-actions { display: grid; gap: 8px; }
+.budget-form label {
+  padding: 12px 0 12px 14px; border-radius: 16px 0 0 16px; background: var(--color-bg-surface);
+  color: var(--color-text-primary); font-size: 0.875rem; font-weight: 500;
+}
+.budget-form input {
+  appearance: none; -webkit-appearance: none; box-sizing: border-box; width: 100%; min-height: 46px;
+  margin-left: -12px; padding: 0 14px 0 12px; border: 0; border-radius: 0 16px 16px 0;
+  background: var(--color-bg-surface); color: var(--color-text-primary);
+  font-size: 0.9375rem; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right;
+}
+.budget-form input:focus-visible { outline: none; box-shadow: none; }
+.budget-form p { grid-column: 1 / -1; margin: 0; color: var(--color-danger); font-size: var(--text-footnote); }
+.budget-form-actions { grid-column: 1 / -1; display: grid; gap: 8px; }
 .budget-form-actions.can-clear { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 </style>
