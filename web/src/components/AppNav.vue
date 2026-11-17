@@ -57,8 +57,8 @@ const isMine = computed(() => route.name === 'mine' || route.name === 'salary')
   border-radius: var(--radius-pill);
   background: linear-gradient(160deg,
     color-mix(in srgb, var(--color-bg-surface) 96%, transparent),
-    color-mix(in srgb, var(--color-bg-surface) 86%, transparent));
-  box-shadow: inset 0 1px 1px #ffffff80, var(--shadow-card);
+    color-mix(in srgb, var(--color-bg-surface) 88%, transparent));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 18%, transparent), var(--shadow-card);
   pointer-events: auto;
 }
 
@@ -132,7 +132,10 @@ const isMine = computed(() => route.name === 'mine' || route.name === 'salary')
 .nav-add {
   display: grid;
   place-items: center;
-  color: var(--color-text-primary);
+  border-color: transparent;
+  background: linear-gradient(145deg, var(--color-accent-mint), var(--color-accent-mint-strong));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 10px 24px color-mix(in srgb, var(--color-accent-mint-strong) 28%, transparent);
+  color: var(--color-on-accent-mint);
 }
 
 .nav-add :deep(.app-icon) {

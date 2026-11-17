@@ -50,7 +50,7 @@ function applyTheme(): void {
   root.dataset.colorScheme = resolved
   root.style.colorScheme = resolved
 
-  const themeColor = resolved === 'dark' ? '#0F0D1A' : '#F6F7FB'
+  const themeColor = resolved === 'dark' ? '#0B0C10' : '#F4F6FA'
   document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]').forEach((meta) => {
     meta.removeAttribute('media')
     meta.setAttribute('content', themeColor)

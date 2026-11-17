@@ -74,9 +74,9 @@ button {
 }
 button:disabled { color: var(--color-text-disabled); }
 button.recorded { background: color-mix(in srgb, var(--ledger-accent) 14%, var(--color-bg-surface)); }
-button.positive { background: color-mix(in srgb, #42bb76 31%, var(--color-bg-surface)); }
-button.selected { background: var(--ledger-accent); color: white; }
-small { font-size: .59rem; font-weight: 600; }
+button.positive { background: color-mix(in srgb, var(--color-finance-income) 24%, var(--color-bg-surface)); }
+button.selected { background: var(--ledger-accent); color: var(--color-on-brand); }
+small { font-size: .6875rem; font-weight: 600; }
 .day-amount-compact { display: none; }
 
 @media (max-width: 360px) {

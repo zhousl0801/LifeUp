@@ -505,7 +505,8 @@ function rowTitle(shareClass: string | null, platform: string | null): string {
 .calendar-day small {
   max-width: 100%;
   overflow: hidden;
-  font-size: 0.65625rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
   line-height: 1.2;
   letter-spacing: -0.2px;
   font-variant-numeric: tabular-nums;

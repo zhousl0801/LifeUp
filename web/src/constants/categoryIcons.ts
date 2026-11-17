@@ -41,6 +41,34 @@ export const categoryIconOptions = [
   ['1f4f6', '信号'], ['1f3f7', '标签'], ['1f4c1', '文件夹']
 ] as const
 
+export type CategoryTone = 'amber' | 'sky' | 'emerald' | 'rose' | 'violet'
+
+const iconTones: Record<string, CategoryTone> = {
+  '1f37d': 'amber',
+  '1f9f4': 'amber',
+  '1f43e': 'amber',
+  '1f6d2': 'amber',
+  '1f6cd': 'rose',
+  '1f455': 'rose',
+  '1f381': 'rose',
+  '1f48a': 'rose',
+  '1f68c': 'sky',
+  '1f9f3': 'sky',
+  '1f4f6': 'sky',
+  '1f4da': 'sky',
+  '1f3e0': 'emerald',
+  '1f6cb': 'emerald',
+  '1f45f': 'emerald',
+  '1f4b0': 'emerald',
+  '1f4b5': 'emerald',
+  '1f4bc': 'emerald',
+  '1f3ae': 'violet',
+  '1f5d3': 'violet',
+  '1f4e6': 'violet',
+  '1f3f7': 'violet',
+  '1f4c1': 'violet'
+}
+
 const iconAsset = (key: string) => assets[`../assets/category-icons/emoji_u${key}.svg`]
 
 export function resolveCategoryIconKey(name: string, isGroup = false, iconKey?: string | null): string {
@@ -50,4 +78,9 @@ export function resolveCategoryIconKey(name: string, isGroup = false, iconKey?: 
 
 export function categoryIcon(name: string, isGroup = false, iconKey?: string | null): string {
   return iconAsset(resolveCategoryIconKey(name, isGroup, iconKey))!
+}
+
+export function categoryTone(name: string, isGroup = false, iconKey?: string | null): CategoryTone {
+  const key = resolveCategoryIconKey(name, isGroup, iconKey)
+  return iconTones[key] ?? 'violet'
 }

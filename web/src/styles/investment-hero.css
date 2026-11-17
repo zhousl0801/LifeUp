@@ -1,7 +1,7 @@
 .investment-hero {
   padding: var(--card-padding);
   border-radius: var(--radius-card);
-  background: linear-gradient(180deg, var(--color-hero-bg), var(--color-hero-bg-end));
+  background: var(--color-hero-glow), linear-gradient(155deg, var(--color-hero-bg), var(--color-hero-bg-end));
   box-shadow: var(--shadow-hero);
   color: var(--color-hero-text);
   font-variant-numeric: tabular-nums;

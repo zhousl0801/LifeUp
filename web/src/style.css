@@ -414,9 +414,35 @@ summary:focus-visible {
 }
 
 .form-field input::placeholder {
-  color: var(--color-text-secondary);
-  opacity: 0.65;
+  color: var(--color-text-placeholder);
+  opacity: 1;
   font-weight: 400;
+}
+
+/* 分类图标容器多色语义微彩：按图标类别自动映射柔和底色与前景，打破单一紫色。 */
+:is(.entry-mark, .category-tile:not(.active) .category-mark):has(.category-icon[data-tone='amber']) {
+  background: var(--color-tint-amber-bg);
+  color: var(--color-tint-amber-fg);
+}
+
+:is(.entry-mark, .category-tile:not(.active) .category-mark):has(.category-icon[data-tone='sky']) {
+  background: var(--color-tint-sky-bg);
+  color: var(--color-tint-sky-fg);
+}
+
+:is(.entry-mark, .category-tile:not(.active) .category-mark):has(.category-icon[data-tone='emerald']) {
+  background: var(--color-tint-emerald-bg);
+  color: var(--color-tint-emerald-fg);
+}
+
+:is(.entry-mark, .category-tile:not(.active) .category-mark):has(.category-icon[data-tone='rose']) {
+  background: var(--color-tint-rose-bg);
+  color: var(--color-tint-rose-fg);
+}
+
+:is(.entry-mark, .category-tile:not(.active) .category-mark):has(.category-icon[data-tone='violet']) {
+  background: var(--color-tint-violet-bg);
+  color: var(--color-tint-violet-fg);
 }
 
 .form-field select {

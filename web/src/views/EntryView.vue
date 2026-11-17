@@ -1035,7 +1035,7 @@ function handleKeydown(event: KeyboardEvent): void {
   flex: 0 0 auto; min-height: 44px; padding: 0 8px; border: 0;
   border-radius: var(--radius-pill); background: var(--color-bg-surface); color: var(--color-text-secondary);
 }
-.category-groups button[aria-pressed='true'] { background: #096bdd; color: white; }
+.category-groups button[aria-pressed='true'] { background: var(--color-brand); color: var(--color-on-brand); }
 .category-empty { color: var(--color-text-secondary); font-size: var(--text-footnote); }
 
 .header-action {
@@ -1164,8 +1164,8 @@ function handleKeydown(event: KeyboardEvent): void {
 .category-tile.active .category-mark,
 .category-tile.active:hover .category-mark,
 .category-tile.active:active .category-mark {
-  background: #096bdd;
-  color: white;
+  background: var(--color-brand);
+  color: var(--color-on-brand);
   box-shadow: 0 8px 20px color-mix(in srgb, var(--color-brand) 28%, transparent);
 }
 

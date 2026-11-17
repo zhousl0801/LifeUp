@@ -341,7 +341,7 @@ function goHome(): void {
   margin: 0 0 16px;
   padding: var(--card-padding);
   border-radius: var(--radius-card);
-  background: linear-gradient(180deg, var(--color-hero-bg) 0%, var(--color-hero-bg-end) 100%);
+  background: var(--color-hero-glow), linear-gradient(180deg, var(--color-hero-bg) 0%, var(--color-hero-bg-end) 100%);
   box-shadow: var(--shadow-hero);
   color: var(--color-hero-text);
 }

@@ -494,7 +494,7 @@ function netTone(value: number): string {
   overflow: hidden;
   padding: 20px;
   border-radius: var(--radius-card);
-  background: linear-gradient(150deg, var(--color-hero-bg), var(--color-hero-bg-end));
+  background: var(--color-hero-glow), linear-gradient(150deg, var(--color-hero-bg), var(--color-hero-bg-end));
   box-shadow: var(--shadow-hero);
   color: var(--color-hero-text);
 }
@@ -691,8 +691,8 @@ function netTone(value: number): string {
 }
 
 .set-goal-copy small {
-  color: var(--color-hero-text-secondary);
-  font-size: 11px;
+  color: color-mix(in srgb, var(--color-on-brand) 78%, transparent);
+  font-size: 12px;
 }
 
 .set-goal-pulse {

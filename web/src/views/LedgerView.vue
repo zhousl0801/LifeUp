@@ -671,12 +671,12 @@ function openEntry(entryId?: string): void {
 }
 
 .ledger-page {
-  --ledger-accent: #086ee4;
+  --ledger-accent: var(--color-brand);
   background: var(--color-bg-page);
 }
 :global([data-color-scheme='dark']) .ledger-page {
   background: var(--color-bg-page);
-  --ledger-accent: #2579d8;
+  --ledger-accent: var(--color-brand);
 }
 .ledger-heading, .calendar-heading { display: flex; align-items: center; gap: 8px; }
 .ledger-heading { justify-content: space-between; margin-bottom: 14px; }

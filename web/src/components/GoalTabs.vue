@@ -21,8 +21,9 @@ const isPlans = computed(() => route.name === 'plans')
   gap: 4px;
   margin-bottom: 14px;
   padding: 4px;
+  border: 1px solid var(--color-surface-border);
   border-radius: var(--radius-pill);
-  background: var(--color-border-subtle);
+  background: var(--color-bg-subtle);
 }
 
 .goal-tab {
@@ -39,8 +40,13 @@ const isPlans = computed(() => route.name === 'plans')
 
 .goal-tab.active {
   background: var(--color-bg-surface);
-  box-shadow: 0 2px 8px rgba(30, 27, 56, 0.08);
+  box-shadow: var(--shadow-card);
   color: var(--color-brand);
   font-weight: 600;
+}
+
+:global([data-color-scheme='dark']) .goal-tab.active {
+  background: var(--color-brand-soft);
+  color: var(--color-text-primary);
 }
 </style>
