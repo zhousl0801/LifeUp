@@ -479,7 +479,7 @@ onBeforeUnmount(() => {
   margin: calc(max(20px, env(safe-area-inset-top)) * -1) calc(var(--page-gutter) * -1) 14px;
   padding: calc(max(20px, env(safe-area-inset-top)) + 16px) var(--page-gutter) 20px;
   border-radius: 0 0 28px 28px;
-  background: linear-gradient(180deg, var(--color-hero-bg) 0%, var(--color-hero-bg-end) 100%);
+  background: linear-gradient(180deg, var(--color-hero-bg) 0%, var(--color-hero-bg) env(safe-area-inset-top), var(--color-hero-bg-end) 100%);
   box-shadow: var(--shadow-hero);
   color: var(--color-hero-text);
 }

@@ -672,11 +672,10 @@ function openEntry(entryId?: string): void {
 
 .ledger-page {
   --ledger-accent: #086ee4;
-  background: radial-gradient(ellipse at top left, #f0cfa95c, transparent 40%),
-    radial-gradient(ellipse at top right, #eeafba75, transparent 40%), var(--color-bg-page);
+  background: var(--color-bg-page);
 }
 :global([data-color-scheme='dark']) .ledger-page {
-  background: radial-gradient(ellipse at top right, #602f4d55, transparent 43%), var(--color-bg-page);
+  background: var(--color-bg-page);
   --ledger-accent: #2579d8;
 }
 .ledger-heading, .calendar-heading { display: flex; align-items: center; gap: 8px; }

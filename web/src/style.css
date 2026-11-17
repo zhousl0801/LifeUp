@@ -22,6 +22,37 @@ body {
   min-height: 100dvh;
 }
 
+/* iOS 26 起，WebKit 在顶部安全区找不到纯色不透明的 fixed/sticky 元素时，
+ * 会给状态栏及下方约 44px 区域叠加系统级渐进毛玻璃（topScrollPocket），导致页面标题被雾化。
+ * 用一条纯色不透明的 fixed 色条锚定顶部安全区，让 WebKit 采样纯色并关闭渐进模糊。 */
+.status-bar-scrim {
+  --scrim-base: var(--color-bg-page);
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 55;
+  height: env(safe-area-inset-top);
+  background-color: var(--scrim-base);
+  pointer-events: none;
+}
+
+body:has(.home-hero) .status-bar-scrim {
+  --scrim-base: var(--color-hero-bg);
+}
+
+body:has(.entry-screen) .status-bar-scrim {
+  --scrim-base: color-mix(in srgb, var(--color-bg-page) 78%, var(--color-bg-surface));
+}
+
+body:has(.sheet-backdrop) .status-bar-scrim {
+  background-color: color-mix(in srgb, #120f24 48%, var(--scrim-base));
+}
+
+:root[data-color-scheme='dark'] body:has(.sheet-backdrop) .status-bar-scrim {
+  background-color: color-mix(in srgb, #000000 62%, var(--scrim-base));
+}
+
 button,
 input,
 select,
@@ -599,7 +630,7 @@ summary:focus-visible {
 
 .loading-bar {
   position: fixed;
-  top: 0;
+  top: env(safe-area-inset-top);
   right: 0;
   left: 0;
   z-index: 9999;

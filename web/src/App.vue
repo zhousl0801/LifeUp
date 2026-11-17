@@ -6,6 +6,7 @@ import UpdateBanner from './components/UpdateBanner.vue'
 </script>
 
 <template>
+  <div class="status-bar-scrim" aria-hidden="true"></div>
   <LoadingBar />
   <PendingMutationNotice />
   <UpdateBanner />
