@@ -44,7 +44,7 @@ test('uses the complete daily total and the recorded subtotal on incomplete date
   expect(option.series[0]!.markPoint.data).toEqual([
     expect.objectContaining({ coord: ['2026-10-03', 1400], symbol: 'circle', symbolSize: 12 })
   ])
-  expect(trendTooltip(series.points[1]!, true)).toContain('¥1••••')
+  expect(trendTooltip(series.points[1]!, true)).toContain('¥••••')
   expect(option.series[0]!.markPoint.label.show).toBe(false)
   expect(trendTooltip(series.points[2]!)).toContain('已记录资产 ¥1,400.00')
   expect(trendTooltip(series.points[2]!)).not.toContain('新增')

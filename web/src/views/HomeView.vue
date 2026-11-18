@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { fetchAssetTrend, fetchDayChange, fetchMonthChange } from '../api/ledger'
+import { fetchFundOverview } from '../api/funds'
 import { refreshQuotes } from '../api/quotes'
 import { getApiErrorMessage } from '../api/client'
 import { toast } from '../composables/useMessage'
 import AppIcon from '../components/AppIcon.vue'
 import AppNav from '../components/AppNav.vue'
-import AnimatedMoney from '../components/AnimatedMoney.vue'
+import AmountVisibilityButton from '../components/AmountVisibilityButton.vue'
+import MoneyAmount from '../components/MoneyAmount.vue'
 import AssetDistribution from '../components/AssetDistribution.vue'
 import AssetTrendChart from '../components/AssetTrendChart.vue'
 import BottomSheet from '../components/BottomSheet.vue'
@@ -16,10 +18,10 @@ import LoadingState from '../components/LoadingState.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import { useHomePreferencesStore } from '../stores/homePreferences'
 import { useLedgerStore } from '../stores/ledger'
-import { amountTone, formatBusinessDate, formatMaskedMoney, formatMoney, formatSignedMoney, todayInBusinessTimeZone } from '../utils/format'
-import { useCountUp } from '../utils/countUp'
+import { addAmounts, amountTone, formatBusinessDate, formatMoney, formatSignedMoney, todayInBusinessTimeZone } from '../utils/format'
+import { latestFundDailyProfit } from '../utils/fundDailyProfit'
 import { buildAssetTrend, trendAmountLabel } from '../utils/trend'
-import type { MonthChange } from '../types/ledger'
+import type { DayInvestmentChange, MonthChange } from '../types/ledger'
 import type { AssetTrend, AssetTrendPoint, TrendRange } from '../types/trend'
 
 const rangeOptions: { value: TrendRange; label: string }[] = [
@@ -37,14 +39,22 @@ const trend = ref<AssetTrend | null>(null)
 const trendRange = ref<TrendRange>('week')
 const { amountsMasked } = storeToRefs(useHomePreferencesStore())
 const trendSelection = ref<AssetTrendPoint | null>(null)
-const trendLoading = ref(false)
+const pendingTrendRange = ref<TrendRange | null>(null)
+const trendLoading = computed(() => pendingTrendRange.value !== null)
+const pendingTrendLabel = computed(() => rangeOptions.find(option => option.value === pendingTrendRange.value)?.label)
 const trendError = ref('')
+let trendSequence = 0
 const dayChange = ref<MonthChange | null>(null)
 const monthChange = ref<MonthChange | null>(null)
 const changeScope = ref<'day' | 'month'>('day')
 const dayChangeError = ref('')
 const monthChangeError = ref('')
 const changeSheetOpen = ref(false)
+const fundDisclosure = shallowRef<
+  | { status: 'idle' | 'loading' | 'error' }
+  | { status: 'ready'; profit: ReturnType<typeof latestFundDailyProfit> }
+>({ status: 'idle' })
+let fundDisclosureSequence = 0
 const quoteRefreshing = ref(false)
 const quoteError = ref('')
 
@@ -73,9 +83,8 @@ const daysRecorded = computed(() => {
 const trendReady = computed(() => daysRecorded.value >= 7)
 const trendProgress = computed(() => Math.min(100, Math.round(daysRecorded.value / 7 * 100)))
 const updateDate = computed(() => trend.value?.to ?? today)
-const animatedTotal = useCountUp(computed(() => overview.value?.totalAssets ?? null))
 const totalAmountParts = computed(() => {
-  const [integer, fraction = '00'] = formatMoney(animatedTotal.value ?? 0).split('.')
+  const [integer, fraction = '00'] = formatMoney(overview.value?.totalAssets ?? 0).split('.')
   return { integer: integer ?? '0', fraction }
 })
 const assetTrendSeries = computed(() => trend.value ? buildAssetTrend(trend.value) : null)
@@ -95,14 +104,55 @@ const activeChangeError = computed(() =>
   changeScope.value === 'day' ? dayChangeError.value : monthChangeError.value)
 const changeSheetTitle = computed(() => changeScope.value === 'day' ? '当日变化构成' : '本月变化构成')
 const addedRecords = computed(() => activeChange.value?.addedRecords ?? 0)
+const priorFundDisclosure = computed(() => {
+  const state = fundDisclosure.value
+  if (changeScope.value !== 'day' || state.status !== 'ready') return null
+
+  const date = state.profit.latestDate
+  return date && date < (dayChange.value?.to ?? today) ? { ...state.profit, date } : null
+})
+const waitingForFundProfit = computed(() =>
+  changeScope.value === 'day' && overview.value?.fund.isConfigured
+  && (quoteRefreshing.value || fundDisclosure.value.status === 'idle' || fundDisclosure.value.status === 'loading'))
+const displayedChange = computed(() => {
+  const change = activeChange.value
+  if (!change?.hasComparableData || change.comparableChange === null || waitingForFundProfit.value) return null
+
+  return addAmounts(change.comparableChange, priorFundDisclosure.value?.value ?? 0)
+})
+const changeContextDate = computed(() => displayedChange.value !== null ? priorFundDisclosure.value?.date : undefined)
+const fundDisclosureError = computed(() => changeScope.value === 'day' && fundDisclosure.value.status === 'error')
+const dayDetailGroups = computed(() => {
+  const detail = dayChange.value?.dayBreakdown
+  if (!detail || changeScope.value !== 'day') return []
+
+  const rows: { label: string; amount: number | null; calculation?: DayInvestmentChange | null }[] = [
+    { label: '现金收入', amount: detail.cashIncome },
+    { label: '现金支出', amount: -detail.cashExpense },
+    { label: '公积金缴存', amount: detail.providentDeposit },
+    { label: '基金盈亏', amount: detail.fund?.profit ?? null, calculation: detail.fund },
+    { label: '股票盈亏', amount: detail.stock?.profit ?? null, calculation: detail.stock },
+    { label: '贵金属盈亏', amount: detail.gold?.profit ?? null, calculation: detail.gold }
+  ]
+  if (detail.cashAdjustment) rows.push({ label: '现金核对差额', amount: detail.cashAdjustment })
+  if (detail.holdingAdjustment) rows.push({ label: '持仓核对差额', amount: detail.holdingAdjustment })
+  if (detail.otherDifference) rows.push({ label: '其他余额差额', amount: detail.otherDifference })
+
+  if (amountsMasked.value) return [{ label: '', rows }]
+  return [
+    { label: '资产增加', rows: rows.filter(row => row.amount !== null && row.amount > 0) },
+    { label: '资产减少', rows: rows.filter(row => row.amount !== null && row.amount < 0) },
+    { label: '持平或暂无数据', rows: rows.filter(row => row.amount === 0 || row.amount === null) }
+  ].filter(group => group.rows.length > 0)
+})
 const changePercent = computed(() => {
   const change = activeChange.value
 
-  if (!change?.hasComparableData || change.comparableChange === null || !change.comparableBase) {
+  if (displayedChange.value === null || !change?.comparableBase) {
     return null
   }
 
-  return change.comparableChange / change.comparableBase * 100
+  return displayedChange.value / change.comparableBase * 100
 })
 
 function daysBetween(from: string, to: string): number {
@@ -130,8 +180,37 @@ function selectPoint(point: AssetTrendPoint): void {
   trendSelection.value = point
 }
 
+function openChangeSheet(): void {
+  changeSheetOpen.value = true
+  if (fundDisclosureError.value) void loadFundDisclosure()
+}
+
+async function loadFundDisclosure(): Promise<void> {
+  const sequence = ++fundDisclosureSequence
+  if (!overview.value?.fund.isConfigured) {
+    fundDisclosure.value = { status: 'idle' }
+    return
+  }
+
+  fundDisclosure.value = { status: 'loading' }
+  try {
+    const fundOverview = await fetchFundOverview()
+    if (sequence === fundDisclosureSequence) {
+      fundDisclosure.value = { status: 'ready', profit: latestFundDailyProfit(fundOverview.funds, today) }
+    }
+  } catch {
+    if (sequence === fundDisclosureSequence) fundDisclosure.value = { status: 'error' }
+  }
+}
+
+async function loadOverview() {
+  const status = await ledgerStore.load()
+  if (status === 'ready') await loadFundDisclosure()
+  return status
+}
+
 async function loadLedger(): Promise<void> {
-  const statusPromise = ledgerStore.load()
+  const statusPromise = loadOverview()
   const detailPromise = Promise.all([loadTrend(trendRange.value), loadChanges()])
   const status = await statusPromise
 
@@ -146,19 +225,25 @@ async function loadLedger(): Promise<void> {
 }
 
 async function loadTrend(range: TrendRange): Promise<void> {
-  trendRange.value = range
-  trendSelection.value = null
-  trendLoading.value = true
+  const sequence = ++trendSequence
+  pendingTrendRange.value = range
   trendError.value = ''
 
   try {
-    trend.value = await fetchAssetTrend(range)
-  } catch {
-    trend.value = null
-    trendError.value = '趋势暂时无法读取，请稍后重试。'
-  } finally {
+    const result = await fetchAssetTrend(range)
+    if (sequence !== trendSequence) return
+
+    trendRange.value = range
+    trend.value = result
     trendSelection.value = null
-    trendLoading.value = false
+  } catch {
+    if (sequence === trendSequence) {
+      trendError.value = '趋势暂时无法读取，请稍后重试。'
+    }
+  } finally {
+    if (sequence === trendSequence) {
+      pendingTrendRange.value = null
+    }
   }
 }
 
@@ -201,7 +286,9 @@ async function syncQuotes(): Promise<void> {
     const failed = run.fundFailed + run.goldFailed + run.stockFailed
     const succeeded = run.fundSucceeded + run.goldSucceeded + run.stockSucceeded
 
-    const [status] = await Promise.all([ledgerStore.load(), loadTrend(trendRange.value), loadChanges()])
+    const [status] = await Promise.all([
+      loadOverview(), loadTrend(pendingTrendRange.value ?? trendRange.value), loadChanges()
+    ])
     if (status !== 'ready' || trendError.value || dayChangeError.value || monthChangeError.value) {
       quoteError.value = failed > 0
         ? `行情刷新失败 ${failed} 项，且页面数据未能完整重新加载。`
@@ -232,6 +319,8 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  trendSequence++
+  fundDisclosureSequence++
   const statusBar = document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-status-bar-style"]')
 
   if (statusBar) {
@@ -284,18 +373,11 @@ onBeforeUnmount(() => {
           <p class="hero-label">
             {{ overview.coverageComplete ? '总资产' : '已记录资产' }}
             <span class="tag">{{ overview.currency }}</span>
-            <button
-              type="button"
-              class="hero-visibility"
-              :aria-label="amountsMasked ? '显示资产金额' : '隐藏资产金额'"
-              @click="amountsMasked = !amountsMasked"
-            >
-              <AppIcon :name="amountsMasked ? 'eye-off' : 'eye'" />
-            </button>
+            <AmountVisibilityButton />
           </p>
           <h2 class="hero-value">
             <template v-if="amountsMasked">
-              <span class="currency">¥</span>{{ formatMaskedMoney(overview.totalAssets ?? 0).replace('¥', '') }}
+              <span class="currency">¥</span>••••
             </template>
             <template v-else>
               <span class="currency">¥</span>{{ totalAmountParts.integer }}<span class="fraction">.{{ totalAmountParts.fraction }}</span>
@@ -304,18 +386,19 @@ onBeforeUnmount(() => {
 
           <div class="hero-change-row">
             <button
-              v-if="activeChange?.hasComparableData"
+              v-if="displayedChange !== null"
               type="button"
               class="hero-change"
               :aria-expanded="changeSheetOpen"
-              @click="changeSheetOpen = true"
+              :aria-describedby="changeContextDate || fundDisclosureError ? 'hero-change-context' : undefined"
+              @click="openChangeSheet"
             >
-              <span class="change-arrow" aria-hidden="true" :class="amountTone(activeChange.comparableChange)">{{ (activeChange.comparableChange ?? 0) > 0 ? '▲' : (activeChange.comparableChange ?? 0) < 0 ? '▼' : '—' }}</span>
-              <b :class="amountTone(activeChange.comparableChange)">
-                {{ amountsMasked ? '••••' : formatSignedMoney(activeChange.comparableChange ?? 0) }}
+              <span v-if="!amountsMasked" class="change-arrow" aria-hidden="true" :class="amountTone(displayedChange)">{{ displayedChange > 0 ? '▲' : displayedChange < 0 ? '▼' : '—' }}</span>
+              <b :class="amountsMasked ? '' : amountTone(displayedChange)">
+                {{ amountsMasked ? '••••' : formatSignedMoney(displayedChange) }}
               </b>
-              <span v-if="changePercent !== null" class="change-percent" :class="amountTone(changePercent)">
-                {{ amountsMasked ? '••••' : percentLabel(changePercent) }}
+              <span v-if="changePercent !== null && !amountsMasked" class="change-percent" :class="amountTone(changePercent)">
+                {{ percentLabel(changePercent) }}
               </span>
               <span class="info-mark">ⓘ</span>
             </button>
@@ -324,10 +407,11 @@ onBeforeUnmount(() => {
               type="button"
               class="hero-change muted"
               :aria-expanded="changeSheetOpen"
-              @click="changeSheetOpen = true"
+              :aria-busy="waitingForFundProfit || undefined"
+              @click="openChangeSheet"
             >
               <span>{{ changeScope === 'day' ? '当日变化' : '本月变化' }}</span>
-              <b>暂无可比数据</b>
+              <b>{{ waitingForFundProfit ? '正在读取基金收益' : '暂无可比数据' }}</b>
               <span class="info-mark">ⓘ</span>
             </button>
             <div class="change-scope" role="group" aria-label="资产变化范围">
@@ -345,20 +429,28 @@ onBeforeUnmount(() => {
               >本月</button>
             </div>
           </div>
+          <p v-if="changeContextDate" id="hero-change-context" class="hero-change-context">
+            含 <time :datetime="changeContextDate">{{ formatBusinessDate(changeContextDate) }}</time>净值收益
+          </p>
+          <p v-else-if="fundDisclosureError && displayedChange !== null" id="hero-change-context" class="hero-change-context">
+            最近已披露基金收益暂时无法读取
+          </p>
         </div>
 
-        <section class="trend-panel">
+        <section class="trend-panel" :aria-busy="trendLoading">
           <h2 class="sr-only">资产趋势</h2>
 
           <template v-if="trendReady">
-            <div class="chart-readout">
+            <div v-if="trendLoading && trend" class="chart-readout" role="status">
+              正在读取{{ pendingTrendLabel }}趋势
+            </div>
+            <div v-else-if="trend" class="chart-readout">
               <span>{{ selectedPoint ? formatBusinessDate(selectedPoint.date) : '按日重算' }}</span>
               <b :class="{ faint: !selectedPoint || selectedPoint.value === null }">
                 {{ selectedPoint?.value != null && selectedPoint.source.totalAssets === null ? '已记录资产 ' : '' }}{{ trendAmountLabel(selectedPoint, amountsMasked) }}
               </b>
             </div>
             <LoadingState v-if="trendLoading && !trend" variant="chart" compact label="正在读取趋势" />
-            <p v-else-if="trendError" class="hero-hint">{{ trendError }}</p>
             <AssetTrendChart
               v-else-if="trend && assetTrendSeries"
               :trend="trend"
@@ -366,7 +458,8 @@ onBeforeUnmount(() => {
               :amounts-masked="amountsMasked"
               @select="selectPoint"
             />
-            <p v-else class="hero-hint">还没有可展示的趋势数据。</p>
+            <p v-else-if="!trendError" class="hero-hint">还没有可展示的趋势数据。</p>
+            <p v-if="trendError" class="hero-hint" role="status">{{ trendError }}</p>
           </template>
 
           <div v-else class="trend-wait">
@@ -377,14 +470,14 @@ onBeforeUnmount(() => {
             <small>已记录 {{ Math.min(daysRecorded, 7) }}/7 天</small>
           </div>
 
-          <div class="hero-range" role="tablist" aria-label="趋势范围">
+          <div class="hero-range" role="group" aria-label="趋势范围">
             <button
               v-for="option in rangeOptions"
               :key="option.value"
               type="button"
               class="range-button"
               :class="{ active: trendRange === option.value }"
-              :disabled="trendLoading"
+              :aria-pressed="trendRange === option.value"
               @click="loadTrend(option.value)"
             >
               {{ option.label }}
@@ -401,20 +494,22 @@ onBeforeUnmount(() => {
         <div class="month-flow-values">
           <div>
             <span class="metric-label"><i class="metric-dot income" />本月收入</span>
-            <b class="metric-value"><AnimatedMoney :value="overview.month.income" /></b>
+            <b class="metric-value"><MoneyAmount :value="overview.month.income" :masked="amountsMasked" /></b>
           </div>
           <div>
             <span class="metric-label"><i class="metric-dot expense" />本月支出</span>
-            <b class="metric-value"><AnimatedMoney :value="overview.month.expense" /></b>
+            <b class="metric-value"><MoneyAmount :value="overview.month.expense" :masked="amountsMasked" /></b>
           </div>
         </div>
-        <div class="month-flow-track" :data-dominant="monthFlow.dominant" aria-hidden="true">
-          <span class="month-flow-segment income" :style="{ width: monthFlow.incomeWidth }" />
-          <span class="month-flow-segment expense" :style="{ width: monthFlow.expenseWidth }" />
+        <div class="month-flow-track" :data-dominant="amountsMasked ? undefined : monthFlow.dominant" aria-hidden="true">
+          <template v-if="!amountsMasked">
+            <span class="month-flow-segment income" :style="{ width: monthFlow.incomeWidth }" />
+            <span class="month-flow-segment expense" :style="{ width: monthFlow.expenseWidth }" />
+          </template>
         </div>
         <p class="month-surplus">
           <span>本月结余</span>
-          <b><AnimatedMoney :value="overview.month.surplus" signed /></b>
+          <b><MoneyAmount :value="overview.month.surplus" :masked="amountsMasked" signed /></b>
         </p>
         <p v-if="!overview.month.hasRecords" class="month-empty">
           本月还没有收支记录。<RouterLink class="text-btn" :to="{ name: 'entry' }">去记一笔 ›</RouterLink>
@@ -437,31 +532,82 @@ onBeforeUnmount(() => {
     <BottomSheet :open="changeSheetOpen" :title="changeSheetTitle" @close="changeSheetOpen = false">
       <div v-if="activeChange" class="breakdown">
         <template v-if="activeChange.hasComparableData">
-          <div class="breakdown-row">
-            <span>市值变动</span>
-            <b :class="amountTone(activeChange.marketValueChange)">{{ amountsMasked ? '••••' : formatSignedMoney(activeChange.marketValueChange ?? 0) }}</b>
-          </div>
-          <div class="breakdown-row">
-            <span>净存入·转账</span>
-            <b :class="amountTone(activeChange.netDeposit)">{{ amountsMasked ? '••••' : formatSignedMoney(activeChange.netDeposit ?? 0) }}</b>
-          </div>
-          <div class="breakdown-total">
-            <span>{{ changeScope === 'day' ? '当日变化' : '本月变化' }}</span>
-            <b :class="amountTone(activeChange.comparableChange)">{{ amountsMasked ? '••••' : formatSignedMoney(activeChange.comparableChange ?? 0) }}</b>
-          </div>
+          <template v-if="dayDetailGroups.length">
+            <section v-for="group in dayDetailGroups" :key="group.label" class="breakdown-group">
+              <h3 v-if="group.label">{{ group.label }}</h3>
+              <component
+                :is="row.calculation && !amountsMasked ? 'details' : 'div'"
+                v-for="row in group.rows"
+                :key="row.label"
+                class="breakdown-item"
+              >
+                <component :is="row.calculation && !amountsMasked ? 'summary' : 'div'" class="breakdown-row">
+                  <span>{{ row.label }}</span>
+                  <b :class="amountsMasked ? '' : amountTone(row.amount)">{{ amountsMasked ? '••••' : formatSignedMoney(row.amount) }}</b>
+                </component>
+                <dl v-if="row.calculation && !amountsMasked" class="calculation-details">
+                  <div><dt>今日估值</dt><dd>{{ formatMoney(row.calculation.currentValue) }}</dd></div>
+                  <div><dt>扣除昨日估值</dt><dd>{{ formatSignedMoney(-row.calculation.previousValue) }}</dd></div>
+                  <div><dt>对应现金变动</dt><dd>{{ formatSignedMoney(row.calculation.cashTransfer) }}</dd></div>
+                  <div v-if="row.calculation.openingValue">
+                    <dt>扣除新增录入</dt><dd>{{ formatSignedMoney(-row.calculation.openingValue) }}</dd>
+                  </div>
+                  <div v-if="row.calculation.adjustment">
+                    <dt>扣除持仓核对</dt><dd>{{ formatSignedMoney(-row.calculation.adjustment) }}</dd>
+                  </div>
+                </dl>
+              </component>
+            </section>
+          </template>
+          <template v-else>
+            <div class="breakdown-row">
+              <span>市值变动</span>
+              <b :class="amountsMasked ? '' : amountTone(activeChange.marketValueChange)">{{ amountsMasked ? '••••' : formatSignedMoney(activeChange.marketValueChange) }}</b>
+            </div>
+            <div class="breakdown-row">
+              <span>净存入·转账</span>
+              <b :class="amountsMasked ? '' : amountTone(activeChange.netDeposit)">{{ amountsMasked ? '••••' : formatSignedMoney(activeChange.netDeposit) }}</b>
+            </div>
+          </template>
         </template>
         <p v-else class="hint">
           {{ changeScope === 'day'
-            ? '账本从今天开始，暂无可比基线。记录满一天后即可看到当日变化。'
+            ? (overview?.startDate === today
+              ? '账本从今天开始，暂无可比基线。记录满一天后即可看到当日变化。'
+              : '昨日或今日的资产余额、行情依据不足，暂时无法计算当日变化。')
             : '账本起始日晚于本月月初，暂无可比基线。记录满一个完整月份后即可看到同口径变化。' }}
         </p>
         <div v-if="addedRecords > 0" class="breakdown-row new-record">
           <span>新增记录（不计入变化）</span>
           <b>{{ amountsMasked ? '••••' : formatSignedMoney(addedRecords) }}</b>
         </div>
+        <section v-if="priorFundDisclosure" class="fund-disclosure">
+          <div class="breakdown-row">
+            <span>最近已披露基金收益</span>
+            <b :class="amountsMasked ? '' : amountTone(priorFundDisclosure.value)">
+              {{ amountsMasked ? '••••' : formatSignedMoney(priorFundDisclosure.value) }}
+            </b>
+          </div>
+          <p class="sheet-note">
+            <time :datetime="priorFundDisclosure.date">{{ formatBusinessDate(priorFundDisclosure.date) }}</time>净值
+            <template v-if="!priorFundDisclosure.complete"> · {{ priorFundDisclosure.covered }}/{{ priorFundDisclosure.total }} 只已披露</template>
+            <template v-if="displayedChange !== null"> · 计入总览合计</template>
+          </p>
+        </section>
+        <p v-else-if="changeScope === 'day' && fundDisclosure.status === 'loading'" class="sheet-note" role="status">
+          正在读取最近已披露基金收益…
+        </p>
+        <p v-else-if="changeScope === 'day' && fundDisclosure.status === 'error'" class="sheet-note" role="status">
+          最近已披露基金收益暂时无法读取。
+        </p>
+        <div v-if="displayedChange !== null" class="breakdown-total">
+          <span>{{ changeScope === 'day' ? '当日变化合计' : '本月变化' }}</span>
+          <b :class="amountsMasked ? '' : amountTone(displayedChange)">{{ amountsMasked ? '••••' : formatSignedMoney(displayedChange) }}</b>
+        </div>
+        <p v-if="changeContextDate && changePercent !== null" class="sheet-note">变化比例以昨日可比资产为基数。</p>
         <p class="sheet-note">
           {{ changeScope === 'day'
-            ? '只比较昨天和今天都已记录的类别；现金和公积金只叫余额变化，基金和贵金属的市值变化才叫收益。'
+            ? '对比今日与昨日估值。买卖和到账在现金与投资之间划转，公积金提取在公积金与现金之间划转。现金收支只统计实际影响余额的记账。'
             : '只比较月初和今天都已记录的类别；现金和公积金只叫余额变化，基金和贵金属的市值变化才叫收益。' }}
         </p>
       </div>
@@ -604,25 +750,6 @@ onBeforeUnmount(() => {
   font-weight: 500;
 }
 
-.hero-visibility {
-  display: grid;
-  place-items: center;
-  width: var(--touch-target);
-  height: var(--touch-target);
-  margin-block: -8px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--color-hero-text-secondary);
-  cursor: pointer;
-}
-
-.hero-visibility .app-icon {
-  width: 18px;
-  height: 18px;
-}
-
 .tag {
   padding: 2px 7px;
   border-radius: var(--radius-pill);
@@ -691,6 +818,12 @@ onBeforeUnmount(() => {
 .hero-change.muted b {
   color: var(--color-hero-text-secondary);
   font-weight: 500;
+}
+
+.hero-change-context {
+  margin: var(--space-2) 0 0;
+  color: var(--color-hero-text-secondary);
+  font-size: var(--text-caption);
 }
 
 .change-arrow {
@@ -857,10 +990,6 @@ onBeforeUnmount(() => {
   font-weight: 700;
 }
 
-.range-button:disabled {
-  opacity: 0.6;
-}
-
 .month-flow {
   margin-bottom: 18px;
   padding: var(--card-padding);
@@ -1007,6 +1136,49 @@ onBeforeUnmount(() => {
 .breakdown {
   display: grid;
   gap: 10px;
+}
+
+.breakdown-group {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.breakdown-group h3 {
+  margin: var(--space-2) 0 var(--space-1);
+  color: var(--color-text-secondary);
+  font-size: var(--text-footnote);
+}
+
+.breakdown-item summary {
+  cursor: pointer;
+}
+
+.breakdown-item summary span::after {
+  margin-inline-start: var(--space-1);
+  color: var(--color-text-secondary);
+  content: '⌄';
+}
+
+.breakdown-item[open] summary span::after {
+  content: '⌃';
+}
+
+.calculation-details {
+  margin: 0 var(--space-2) var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+}
+
+.calculation-details div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-block: var(--space-1);
+}
+
+.calculation-details dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 .breakdown-row,

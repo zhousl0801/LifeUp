@@ -1,4 +1,4 @@
-import { formatMoney, formatMaskedMoney } from './format'
+import { formatMoney, MaskedMoney } from './format'
 import { chartFontSize, chartTheme, type ChartThemeVariant } from './chartTheme'
 import type { AssetTrend, AssetTrendPoint, TrendRange } from '../types/trend'
 
@@ -32,7 +32,7 @@ export function buildAssetTrend(trend: AssetTrend) {
 export function trendAmountLabel(point: DailyAssetPoint | null | undefined, amountsMasked = false): string {
   if (point?.value == null) return '依据不足'
 
-  if (amountsMasked) return formatMaskedMoney(point.value)
+  if (amountsMasked) return MaskedMoney
   return `¥${formatMoney(point.value)}`
 }
 

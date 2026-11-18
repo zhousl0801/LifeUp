@@ -21,7 +21,7 @@ import { ApiError, getApiErrorMessage } from '../api/client'
 import { toast } from '../composables/useMessage'
 import AppIcon from '../components/AppIcon.vue'
 import AppNav from '../components/AppNav.vue'
-import AnimatedMoney from '../components/AnimatedMoney.vue'
+import MoneyAmount from '../components/MoneyAmount.vue'
 import BackButton from '../components/BackButton.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import BottomSheet from '../components/BottomSheet.vue'
@@ -1186,7 +1186,7 @@ function goBack(): void {
                       <strong>{{ fund.name }}</strong>
                       <small>{{ fundMetaLine(fund.single) }}</small>
                     </div>
-                    <span class="plan-amount"><AnimatedMoney :value="fund.single.amount" /></span>
+                    <span class="plan-amount"><MoneyAmount :value="fund.single.amount" /></span>
                   </header>
                   <p class="plan-meta">
                     开始 {{ formatBusinessDate(fund.single.startDate) }}
@@ -1232,7 +1232,7 @@ function goBack(): void {
                   </span>
                   <small>{{ typeLabel(plan.type) }} · {{ scheduleText(plan) }}</small>
                 </div>
-                <span class="plan-amount"><AnimatedMoney :value="plan.amount" /></span>
+                <span class="plan-amount"><MoneyAmount :value="plan.amount" /></span>
               </header>
               <p class="plan-meta">
                 开始 {{ formatBusinessDate(plan.startDate) }}

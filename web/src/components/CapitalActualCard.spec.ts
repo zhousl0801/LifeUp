@@ -39,6 +39,6 @@ test('shows a dash and the note when the month is not comparable', () => {
 test('masks amounts when requested', () => {
   const view = mount(CapitalActualCard, { props: { actual, amountsMasked: true } })
 
-  expect(view.text()).toContain('¥3••••')
+  expect(view.text()).toContain('¥••••')
   expect(view.text()).not.toContain('3,200.00')
 })

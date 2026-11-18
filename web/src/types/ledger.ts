@@ -58,6 +58,28 @@ export interface MonthChange {
   marketValueChange: number | null
   netDeposit: number | null
   hasComparableData: boolean
+  dayBreakdown?: DayChangeBreakdown | null
+}
+
+export interface DayChangeBreakdown {
+  cashIncome: number
+  cashExpense: number
+  providentDeposit: number
+  fund: DayInvestmentChange | null
+  stock: DayInvestmentChange | null
+  gold: DayInvestmentChange | null
+  cashAdjustment: number
+  holdingAdjustment: number
+  otherDifference: number
+}
+
+export interface DayInvestmentChange {
+  profit: number
+  previousValue: number
+  currentValue: number
+  cashTransfer: number
+  openingValue: number
+  adjustment: number
 }
 
 export interface UpdateAssetCoverageInput {

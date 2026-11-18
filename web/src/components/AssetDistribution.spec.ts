@@ -40,8 +40,7 @@ test('shows every asset card and keeps each balance, fill and link tied to its a
   const view = mount(AssetDistribution, {
     props: {
       overview: { ...overview, stock: { ...overview.stock, notHeld: true } },
-      cards: true,
-      amountsMasked: true
+      cards: true
     },
     global: { stubs }
   })
@@ -51,12 +50,14 @@ test('shows every asset card and keeps each balance, fill and link tied to its a
     '现金资产', '基金资产', '股票资产', '公积金资产', '贵金属资产'
   ])
   const cash = view.get('[aria-label="现金资产"]')
-  expect(cash.get('.card-balance').text()).toBe('¥2••••')
+  expect(cash.get('.card-balance').text()).toBe('¥2,000.00')
   expect(cash.text()).toContain('57.1%')
   expect(cash.get('a').attributes('href')).toBe('/cash')
+  expect(cash.get('a').text()).toBe('详情')
   const fund = view.get('[aria-label="基金资产"]')
   expect(fund.get('.card-balance').text()).toBe('暂未录入')
   expect(fund.get('a').attributes('href')).toBe('/funds')
+  expect(fund.get('a').text()).toBe('录入')
   const stock = view.get('[aria-label="股票资产"]')
   expect(stock.get('.card-balance').text()).toBe('不持有')
   expect(stock.find('a').exists()).toBe(false)
@@ -139,4 +140,24 @@ test('hideFundCount removes the fund count but keeps pending amounts', () => {
   expect(fundRow.text()).toContain('待确认 1,800.00')
   expect(fundRow.text()).not.toContain('持有 24 只基金')
   withoutCount.unmount()
+})
+
+
+test('the asset list conceals balances, proportions and notes containing monetary values', () => {
+  const view = mount(AssetDistribution, {
+    props: {
+      overview: {
+        ...overview,
+        month: { income: 500, expense: 125, surplus: 375, hasRecords: true },
+        gold: { ...overview.gold, note: '持有 1 克 · 待到账 499.00' }
+      },
+      changes: [{ assetType: 'cash', change: -123, isNew: false }],
+      amountsMasked: true
+    },
+    global: { stubs }
+  })
+  expect(view.get('.asset-amount').text()).toBe('¥••••')
+  expect(view.text()).not.toMatch(/375\.00|499\.00|123\.00|57\.1%/)
+  expect(view.find('.ratio-segment').exists()).toBe(false)
+  view.unmount()
 })

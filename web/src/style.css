@@ -825,7 +825,7 @@ summary:focus-visible {
   animation-delay: calc(var(--stagger, 0) * 45ms);
 }
 
-.animated-money {
+.money-amount {
   font-variant-numeric: tabular-nums;
 }
 

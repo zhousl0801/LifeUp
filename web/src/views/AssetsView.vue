@@ -6,17 +6,19 @@ import { fetchMonthChange, updateAssetCoverage } from '../api/ledger'
 import { getApiErrorMessage } from '../api/client'
 import { toast } from '../composables/useMessage'
 import AppNav from '../components/AppNav.vue'
-import AnimatedMoney from '../components/AnimatedMoney.vue'
+import MoneyAmount from '../components/MoneyAmount.vue'
 import AssetDistribution from '../components/AssetDistribution.vue'
 import BackButton from '../components/BackButton.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import LoadingState from '../components/LoadingState.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import { useLedgerStore } from '../stores/ledger'
+import { useHomePreferencesStore } from '../stores/homePreferences'
 import type { AssetKey, LedgerOverview, MonthChange } from '../types/ledger'
 
 const router = useRouter()
 const ledgerStore = useLedgerStore()
+const privacy = useHomePreferencesStore()
 const overview = ref<LedgerOverview | null>(null)
 const monthChange = ref<MonthChange | null>(null)
 const isLoading = ref(false)
@@ -179,7 +181,7 @@ function goHome(): void {
           {{ overview.coverageComplete ? '总资产' : '已记录资产' }}
           <span class="tag">{{ overview.currency }}</span>
         </p>
-        <h1 class="hero-value"><span class="currency">¥</span><AnimatedMoney :value="overview.totalAssets" prefix="" /></h1>
+        <h1 class="hero-value"><span class="currency">¥</span><MoneyAmount :value="overview.totalAssets" :masked="privacy.amountsMasked" prefix="" /></h1>
       </section>
 
       <p v-if="errorMessage" class="form-error" role="alert">{{ errorMessage }}</p>
@@ -196,6 +198,7 @@ function goHome(): void {
         :overview="overview"
         :changes="monthChange?.assetChanges"
         :comparable="monthChange?.hasComparableData ?? false"
+        :amounts-masked="privacy.amountsMasked"
         editable
         :busy-key="coverageBusyKey"
         @toggle-not-held="toggleNotHeld"
@@ -212,7 +215,7 @@ function goHome(): void {
         <div v-for="row in maintenanceRows" :key="row.key" class="maintenance-row">
           <div class="maintenance-copy">
             <strong>{{ row.label }}</strong>
-            <small>{{ row.note }}</small>
+              <small v-if="!privacy.amountsMasked">{{ row.note }}</small>
           </div>
           <button
             v-if="row.notHeld"

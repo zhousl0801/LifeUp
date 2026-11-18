@@ -2,7 +2,7 @@
 import { navigateBack } from '../utils/navigation'
 import BackButton from '../components/BackButton.vue'
 import LoadingButton from '../components/LoadingButton.vue'
-import AnimatedMoney from '../components/AnimatedMoney.vue'
+import MoneyAmount from '../components/MoneyAmount.vue'
 import LoadingState from '../components/LoadingState.vue'
 import CashAdjustmentLink from '../components/CashAdjustmentLink.vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
@@ -377,7 +377,7 @@ function goBack(): void {
           公积金余额
           <span class="hero-tag">个人＋单位</span>
         </p>
-        <h2 class="hero-balance"><span>¥</span><AnimatedMoney :value="overview.balance" prefix="" /></h2>
+        <h2 class="hero-balance"><span>¥</span><MoneyAmount :value="overview.balance" prefix="" /></h2>
         <p class="hero-meta">截至 {{ formatBusinessDate(overview.asOfDate) }}</p>
         <div class="hero-metrics">
           <div>

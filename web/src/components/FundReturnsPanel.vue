@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { fetchFundReturnDay, fetchFundReturns } from '../api/funds'
 import { getApiErrorMessage } from '../api/client'
 import BottomSheet from './BottomSheet.vue'
-import AnimatedMoney from './AnimatedMoney.vue'
+import MoneyAmount from './MoneyAmount.vue'
 import FundReturnChart from './FundReturnChart.vue'
 import LoadingState from './LoadingState.vue'
 import LoadingButton from './LoadingButton.vue'
@@ -215,7 +215,7 @@ function rowTitle(shareClass: string | null, platform: string | null): string {
         <div>
           <span>区间盈亏</span>
           <b :class="amountTone(data.intervalProfit)">
-            <AnimatedMoney v-if="data.intervalProfit !== null" :value="data.intervalProfit" signed />
+            <MoneyAmount v-if="data.intervalProfit !== null" :value="data.intervalProfit" signed />
             <template v-else>—</template>
           </b>
           <small>自 {{ formatBusinessDate(data.intervalFrom) }} 起，含在途</small>
@@ -223,7 +223,7 @@ function rowTitle(shareClass: string | null, platform: string | null): string {
         <div>
           <span>持有收益</span>
           <b :class="amountTone(data.holdingProfit)">
-            <AnimatedMoney v-if="data.holdingProfit !== null" :value="data.holdingProfit" signed />
+            <MoneyAmount v-if="data.holdingProfit !== null" :value="data.holdingProfit" signed />
             <template v-else>—</template>
           </b>
           <small>当前已确认持仓估值 − 成本</small>

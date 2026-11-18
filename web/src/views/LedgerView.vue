@@ -8,7 +8,7 @@ import { toast } from '../composables/useMessage'
 import AppNav from '../components/AppNav.vue'
 import AppIcon from '../components/AppIcon.vue'
 import CategoryIcon from '../components/CategoryIcon.vue'
-import AnimatedMoney from '../components/AnimatedMoney.vue'
+import MoneyAmount from '../components/MoneyAmount.vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
 import LoadingButton from '../components/LoadingButton.vue'
@@ -32,6 +32,7 @@ interface LedgerContext {
   category: string
   search: string
   statsKind: EntryKind
+  statsByGroup: boolean
   page: number
   scrollTop: number
   visibleRow?: { id: string; top: number }
@@ -58,7 +59,7 @@ const selectedDate = ref(savedContext?.selectedDate ?? anchor.value)
 const displayExpense = computed(() =>
   period.value === 'month' || view.value !== 'list' ? stats.value?.expense ?? null : summary.value?.expense ?? null)
 const statsKind = ref<EntryKind>(savedContext?.statsKind ?? 'expense')
-const statsByGroup = ref(false)
+const statsByGroup = ref(savedContext?.statsByGroup ?? false)
 const stats = ref<EntryStats | null>(null)
 const statsLoading = ref(false)
 const statsError = ref('')
@@ -66,7 +67,6 @@ const kindFilter = ref<'all' | EntryKind>(savedContext?.kind ?? 'all')
 const categoryFilter = ref(savedContext?.category ?? '')
 const search = ref(savedContext?.search ?? '')
 const pageElement = ref<HTMLElement | null>(null)
-const noticeEntry = ref<LedgerEntry | null>(null)
 const highlightedEntry = ref('')
 let focusEntry = !savedContext && typeof route.query.focus === 'string' ? route.query.focus : ''
 let restorePosition = savedContext
@@ -154,29 +154,23 @@ const groupedEntries = computed(() => {
 
 if (ledgerChange) {
   const { action, entry } = ledgerChange
-  const matchesMonth = periodStart(entry.businessDate, period.value) === periodStart(anchor.value, period.value)
-  const matchesPeriod = matchesMonth && (view.value !== 'calendar' || selectedDate.value === entry.businessDate)
-  const matchesFilter = matchesFilters(entry)
-
-  if (action === 'create') {
-    if (!matchesMonth) anchor.value = entry.businessDate
-    if (!matchesFilter) clearFilters()
-    if (view.value === 'chart') view.value = 'calendar'
-    selectedDate.value = entry.businessDate
-    focusEntry = entry.id
-    restorePosition = undefined
-    restorePages = 1
-    toast.success(matchesFilter ? '已保存' : '已保存，已清除筛选以显示新账单。')
-  } else if (action === 'reverse') {
+  if (action === 'reverse') {
     toast.success('账单已撤销。')
-  } else if (!matchesPeriod || !matchesFilter) {
-    noticeEntry.value = entry
-    toast.success(!matchesPeriod ? '已保存，账单已移至其他周期。' : '已保存，账单不再符合当前筛选。', {
-      action: { label: '查看账单', run: showSavedEntry }
-    })
   } else {
-    toast.success('已保存修改。')
-    highlightedEntry.value = entry.id
+    const matchesPeriod = periodStart(entry.businessDate, period.value) === periodStart(anchor.value, period.value)
+      && (view.value !== 'calendar' || selectedDate.value === entry.businessDate)
+    if (matchesPeriod && matchesFilters(entry)) {
+      highlightedEntry.value = entry.id
+    }
+
+    toast.success(action === 'create' ? '已保存。' : '已保存修改。', {
+      action: {
+        label: '查看账单',
+        run: () => {
+          if (route.name === 'ledger') openEntry(entry.id)
+        }
+      }
+    })
   }
 } else if (focusEntry) {
   toast.success('已保存。')
@@ -194,6 +188,7 @@ onBeforeRouteLeave((to) => {
     category: categoryFilter.value,
     search: search.value,
     statsKind: statsKind.value,
+    statsByGroup: statsByGroup.value,
     page: summary.value?.page ?? 1,
     scrollTop: window.scrollY,
     visibleRow: visibleRow?.dataset.entryId
@@ -215,23 +210,6 @@ function matchesFilters(entry: LedgerEntry): boolean {
     && (!term || category.includes(term) || Boolean(entry.note?.toLowerCase().includes(term)))
 }
 
-function showSavedEntry(): void {
-  const entry = noticeEntry.value
-  if (!entry) return
-
-  const queryChanges = hasFilters.value || period.value !== 'month' || anchor.value !== entry.businessDate
-    || view.value !== 'calendar' || selectedDate.value !== entry.businessDate
-  clearFilters()
-  period.value = 'month'
-  anchor.value = entry.businessDate
-  selectedDate.value = entry.businessDate
-  view.value = 'calendar'
-  toast.info('已定位到修改后的账单。')
-  noticeEntry.value = null
-  focusEntry = entry.id
-  if (!queryChanges) void loadEntries()
-}
-
 watch(() => route.query, (query, previous) => {
   if (route.name !== 'ledger' || (query.date === previous.date && query.focus === previous.focus)) return
 
@@ -244,7 +222,6 @@ watch(() => route.query, (query, previous) => {
   view.value = 'calendar'
   clearFilters()
   highlightedEntry.value = ''
-  noticeEntry.value = null
   focusEntry = typeof query.focus === 'string' ? query.focus : ''
   if (focusEntry) {
     toast.success('已保存。')
@@ -300,6 +277,15 @@ async function loadStats(): Promise<void> {
   } finally {
     if (sequence === statsSequence) statsLoading.value = false
   }
+
+  if (sequence === statsSequence && stats.value && view.value === 'chart' && restorePosition?.view === 'chart') {
+    const { scrollTop } = restorePosition
+    restorePosition = undefined
+    await nextTick()
+    if (sequence === statsSequence && view.value === 'chart') {
+      window.scrollTo({ top: scrollTop })
+    }
+  }
 }
 
 function selectStatsCategory(category: string): void {
@@ -351,9 +337,9 @@ async function loadEntries(append: boolean = false): Promise<void> {
     summary.value = { ...result, entries }
     restorePages = 1
     const target = focusEntry
-    const position = restorePosition
+    const position = view.value === 'chart' ? undefined : restorePosition
     focusEntry = ''
-    restorePosition = undefined
+    if (position) restorePosition = undefined
     await nextTick()
     if (sequence !== loadSequence) return
 
@@ -601,7 +587,7 @@ function openEntry(entryId?: string): void {
         <section class="stats-panel">
           <div class="stats-head">
             <h2>{{ statsKind === 'income' ? '收入' : '支出' }}</h2>
-            <b><AnimatedMoney :value="statsTotal" /></b>
+            <b><MoneyAmount :value="statsTotal" /></b>
           </div>
           <p class="stats-meta">
             日均 ¥{{ formatMoney(statsAverage) }} · 覆盖 {{ stats.coveredDays }} 天 · {{ periodLabel }}

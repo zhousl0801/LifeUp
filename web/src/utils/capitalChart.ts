@@ -1,6 +1,6 @@
 import type { CapitalProjectionPoint } from '../types/capital'
 import { chartFontSize, chartTheme } from './chartTheme'
-import { formatMaskedMoney, formatMoney } from './format'
+import { MaskedMoney, formatMoney } from './format'
 
 const ReturnColor = '#25C6DA'
 
@@ -33,7 +33,7 @@ export function buildCapitalChartOption(input: CapitalChartInput) {
     totals.push(point.capital)
   }
 
-  const amount = (value: number) => input.amountsMasked ? formatMaskedMoney(value) : `¥${formatMoney(value)}`
+  const amount = (value: number) => input.amountsMasked ? MaskedMoney : `¥${formatMoney(value)}`
   const targetLabel = input.targetAmount !== null
     ? input.amountsMasked ? '••••' : formatWan(input.targetAmount)
     : ''
@@ -150,7 +150,7 @@ export function buildMonthlyChartOption(input: CapitalChartInput) {
         }
 
         const amount = (value: number) => input.amountsMasked
-          ? formatMaskedMoney(value)
+          ? MaskedMoney
           : `¥${formatMoney(value)}`
 
         return `${Number(point.month.slice(5))}月<br/>净积累 ${amount(point.netAccumulation)}<br/>投资收益 ${amount(point.return)}`

@@ -4,7 +4,7 @@ import type { ECharts } from 'echarts/core'
 import type { EChartsOption } from 'echarts'
 import type { CapitalProjectionPoint } from '../types/capital'
 import { buildCapitalChartOption, buildMonthlyChartOption, monthlySummary } from '../utils/capitalChart'
-import { formatMaskedMoney, formatMoney, formatSignedMoney } from '../utils/format'
+import { MaskedMoney, formatMoney, formatSignedMoney } from '../utils/format'
 import { loadChartRuntime } from '../utils/chartRuntime'
 import { resolvedTheme } from '../utils/theme'
 
@@ -59,7 +59,7 @@ function setView(view: 'capital' | 'monthly'): void {
 }
 
 function masked(value: number): string {
-  return props.amountsMasked ? formatMaskedMoney(value) : formatSignedMoney(value)
+  return props.amountsMasked ? MaskedMoney : formatSignedMoney(value)
 }
 
 onMounted(() => {
@@ -128,7 +128,7 @@ onBeforeUnmount(() => {
     <div v-if="view === 'monthly'" class="chart-summary">
       <span>首年月均</span>
       <b>{{ masked(summary.average) }}</b>
-      <span>其中收益 {{ amountsMasked ? formatMaskedMoney(summary.investment) : formatMoney(summary.investment) }}</span>
+      <span>其中收益 {{ amountsMasked ? MaskedMoney : formatMoney(summary.investment) }}</span>
     </div>
 
     <div ref="container" class="capital-chart" :class="{ 'is-monthly': view === 'monthly' }" role="img" :aria-label="chartLabel" />

@@ -24,7 +24,7 @@ import { ApiError, getApiErrorMessage } from '../api/client'
 import { toast } from '../composables/useMessage'
 import AppNav from '../components/AppNav.vue'
 import AppIcon from '../components/AppIcon.vue'
-import AnimatedMoney from '../components/AnimatedMoney.vue'
+import MoneyAmount from '../components/MoneyAmount.vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
 import BackButton from '../components/BackButton.vue'
@@ -51,6 +51,7 @@ import {
   todayInBusinessTimeZone
 } from '../utils/format'
 import { createRequestId } from '../utils/request'
+import { latestFundDailyProfit } from '../utils/fundDailyProfit'
 import { fundPlanDisplayName } from '../utils/plan'
 import type {
   FundActivity,
@@ -628,24 +629,7 @@ function cumulativeProfit(fund: FundSummary): number {
   return addAmounts(fund.holdingProfit, fund.realizedProfit)
 }
 
-const todayProfit = computed(() => {
-  const funds = scopedFunds.value
-  const disclosed = funds.filter((fund) => fund.hasDailyProfit && fund.dailyProfitDate)
-  const latestDate = disclosed.map((fund) => fund.dailyProfitDate!).sort().at(-1) ?? null
-  const onLatest = latestDate === null
-    ? []
-    : disclosed.filter((fund) => fund.dailyProfitDate === latestDate)
-
-  return {
-    value: sumAmounts(onLatest.map((fund) => fund.dailyProfit)),
-    hasValue: onLatest.length > 0,
-    complete: funds.length > 0 && onLatest.length === funds.length,
-    covered: onLatest.length,
-    total: funds.length,
-    latestDate,
-    isToday: latestDate === today
-  }
-})
+const todayProfit = computed(() => latestFundDailyProfit(scopedFunds.value, today))
 
 const isUpdating = computed(() => isLoading.value || (quoteStatus.value?.isRunning ?? false))
 const hasQuoteError = computed(() => {
@@ -1932,7 +1916,7 @@ function goBack(): void {
           <span class="hero-tag">{{ scope.historyConfirmed ? '已确认持仓' : '持仓日期待确认' }}</span>
         </p>
         <h2 class="hero-balance">
-          <template v-if="scope.hasEffectiveQuotes"><span class="hero-currency">¥</span><AnimatedMoney :value="scope.assetValue" prefix="" /></template>
+          <template v-if="scope.hasEffectiveQuotes"><span class="hero-currency">¥</span><MoneyAmount :value="scope.assetValue" prefix="" /></template>
           <template v-else>行情待补</template>
         </h2>
         <div class="funds-metrics" role="group" aria-label="收益概览">
@@ -1981,9 +1965,9 @@ function goBack(): void {
             <span>{{ todayProfitStatus || '净值已更新' }}</span>
           </small>
           <p class="hero-foot">
-            {{ scopedFunds.length }} 只基金 · 持仓成本 <AnimatedMoney :value="scope.cost" />
-            <template v-if="scope.pendingBuyAmount > 0"> · 含待确认 <AnimatedMoney :value="scope.pendingBuyAmount" /></template>
-            <template v-if="scope.pendingArrivalAmount > 0"> · 含待到账 <AnimatedMoney :value="scope.pendingArrivalAmount" /></template>
+            {{ scopedFunds.length }} 只基金 · 持仓成本 <MoneyAmount :value="scope.cost" />
+            <template v-if="scope.pendingBuyAmount > 0"> · 含待确认 <MoneyAmount :value="scope.pendingBuyAmount" /></template>
+            <template v-if="scope.pendingArrivalAmount > 0"> · 含待到账 <MoneyAmount :value="scope.pendingArrivalAmount" /></template>
           </p>
         </div>
       </section>
@@ -2069,10 +2053,10 @@ function goBack(): void {
               </div>
               <div class="fund-values">
                 <div class="fund-asset">
-                  <b><AnimatedMoney :value="fund.assetValue" /></b>
+                  <b><MoneyAmount :value="fund.assetValue" /></b>
                   <small>
                     占比 {{ weightOf(fund) }}
-                    <template v-if="pendingOf(fund) > 0"> · 含待确认 <AnimatedMoney :value="pendingOf(fund)" /></template>
+                    <template v-if="pendingOf(fund) > 0"> · 含待确认 <MoneyAmount :value="pendingOf(fund)" /></template>
                   </small>
                 </div>
                 <div v-for="metric in metricDisplay(fund)" :key="metric.key" class="fund-metric">

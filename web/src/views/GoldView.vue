@@ -8,7 +8,7 @@ import { ApiError, getApiErrorMessage } from '../api/client'
 import { fetchLedger, updateAssetCoverage } from '../api/ledger'
 import { toast } from '../composables/useMessage'
 import AppNav from '../components/AppNav.vue'
-import AnimatedMoney from '../components/AnimatedMoney.vue'
+import MoneyAmount from '../components/MoneyAmount.vue'
 import BackButton from '../components/BackButton.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import LoadingState from '../components/LoadingState.vue'
@@ -631,7 +631,7 @@ function goBack(): void {
           <span class="hero-tag">积存金 · 人民币</span>
         </p>
         <h2 class="hero-balance">
-          <template v-if="overview.hasEffectiveQuote"><span class="hero-currency">¥</span><AnimatedMoney :value="overview.value" prefix="" /></template>
+          <template v-if="overview.hasEffectiveQuote"><span class="hero-currency">¥</span><MoneyAmount :value="overview.value" prefix="" /></template>
           <template v-else>行情待补</template>
         </h2>
         <p class="hero-meta">

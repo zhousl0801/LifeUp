@@ -8,7 +8,7 @@ import { toast } from '../composables/useMessage'
 import { buyStock, fetchStockOverview, fetchStockQuote, refreshStockQuote, refreshStockQuotes, saveStockHolding, searchStocks, sellStock } from '../api/stocks'
 import { fetchLedger, updateAssetCoverage } from '../api/ledger'
 import AppNav from '../components/AppNav.vue'
-import AnimatedMoney from '../components/AnimatedMoney.vue'
+import MoneyAmount from '../components/MoneyAmount.vue'
 import BackButton from '../components/BackButton.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import LoadingState from '../components/LoadingState.vue'
@@ -865,7 +865,7 @@ function goBack(): void {
           股票资产
           <span class="hero-tag">沪深北 · 含 ETF / LOF</span>
         </p>
-        <h2 class="hero-balance"><span class="hero-currency">¥</span><AnimatedMoney :value="overview.totalValue" prefix="" /></h2>
+        <h2 class="hero-balance"><span class="hero-currency">¥</span><MoneyAmount :value="overview.totalValue" prefix="" /></h2>
         <p class="hero-meta">
           持有 {{ activePositions.length }} 只
           <template v-if="overview.todayProfitDate"> · 行情 {{ formatBusinessDate(overview.todayProfitDate) }}</template>

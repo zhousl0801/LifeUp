@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import type { CapitalYearRow } from '../types/capital'
 import { formatMonthLabel } from '../utils/capital'
-import { formatMaskedMoney, formatMoney, formatSignedMoney } from '../utils/format'
+import { MaskedMoney, formatMoney, formatSignedMoney } from '../utils/format'
 
 const props = defineProps<{
   years: CapitalYearRow[]
@@ -48,11 +48,11 @@ function toggle(year: number): void {
 }
 
 function amount(value: number): string {
-  return props.amountsMasked ? formatMaskedMoney(value) : formatMoney(value)
+  return props.amountsMasked ? MaskedMoney : formatMoney(value)
 }
 
 function signed(value: number): string {
-  return props.amountsMasked ? formatMaskedMoney(value) : formatSignedMoney(value)
+  return props.amountsMasked ? MaskedMoney : formatSignedMoney(value)
 }
 </script>
 

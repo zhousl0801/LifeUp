@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { CapitalActualMonth } from '../types/capital'
-import { amountTone, formatMaskedMoney, formatMoney, formatSignedMoney } from '../utils/format'
+import { amountTone, MaskedMoney, formatMoney, formatSignedMoney } from '../utils/format'
 
 const props = defineProps<{
   actual: CapitalActualMonth
@@ -26,12 +26,12 @@ const actualText = computed(() => {
   }
 
   return props.amountsMasked
-    ? formatMaskedMoney(props.actual.comparableChange)
+    ? MaskedMoney
     : formatSignedMoney(props.actual.comparableChange)
 })
 
 const expectedText = computed(() => props.amountsMasked
-  ? formatMaskedMoney(props.actual.expectedNetDeposit)
+  ? MaskedMoney
   : formatSignedMoney(props.actual.expectedNetDeposit))
 
 const diffText = computed(() => {

@@ -2,10 +2,7 @@ import Decimal from 'decimal.js'
 
 export const MaximumAmount = 1_000_000_000
 
-export function formatMaskedMoney(value: number): string {
-  const firstDigit = formatMoney(Math.abs(value))[0]
-  return `${value < 0 ? '−' : ''}¥${firstDigit}••••`
-}
+export const MaskedMoney = '¥••••'
 
 export function formatMoney(value: Decimal.Value | null | undefined): string {
   if (value === null || value === undefined) {

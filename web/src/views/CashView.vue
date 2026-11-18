@@ -6,7 +6,7 @@ import { fetchCashOverview, reconcileCash } from '../api/cash'
 import { ApiError, getApiErrorMessage } from '../api/client'
 import { toast } from '../composables/useMessage'
 import AppNav from '../components/AppNav.vue'
-import AnimatedMoney from '../components/AnimatedMoney.vue'
+import MoneyAmount from '../components/MoneyAmount.vue'
 import BackButton from '../components/BackButton.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import LoadingButton from '../components/LoadingButton.vue'
@@ -276,7 +276,7 @@ async function submitReconcile(): Promise<void> {
           可用现金
           <span class="hero-tag">统一余额</span>
         </p>
-        <h2 class="hero-balance"><span>¥</span><AnimatedMoney :value="overview.balance" prefix="" /></h2>
+        <h2 class="hero-balance"><span>¥</span><MoneyAmount :value="overview.balance" prefix="" /></h2>
         <div class="hero-metrics">
           <div>
             <span>本月现金流入</span>
