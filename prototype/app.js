@@ -1,234 +1,1295 @@
-// Derived from the approved V1.0 integrated wireframe. Page-local demo only.
+/* LifeUp · Midnight Mint v2.1 高保真交互原型脚本（虚构数据，刷新重置） */
+(() => {
+  const state = {
+    page: 'home',
+    prevPage: 'home',
+    themePref: 'light', // 'system' | 'light' | 'dark'
+    amountsMasked: false, // 原型默认展开方便浏览，可点击 Hero 眼睛一键切换脱敏
+    changeScope: 'day', // 'day' | 'month'
+    trendRange: 'week', // 'week' | 'month' | 'quarter' | 'all'
+    trendIdx: null,
+    ledgerView: 'calendar', // 'calendar' | 'list' | 'chart'
+    ledgerChartKind: 'expense',
+    ledgerChartLevel: 'sub', // 'top' | 'sub'
+    selectedCalDay: 19,
+    monthlyBudget: 8000,
+    fundGroup: '全部',
+    fundView: 'holdings', // 'holdings' | 'returns' | 'trades' | 'plans'
+    stockSort: 'value', // 'value' | 'profit' | 'name'
+    salaryMasked: true,
+    useSalaryProfile: true,
+    capitalGoalWan: 100,
+    capitalAnnualReturn: 7.5,
+    entry: { kind: 'expense', category: '餐饮', group: '必要', tone: 'amber', expr: '0', note: '' },
+    salary: {
+      basePreTax: 18000,
+      netMonthly: 12000,
+      providentMonthly: 5200,
+      bonusMonths: 2,
+      bonusNet: 30000,
+      bonusMonth: 1,
+      payDay: 15
+    },
+    assets: {
+      cash: 23400,
+      fundConfirmed: 167700,
+      fundPending: 300,
+      stock: 51500,
+      provident: 68000,
+      goldGrams: 30,
+      goldPrice: 900,
+      goldCost: 25600,
+      goldRealized: 412.5
+    },
+    monthFlow: { income: 12000, expense: 6800 },
+    entries: [
+      { id: 1, day: 19, date: '2026-11-19', kind: 'expense', group: '必要', cat: '餐饮', tone: 'amber', amount: 42.5, note: '工作餐与咖啡' },
+      { id: 2, day: 19, date: '2026-11-19', kind: 'expense', group: '必要', cat: '交通', tone: 'sky', amount: 14, note: '地铁通勤' },
+      { id: 3, day: 18, date: '2026-11-18', kind: 'expense', group: '弹性', cat: '购物', tone: 'rose', amount: 399, note: '冬季保暖外套' },
+      { id: 4, day: 15, date: '2026-11-15', kind: 'income', group: '经常收入', cat: '工资', tone: 'emerald', amount: 12000, note: '自动记账 · 工资档案', auto: true },
+      { id: 5, day: 12, date: '2026-11-12', kind: 'expense', group: '固定', cat: '居家', tone: 'amber', amount: 3200, note: '房租与水电网' },
+      { id: 6, day: 8, date: '2026-11-08', kind: 'expense', group: '弹性', cat: '娱乐', tone: 'rose', amount: 268, note: '周末电影与聚餐' },
+      { id: 7, day: 3, date: '2026-11-03', kind: 'expense', group: '必要', cat: '餐饮', tone: 'amber', amount: 2876.5, note: '本月日常餐饮汇总' }
+    ],
+    cashMoves: [
+      { date: '2026-11-19', type: 'flow', title: '基金定投扣款 · 纳指100 C', amount: -300, note: '现金 → 基金买入待确认' },
+      { date: '2026-11-15', type: 'flow', title: '公积金提取到账', amount: 2000, note: '公积金 → 统一现金池' },
+      { date: '2026-11-15', type: 'income', title: '工资到账（自动记账）', amount: 12000, note: '工资档案托管' }
+    ],
+    funds: [
+      {
+        name: '摩根纳斯达克100指数(QDII)',
+        group: '纳斯达克',
+        assetValue: 86300,
+        pending: 300,
+        cost: 74200,
+        dayProfit: 486.2,
+        dayPct: 0.57,
+        realized: 1240,
+        classes: [
+          { code: '019172', cls: 'A类', shares: 31200.45, nav: 1.6820, navDate: '11-18', value: 52479.16 },
+          { code: '019173', cls: 'C类', shares: 20180.12, nav: 1.6611, navDate: '11-18', value: 33520.84 }
+        ]
+      },
+      {
+        name: '博时标普500ETF联接(QDII)',
+        group: '标普500',
+        assetValue: 53200,
+        pending: 0,
+        cost: 46800,
+        dayProfit: 192.4,
+        dayPct: 0.36,
+        realized: 680,
+        classes: [
+          { code: '050025', cls: 'A类', shares: 18420.5, nav: 2.8881, navDate: '11-18', value: 53200 }
+        ]
+      },
+      {
+        name: '华泰柏瑞红利低波ETF联接',
+        group: '红利',
+        assetValue: 28500,
+        pending: 0,
+        cost: 27100,
+        dayProfit: -64.8,
+        dayPct: -0.23,
+        realized: 320,
+        classes: [
+          { code: '007467', cls: 'C类', shares: 19256.75, nav: 1.4800, navDate: '11-19', value: 28500 }
+        ]
+      }
+    ],
+    stocks: [
+      { market: '深市', code: '159915', name: '创业板ETF', shares: 8000, price: 2.435, avgCost: 2.210, dayProfit: 184.0, totalProfit: 1800.0 },
+      { market: '沪市', code: '510300', name: '沪深300ETF', shares: 5000, price: 4.124, avgCost: 3.910, dayProfit: 95.0, totalProfit: 1070.0 },
+      { market: '深市', code: '300750', name: '宁德时代', shares: 50, price: 228.000, avgCost: 210.400, dayProfit: -115.0, totalProfit: 880.0 }
+    ],
+    plans: [
+      { id: 'p1', group: '基金定投', name: '摩根纳斯达克100 C', amount: 300, rule: '三地交易日 14:30', managed: false, paused: false },
+      { id: 'p2', group: '基金定投', name: '博时标普500 A', amount: 300, rule: '每周三 14:30', managed: false, paused: false },
+      { id: 'p3', group: '公积金', name: '公积金每月缴存', amount: 5200, rule: '每月 15 日 09:00', managed: true, paused: false },
+      { id: 'p4', group: '公积金', name: '公积金每月提取', amount: 2000, rule: '每月 15 日 10:00', managed: false, paused: false },
+      { id: 'p5', group: '工资收入', name: '每月税后工资', amount: 12000, rule: '每月 15 日 08:30', managed: true, paused: false },
+      { id: 'p6', group: '工资收入', name: '年终奖到账', amount: 30000, rule: '每年 1 月 15 日', managed: true, paused: false }
+    ]
+  };
 
-// A standalone wireframe only. Demo state never leaves this page.
-const demo={cash:23400,fund:168000,provident:68000,gold:27000,income:12000,expense:6800,extra:[]};
-const money=(n,d=2)=>n.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
-const total=()=>demo.cash+demo.fund+demo.provident+demo.gold;
-let hiddenAmounts=false,activeRange='month',ledgerPeriod='month',activeCategory='餐饮',entryKind='expense',restoreFocus=null;
-const curves={week:{values:[275900,276000,276100,286500,286200,285800,286400],dates:['2026-10-14','2026-10-15','2026-10-16','2026-10-17','2026-10-18','2026-10-19','2026-10-20']},month:{values:[274600,275000,274800,274300,274900,275300,275100,275700,275200,274900,275200,275900,275500,276000,276100,286500,286200,285800,286000,286400],dates:Array.from({length:20},(_,i)=>`2026-10-${String(i+1).padStart(2,'0')}`)},quarter:{values:[252000,254000,252500,258000,261000,262500,260500,266000,265000,274600,277000,286400],dates:['2026-08-01','2026-08-08','2026-08-15','2026-08-23','2026-09-01','2026-09-08','2026-09-15','2026-09-22','2026-09-30','2026-10-01','2026-10-10','2026-10-20']},year:{values:[216000,222000,228000,224000,239000,244000,248000,256000,266000,274600,281000,286400],dates:['2026-01-01','2026-02-01','2026-03-01','2026-04-01','2026-05-01','2026-06-01','2026-07-01','2026-08-01','2026-09-01','2026-10-01','2026-10-15','2026-10-20']},all:{values:[168000,175000,180000,196000,208000,216000,228000,239000,248000,266000,274600,286400],dates:['2025-01-01','2025-03-01','2025-05-01','2025-07-01','2025-10-01','2026-01-01','2026-03-01','2026-05-01','2026-07-01','2026-09-01','2026-10-01','2026-10-20']}};
-function renderMoney(){const vals={...demo,total:total(),surplus:demo.income-demo.expense,change:11800+demo.income-12000-(demo.expense-6800)+assetMonthChange()};document.querySelectorAll('[data-value]').forEach(el=>{const key=el.dataset.value;el.textContent=hiddenAmounts?'••••':`${key==='change'&&vals[key]>=0?'+':''}${money(vals[key],['income','expense','surplus'].includes(key)?0:2)}`;});drawChart();renderLedger();refreshAssetLinks();}
-function curvePoints(){const data=curves[activeRange];const values=data.values.slice();values[values.length-1]=total();const lo=Math.floor((Math.min(...values)-3000)/5000)*5000;const hi=Math.ceil((Math.max(...values)+3000)/5000)*5000;return{data,values,lo,hi,points:values.map((v,i)=>[40+i/(values.length-1)*267,112-(v-lo)/(hi-lo)*94])};}
-function drawChart(){const c=curvePoints();const path=c.points.map((p,i)=>`${i?'L':'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');document.getElementById('chart-line').setAttribute('d',path);document.getElementById('chart-area').setAttribute('d',`${path} L307,112 L40,112 Z`);document.getElementById('chart-grid').innerHTML=[0,.5,1].map(r=>{const y=18+r*94;return `<line x1="40" x2="307" y1="${y}" y2="${y}" stroke="var(--color-chart-grid)" stroke-dasharray="3 4"/>`;}).join('');const idx=[0,Math.floor(c.data.dates.length/2),c.data.dates.length-1];const dateLabels=idx.map((i,j)=>`<text x="${c.points[i][0]}" y="137" text-anchor="${j===0?'start':j===2?'end':'middle'}" fill="var(--color-text-secondary)" font-size="8">${activeRange==='month'||activeRange==='quarter'||activeRange==='week'?c.data.dates[i].slice(5).replace('-','/'):c.data.dates[i].slice(0,7).replace('-','年')+'月'}</text>`).join('');const maxIndex=c.values.indexOf(Math.max(...c.values));const minIndex=c.values.indexOf(Math.min(...c.values));const marks=[{i:maxIndex,label:'最高'},{i:minIndex,label:'最低'}].filter((m,pos,arr)=>m.i>=0&&arr.findIndex(x=>x.i===m.i)===pos);const valueLabels=marks.map(m=>`<text x="${c.points[m.i][0]}" y="${Math.max(10,c.points[m.i][1]-8)}" text-anchor="middle" fill="var(--color-text-secondary)" font-size="8">${m.label} ¥${hiddenAmounts?'••':money(c.values[m.i],0)}</text>`).join('');document.getElementById('chart-labels').innerHTML=dateLabels+valueLabels;selectPoint(c.values.length-1);}
-function selectPoint(i){const c=curvePoints(),p=c.points[i];document.getElementById('chart-cursor').setAttribute('x1',p[0]);document.getElementById('chart-cursor').setAttribute('x2',p[0]);document.getElementById('chart-dot').setAttribute('cx',p[0]);document.getElementById('chart-dot').setAttribute('cy',p[1]);document.getElementById('chart-date').textContent=c.data.dates[i].replace(/-(\d\d)-/,'年$1月')+'日';document.getElementById('chart-value').textContent=hiddenAmounts?'••••':`¥${money(c.values[i])}`;}
-document.querySelectorAll('[data-range]').forEach(btn=>btn.addEventListener('click',()=>{activeRange=btn.dataset.range;document.querySelectorAll('[data-range]').forEach(b=>b.classList.toggle('active',b===btn));drawChart();}));
-const chart=document.getElementById('asset-chart');function inspectChart(e){const rect=chart.getBoundingClientRect();const fraction=((e.clientX-rect.left)/rect.width*320-40)/267;selectPoint(Math.max(0,Math.min(curves[activeRange].values.length-1,Math.round(fraction*(curves[activeRange].values.length-1)))));}
-chart.addEventListener('pointerdown',inspectChart);chart.addEventListener('pointermove',e=>{if(e.pointerType==='mouse'||e.buttons)inspectChart(e);});
-function go(name){closeSheet();document.getElementById('phone').dataset.page=name;document.querySelectorAll('.screen').forEach(el=>el.classList.toggle('active',el.id==='screen-'+name));document.querySelectorAll('[data-nav]').forEach(b=>b.classList.toggle('active',b.dataset.nav===name||((name==='fund-detail'||name.startsWith('invest-'))&&b.dataset.nav==='invest')||(name==='plans'&&b.dataset.nav==='mine')||(['cash','provident','gold'].includes(name)&&b.dataset.nav==='invest')));document.querySelectorAll('[data-review]').forEach(b=>b.classList.toggle('active',b.dataset.review===name||((name==='fund-detail'||name.startsWith('invest-'))&&b.dataset.review==='invest')));document.getElementById('app-content').scrollTop=0;window.scrollTo(0,0);const subtitles={home:'我的财务总览',ledger:'收支明细与用途统计',entry:'快速记一笔',invest:'跨平台基金汇总','fund-detail':'同基金 A/C 类与平台明细','invest-add':'投资录入','invest-import':'截图导入持仓','invest-draft':'核对持仓草稿',cash:'统一现金余额',provident:'公积金缴存与提取',gold:'平台积存金',plans:'计划与执行记录',mine:'我的账本'};document.getElementById('app-sub').textContent=subtitles[name]||'我的财务总览';if(name==='ledger')renderLedger();if(name==='invest')renderInvestment();if(name==='cash')renderCash();if(name==='provident')renderProvident();if(name==='gold')renderGold();if(name==='plans')renderPlans();if(name==='home')drawChart();}
-document.querySelectorAll('[data-nav]').forEach(b=>b.addEventListener('click',()=>go(b.dataset.nav)));document.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>go(b.dataset.go)));
-const overlay=document.getElementById('overlay');function openSheet(title,content){restoreFocus=document.activeElement;document.getElementById('sheet-heading').textContent=title;document.getElementById('sheet-content').innerHTML=content;overlay.hidden=false;document.getElementById('close-sheet').focus();}
-function closeSheet(){if(overlay.hidden)return;overlay.hidden=true;if(restoreFocus?.isConnected)restoreFocus.focus();}
-document.getElementById('close-sheet').addEventListener('click',closeSheet);overlay.addEventListener('click',e=>{if(e.target===overlay)closeSheet();});document.addEventListener('keydown',e=>{if(overlay.hidden)return;if(e.key==='Escape')closeSheet();if(e.key==='Tab'){const nodes=[...overlay.querySelectorAll('button,input,select,[tabindex="0"]')].filter(el=>!el.disabled&&!el.hidden);const first=nodes[0],last=nodes[nodes.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}});
-let toastTimer;function toast(text){const el=document.getElementById('toast');el.textContent=text;el.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{el.hidden=true;},3200);}
-document.getElementById('privacy-toggle').addEventListener('click',()=>openSheet('历史核对','<div class="description">历史核对、日期补录和行情溯源在正式应用中提供；本原型保留首页趋势与资产联动演示。实际应用会先预览更正影响，再确认改动。</div>'));
-document.getElementById('open-composition').addEventListener('click',openAssetComposition);
-document.getElementById('open-chart-help').addEventListener('click',()=>openSheet('总资产趋势的统计口径',`<div class="description">总资产由现金、基金、公积金和积存金组成。基金内包含尚未确认份额的在途资金，避免扣款后总额暂时减少。</div><div class="detail-line"><span>日期</span><b>历史记录对应的业务日期</b></div><div class="detail-line"><span>基金估值</span><b>保留净值日期与更新状态</b></div><div class="detail-line"><span>更正历史记录</span><b>更新相关日期的统计</b></div><div class="description">本页曲线全部使用演示数据。实际功能会区分新增投入、消费支出与投资盈亏。</div>`));
-function assetDetail(name){go(name==='fund'?'invest':name);}
-document.querySelectorAll('[data-asset]').forEach(b=>b.addEventListener('click',()=>assetDetail(b.dataset.asset)));
+  const categoryGroups = {
+    expense: [
+      { name: '固定', items: [{ cat: '居家', tone: 'amber', icon: '居' }, { cat: '通讯', tone: 'sky', icon: '讯' }] },
+      { name: '必要', items: [{ cat: '餐饮', tone: 'amber', icon: '餐' }, { cat: '交通', tone: 'sky', icon: '行' }, { cat: '日用', tone: 'emerald', icon: '用' }, { cat: '医疗', tone: 'rose', icon: '医' }] },
+      { name: '弹性', items: [{ cat: '购物', tone: 'rose', icon: '购' }, { cat: '娱乐', tone: 'rose', icon: '乐' }, { cat: '学习', tone: 'violet', icon: '学' }, { cat: '人情', tone: 'violet', icon: '礼' }] }
+    ],
+    income: [
+      { name: '经常收入', items: [{ cat: '工资', tone: 'emerald', icon: '薪' }, { cat: '奖金', tone: 'emerald', icon: '奖' }] },
+      { name: '其他收入', items: [{ cat: '报销', tone: 'sky', icon: '报' }, { cat: '其他', tone: 'violet', icon: '余' }] }
+    ]
+  };
 
-// Interaction sketches, not a real ledger or trading service.
-const today='2026-10-20';
-const esc=x=>String(x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const ledgerRows=[];
-const expenseCats=['餐饮','购物','日用','交通','居家','服饰','娱乐','通讯','医疗','学习','运动','旅行','宠物','人情','其他'];
-let uid=200,ledgerView='records',ledgerDate=today,categoryFilter='',kindFilter='all',statsKind='expense',investView='holdings',groupFilter='all',selectedFund='nasdaq';
-for(let m=1;m<=9;m++){const mm=String(m).padStart(2,'0');ledgerRows.push({id:uid++,date:`2026-${mm}-15`,kind:'income',category:'工资',amount:12000,note:'工资到账',auto:true});for(const [category,amount] of [['餐饮',2350],['购物',1800],['交通',650],['居家',1200],['其他',800]])ledgerRows.push({id:uid++,date:`2026-${mm}-18`,kind:'expense',category,amount,note:'往月示例'});}
-for(const [date,category,amount,note] of [['20','餐饮',35,'午餐'],['19','餐饮',78,'晚餐'],['18','购物',1800,'生活用品'],['17','交通',650,'通勤'],['16','餐饮',1237,'聚餐与日常餐食'],['10','居家',1200,'房租与水电'],['08','其他',800,'其他生活支出'],['02','餐饮',1000,'本月餐食']])ledgerRows.push({id:uid++,date:'2026-10-'+date,kind:'expense',category,amount,note});
-ledgerRows.push({id:uid++,date:'2026-10-15',kind:'income',category:'工资',amount:12000,note:'工资到账',auto:true});
-const baselineNet=ledgerRows.reduce((n,r)=>n+(r.kind==='income'?r.amount:-r.amount),0);
-let investCashDelta=0;
-let assetCashDelta=0;
-const assetEffects={cashCorrection:0,pfContribution:0,pfCorrection:0,goldPerformance:0,goldCorrection:0};
-const assetMonthChange=()=>Object.values(assetEffects).reduce((a,b)=>a+b,0);
-const assetMoves=[{date:'2026-10-15',title:'公积金缴存',amount:5200,note:'个人＋单位合计 · 公积金 +5,200.00'},{date:'2026-10-15',title:'公积金提取',amount:2000,note:'公积金 −2,000.00 → 现金 +2,000.00'},{date:'2026-10-19',title:'基金买入扣款',amount:300,note:'现金 −300.00 → 待确认投资 +300.00'}];
-function inPeriod(date){return date.startsWith(ledgerDate.slice(0,{day:10,month:7,year:4}[ledgerPeriod]));}
-function periodRows(){return ledgerRows.filter(r=>inPeriod(r.date));}
-function sums(rows){return rows.reduce((a,r)=>{a[r.kind]+=r.amount;return a;},{income:0,expense:0});}
-function syncLedger(){const n=ledgerRows.reduce((n,r)=>n+(r.kind==='income'?r.amount:-r.amount),0);demo.cash=roundMoney(23400+n-baselineNet+investCashDelta+assetCashDelta);const sum=sums(ledgerRows.filter(r=>r.date.startsWith('2026-10')));demo.income=sum.income;demo.expense=sum.expense;renderMoney();}
-function setLedgerView(v){ledgerView=v;categoryFilter='';renderLedger();}
-function filterCategory(c){ledgerSearch='';categoryFilter=c;kindFilter=statsKind;ledgerView='records';renderLedger();}
+  const trendSeries = {
+    week: [
+      ['11-13', 332800], ['11-14', 333400], ['11-15', 335100], ['11-16', 335800],
+      ['11-17', 336200], ['11-18', 337080], ['11-19', 337900]
+    ],
+    month: [
+      ['10-21', 324600], ['10-26', 326400], ['11-01', 329100], ['11-06', 331200],
+      ['11-11', 333800], ['11-15', 335100], ['11-19', 337900]
+    ],
+    quarter: [
+      ['08-20', 301200], ['09-05', 307800], ['09-20', 313400], ['10-05', 318900],
+      ['10-20', 324600], ['11-05', 331000], ['11-19', 337900]
+    ],
+    all: [
+      ['04-01', 265000], ['06-01', 281400], ['08-01', 298200], ['09-15', 311800],
+      ['10-20', 324600], ['11-19', 337900]
+    ]
+  };
 
-let ledgerSearch='',editEntryId=null,entryDraft=null,entryReturn='ledger';
-const incomeCats=['工资','奖金','其他收入'];
-function iconFor(category){const d={
- '餐饮':'M6 3v7M3 3v5q0 3 3 3t3-3V3M6 11v10M17 3q-4 3-3 9h4M18 3v18',
- '购物':'M5 7h14l1 14H4L5 7ZM8 7V6a4 4 0 0 1 8 0v1',
- '日用':'M7 4h10v17H7ZM10 4V2h4v2M7 10h10M10 14h4',
- '交通':'M4 5h16v12H4ZM4 10h16M8 5V3M16 5V3M7 17v3M17 17v3M7 14h1M16 14h1',
- '居家':'m3 11 9-8 9 8M6 10v11h12V10M10 21v-7h4v7',
- '服饰':'m8 3 4 3 4-3 6 5-4 4-2-2v11H8V10l-2 2-4-4 6-5Z',
- '娱乐':'M7 8h10a4 4 0 0 1 4 4l1 6q0 3-3 1l-3-3H8l-3 3q-3 2-3-1l1-6a4 4 0 0 1 4-4ZM7 11v5M4.5 13.5h5M16 12h.1M19 15h.1',
- '通讯':'M8 3 4 5q-1 8 8 15l4 1 4-4-5-3-3 2-5-6 2-3-1-4Z',
- '医疗':'M8 3h8v5h5v8h-5v5H8v-5H3V8h5V3Z',
- '学习':'M3 4q5-2 9 1 4-3 9-1v16q-5-2-9 1-4-3-9-1V4ZM12 5v16',
- '运动':'M2 9v6M5 6v12M5 12h14M19 6v12M22 9v6',
- '旅行':'M8 6V3h8v3M5 6h14v15H5ZM9 6v15M15 6v15',
- '宠物':'M7 15q5-6 10 0 5 7-5 5-10 2-5-5ZM5 8a2 3 0 1 0 0 .1M10 4a2 3 0 1 0 0 .1M16 4a2 3 0 1 0 0 .1M21 9a2 3 0 1 0 0 .1',
- '人情':'M3 8h18v4H3ZM5 12v9h14v-9M12 8v13M12 8Q3 9 6 4q4-3 6 4ZM12 8q9 1 6-4-4-3-6 4Z',
- '工资':'M8 3h8l-2 4q7 4 7 9 0 5-9 5t-9-5q0-5 7-9L8 3ZM8 12l4 3 4-3M8 16h8M12 15v4',
- '奖金':'m12 2 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1 3-6Z',
- '其他收入':'M12 3v18M5 10l7-7 7 7M4 17v4h16v-4',
- '其他':'M5 5h14v14H5ZM8 12h.1M12 12h.1M16 12h.1',
- '设置':'M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2M17 12a5 5 0 1 1-10 0 5 5 0 0 1 10 0Z'}[category]||'M4 4h16v16H4ZM8 12h8M12 8v8';return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;}
-function readablePeriod(){return ledgerPeriod==='day'?ledgerDate.replaceAll('-',' / '):ledgerPeriod==='year'?ledgerDate.slice(0,4)+'年':ledgerDate.slice(0,4)+'年'+Number(ledgerDate.slice(5,7))+'月';}
-function reviewLedger(view){ledgerView=view;categoryFilter='';kindFilter='all';ledgerSearch='';go('ledger');}
-function renderLedger(){
- const sum=sums(periodRows()),date=new Date(ledgerDate+'T12:00:00');document.getElementById('ledger-income').textContent=money(sum.income);document.getElementById('ledger-expense').textContent=money(sum.expense);document.getElementById('ledger-surplus').textContent=money(sum.income-sum.expense);
- document.getElementById('ledger-period-year').textContent=ledgerPeriod==='year'?'年度账本':ledgerPeriod==='day'?`${date.getFullYear()}年${date.getMonth()+1}月`:date.getFullYear()+'年';const label=document.getElementById('ledger-period-label');label.textContent=(ledgerPeriod==='year'?date.getFullYear()+'年':ledgerPeriod==='day'?date.getDate()+'日':String(date.getMonth()+1).padStart(2,'0')+'月')+'⌄';label.classList.toggle('year-value',ledgerPeriod==='year');document.getElementById('ledger-summary-context').textContent={day:'当日',month:'本月',year:'本年'}[ledgerPeriod]+'日常收支';
- document.querySelectorAll('[data-ledger-view]').forEach(b=>b.classList.toggle('active',b.dataset.ledgerView===ledgerView));if(document.getElementById('screen-ledger').classList.contains('active'))document.querySelectorAll('[data-review]').forEach(b=>b.classList.toggle('active',b.dataset.review===(ledgerView==='stats'?'stats':'ledger')));
- const body=document.getElementById('ledger-body');
- if(ledgerView==='stats'){renderSharkChart(body,sum);return;}
- const rows=periodRows().filter(r=>(kindFilter==='all'||r.kind===kindFilter)&&(!categoryFilter||r.category===categoryFilter)&&(!ledgerSearch||(r.category+' '+r.note).includes(ledgerSearch))).sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id),dates=[...new Set(rows.map(r=>r.date))];
- const filter=categoryFilter||ledgerSearch||kindFilter!=='all';body.innerHTML=(filter?`<div class="ledger-search-banner"><span>${esc(categoryFilter||ledgerSearch||(kindFilter==='expense'?'只看支出':'只看收入'))} · ${rows.length}笔</span><button onclick="categoryFilter='';kindFilter='all';ledgerSearch='';renderLedger()">清除筛选</button></div>`:'')+(dates.length?dates.map(day=>{const rs=rows.filter(r=>r.date===day),v=sums(rs),d=new Date(day+'T12:00:00');return `<div class="shark-date-line"><span>${day.slice(5,7)}月${day.slice(8)}日&nbsp; 星期${'日一二三四五六'[d.getDay()]}</span><span>${v.income?'收入：'+money(v.income)+'　':''}${v.expense?'支出：'+money(v.expense):''}</span></div>${rs.map(r=>`<button class="shark-row" onclick="entryDetail(${r.id})"><span class="cat-circle">${iconFor(r.category)}</span><span class="row-label">${r.category}${r.note?`<small>${esc(r.note)}${r.auto?' · 自动记账':''}</small>`:''}</span><b class="${r.kind==='income'?'inflow':''}">${r.kind==='income'?'+':'−'}${money(r.amount)}</b></button>`).join('')}`;}).join(''):'<div class="empty">这段时间还没有记录<br>点击底部＋记一笔</div>')+`<div class="ledger-inline-note">${rows.length}笔日常收支 · <button class="text-btn" onclick="showAssetMoves()">查看资产变动 ›</button></div>`;
-}
-function setPeriod(p){ledgerPeriod=p;categoryFilter='';ledgerSearch='';kindFilter='all';renderLedger();}
-function shiftPeriod(n){const d=new Date(ledgerDate+'T12:00:00');if(ledgerPeriod==='day')d.setDate(d.getDate()+n);else if(ledgerPeriod==='month')d.setMonth(d.getMonth()+n,1);else d.setFullYear(d.getFullYear()+n,0,1);const next=[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');if(next<'2026-01-01'||next>today)return;ledgerDate=next;categoryFilter='';renderLedger();}
-function openLedgerPeriod(){openSheet('选择账本周期',`<div class="sheet-tabs">${[['day','日'],['month','月'],['year','年']].map(([p,label])=>`<button class="${ledgerPeriod===p?'active':''}" onclick="setPeriod('${p}');openLedgerPeriod()">${label}</button>`).join('')}</div><form id="period-form"><label class="field">${{day:'日期',month:'月份',year:'年份'}[ledgerPeriod]}<input id="period-input" type="${ledgerPeriod==='day'?'date':ledgerPeriod==='month'?'month':'number'}" min="${{day:'2026-01-01',month:'2026-01',year:'2026'}[ledgerPeriod]}" max="${{day:today,month:'2026-10',year:'2026'}[ledgerPeriod]}" value="${ledgerDate.slice(0,{day:10,month:7,year:4}[ledgerPeriod])}" required></label><button class="primary" type="submit">查看这段时间</button></form>`);document.getElementById('period-form').onsubmit=e=>{e.preventDefault();const v=document.getElementById('period-input').value,d=ledgerPeriod==='day'?v:ledgerPeriod==='month'?v+'-01':v+'-01-01';if(d<'2026-01-01'||d>today)return;ledgerDate=d;categoryFilter='';ledgerSearch='';closeSheet();renderLedger();};}
-function openLedgerSearch(){openSheet('搜索账单',`<form id="search-form"><label class="field">分类或备注<input id="ledger-query" placeholder="例如：餐饮、午餐" value="${esc(ledgerSearch)}" maxlength="40"></label><label class="field">收支类型<select id="search-kind"><option value="all">全部收支</option><option value="expense">只看支出</option><option value="income">只看收入</option></select></label><p class="description">在 ${readablePeriod()} 内查找。</p><button class="primary" type="submit">查看结果</button><button class="secondary" type="button" style="margin-top:9px" onclick="showAssetMoves()">查看资产变动</button></form>`);document.getElementById('search-kind').value=kindFilter;document.getElementById('search-form').onsubmit=e=>{e.preventDefault();ledgerSearch=document.getElementById('ledger-query').value.trim();kindFilter=document.getElementById('search-kind').value;categoryFilter='';ledgerView='records';closeSheet();renderLedger();};}
-function showAssetMoves(){const rows=assetMoves.filter(r=>inPeriod(r.date)).sort((a,b)=>b.date.localeCompare(a.date));openSheet('资产变动',`<div class="tiny">${readablePeriod()}</div><p class="description">公积金缴存单独记录；提取与投资买卖属于资产流转，均不计入日常收支。</p>${rows.length?rows.map(r=>`<div class="detail-line"><span>${r.date}<br>${r.title}<br>${r.note}</span><b>${money(r.amount)}</b></div>`).join(''):'<div class="empty">本周期暂无资产变动</div>'}`);}
-function openCalendar(month=ledgerDate.slice(0,7)){const [y,m]=month.split('-').map(Number),days=new Date(y,m,0).getDate(),offset=(new Date(y,m-1,1).getDay()+6)%7;openSheet('收支日历',`<div class="calendar-head"><input aria-label="日历月份" type="month" min="2026-01" max="2026-10" value="${month}" onchange="if(this.value>='2026-01'&&this.value<='2026-10')openCalendar(this.value)"><button class="text-btn" onclick="openCalendar('2026-10')">本月</button></div><div class="calendar-grid">${'一二三四五六日'.split('').map(w=>`<span class="weekday">${w}</span>`).join('')}${'<span></span>'.repeat(offset)}${Array.from({length:days},(_,i)=>{const day=month+'-'+String(i+1).padStart(2,'0'),v=sums(ledgerRows.filter(r=>r.date===day));return `<button class="calendar-cell ${day===ledgerDate?'selected':''}" ${day>today?'disabled':''} onclick="pickCalendarDay('${day}')"><span>${i+1}</span>${v.income?`<small class="earned">+${money(v.income,0)}</small>`:v.expense?`<small class="spent">−${money(v.expense,0)}</small>`:'<small>&nbsp;</small>'}</button>`;}).join('')}</div><button class="secondary" onclick="ledgerDate='${month}-01';ledgerPeriod='month';ledgerView='records';categoryFilter='';ledgerSearch='';kindFilter='all';closeSheet();renderLedger()">查看整月明细</button><p class="description">点日期查看当天精确收支；日历小格使用整数预览。</p>`);}
-function pickCalendarDay(day){ledgerDate=day;ledgerPeriod='day';ledgerView='records';categoryFilter='';ledgerSearch='';kindFilter='all';closeSheet();renderLedger();}
-function renderSharkChart(body,sum){
- const map=new Map();periodRows().filter(r=>r.kind===statsKind).forEach(r=>map.set(r.category,(map.get(r.category)||0)+r.amount));const sorted=[...map].sort((a,b)=>b[1]-a[1]);const year=Number(ledgerDate.slice(0,4)),month=Number(ledgerDate.slice(5,7));let count=ledgerPeriod==='year'?10:ledgerPeriod==='month'?(month===10?20:new Date(year,month,0).getDate()):1;
- const vals=Array.from({length:count},(_,i)=>sums(periodRows().filter(r=>ledgerPeriod==='year'?Number(r.date.slice(5,7))===i+1:ledgerPeriod==='month'?Number(r.date.slice(8))===i+1:true))[statsKind]),max=Math.max(1,...vals);const pts=vals.map((v,i)=>[12+(count===1?154:i/(count-1)*308),110-v/max*88]),path=pts.map((p,i)=>`${i?'L':'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');const ticks=[...new Set([0,Math.floor((count-1)/2),count-1])];const days=ledgerPeriod==='year'?Math.floor((new Date(today+'T12:00:00')-new Date('2026-01-01T12:00:00'))/86400000)+1:ledgerPeriod==='month'?count:1;
- body.innerHTML=`<div class="shark-chart-tools"><div class="shark-chart-top"><select aria-label="图表收支类型" onchange="statsKind=this.value;renderLedger()"><option value="expense" ${statsKind==='expense'?'selected':''}>支出 ▾</option><option value="income" ${statsKind==='income'?'selected':''}>收入 ▾</option></select><div class="shark-period-tabs" aria-label="图表统计周期">${[['day','日'],['month','月'],['year','年']].map(([p,t])=>`<button class="${ledgerPeriod===p?'active':''}" onclick="setPeriod('${p}')">${t}</button>`).join('')}</div></div><div class="shark-chart-date"><button onclick="shiftPeriod(-1)" aria-label="上一统计周期">‹</button><button onclick="openLedgerPeriod()">${readablePeriod()} ▾</button><button onclick="shiftPeriod(1)" aria-label="下一统计周期">›</button></div></div><div class="shark-chart-meta">总${statsKind==='expense'?'支出':'收入'}：<b>${money(sum[statsKind])}</b><br>日均：<b>${money(sum[statsKind]/days)}</b></div><svg class="spend-trend" viewBox="0 0 332 139" role="img" aria-label="${statsKind==='expense'?'支出':'收入'}趋势，按${ledgerPeriod==='year'?'月':'日'}展示"><path d="M12 22H320M12 66H320M12 110H320" stroke="var(--color-chart-grid)" stroke-dasharray="3 4" fill="none"/><path d="${path}" stroke="var(--color-brand)" stroke-width="1.3" fill="none"/>${pts.map((p,i)=>`<circle cx="${p[0]}" cy="${p[1]}" r="2.7" fill="${vals[i]?'var(--color-brand)':'var(--color-chart-reference)'}"><title>${ledgerPeriod==='year'?'第'+(i+1)+'月':ledgerPeriod==='month'?month+'月'+(i+1)+'日':'当天'}：${money(vals[i])}</title></circle>`).join('')}${ticks.map(i=>`<text x="${pts[i][0]}" y="132" text-anchor="${i===0?'start':i===count-1?'end':'middle'}" font-size="9" fill="var(--color-text-secondary)">${ledgerPeriod==='year'?(i+1)+'月':ledgerPeriod==='month'?(i+1)+'日':'当天'}</text>`).join('')}</svg><h2 class="rank-title">${statsKind==='expense'?'支出':'收入'}排行榜</h2>${sorted.length?sorted.map(([c,v],i)=>`<button class="shark-rank" onclick="filterCategoryAt(${i})"><span class="cat-circle">${iconFor(c)}</span><span class="rank-copy"><span class="rank-line"><span>${esc(c)}<small>${(v/sum[statsKind]*100).toFixed(1)}%</small></span><b>${money(v)}</b></span><span class="rank-bar"><i style="width:${v/sum[statsKind]*100}%"></i></span></span></button>`).join(''):'<div class="empty">这个周期暂无收支</div>'}<p class="ledger-inline-note">点分类查看原始流水</p>`;
-}
-function filterCategoryAt(i){const map=new Map();periodRows().filter(r=>r.kind===statsKind).forEach(r=>map.set(r.category,(map.get(r.category)||0)+r.amount));const item=[...map].sort((a,b)=>b[1]-a[1])[i];if(item)filterCategory(item[0]);}
-function entryDetail(id){const r=ledgerRows.find(r=>r.id===id);openSheet('账单详情',`<div style="display:flex;align-items:center;gap:10px"><span class="cat-circle">${iconFor(r.category)}</span><span>${r.category}</span></div><div class="balance">${r.kind==='income'?'+':'−'}${money(r.amount)}</div><div class="detail-line"><span>时间</span><b>${r.date}</b></div><div class="detail-line"><span>备注</span><b>${esc(r.note)||'—'}</b></div><div class="detail-line"><span>现金变化</span><b>${r.kind==='income'?'+':'−'}${money(r.amount)}</b></div><button class="primary" style="margin-top:18px" onclick="openEntry(${r.id})">修改记录</button>`);}
-function openEntry(id=null){const active=document.querySelector('.screen.active');if(active?.id!=='screen-entry')entryReturn=active?.id.replace('screen-','')||'ledger';const r=ledgerRows.find(r=>r.id===id);editEntryId=r?.id||null;entryKind=r?.kind||'expense';activeCategory=r?.category||'餐饮';entryDraft={expression:r?String(r.amount):'',date:r?.date||today,note:r?.note||'',auto:r?.auto||false};go('entry');renderEntry();}
-function renderEntry(){document.getElementById('screen-entry').innerHTML=`<header class="entry-top"><span></span><div class="entry-mode-tabs"><button id="kind-expense" onclick="setEntryKind('expense')">支出</button><button id="kind-income" onclick="setEntryKind('income')">收入</button></div><button class="entry-cancel" onclick="go(entryReturn)">取消</button></header><div class="entry-grid-wrap"><div class="category-grid" id="entry-categories"></div></div><div class="entry-bottom"><div class="entry-value-row"><span class="entry-selected" id="entry-selected-label"></span><output class="entry-expression" id="keypad-amount" aria-label="输入金额" aria-live="polite">0</output></div><label class="entry-remark">备注：<input id="entry-note" value="${esc(entryDraft.note)}" maxlength="40" placeholder="点击填写备注" oninput="entryDraft.note=this.value"></label><div class="entry-keypad" aria-label="记账数字键盘">${['7','8','9','date','4','5','6','+','1','2','3','-','.','0','back','done'].map(k=>`<button class="${k==='date'?'key-date':k==='done'?'key-done':k==='back'?'key-delete':''}" aria-label="${k==='date'?'选择记账日期':k==='done'?'完成记账':k==='back'?'删除一位':k==='+'?'加':k==='-'?'减':k==='.'?'小数点':k}" ${k==='done'?'id="key-done"':''} onclick="entryKey('${k}')">${k==='date'?'<span id="key-date-label">今天</span>':k==='done'?'完成':k==='back'?'⌫':k==='-'?'−':k}</button>`).join('')}</div></div>`;setEntryKind(entryKind,false);updateEntryAmount();}
-function setEntryKind(kind,reset=true){entryKind=kind;if(reset)activeCategory=kind==='expense'?'餐饮':'工资';document.getElementById('kind-expense').classList.toggle('active',kind==='expense');document.getElementById('kind-income').classList.toggle('active',kind==='income');renderCategories();}
-function renderCategories(){const cats=entryKind==='expense'?expenseCats:incomeCats;document.getElementById('entry-categories').innerHTML=cats.map((c,i)=>`<button class="category-tile ${c===activeCategory?'active':''}" aria-pressed="${c===activeCategory}" onclick="chooseCategory(${i})"><span class="cat-circle">${iconFor(c)}</span><span>${esc(c)}</span></button>`).join('')+`<button class="category-tile" onclick="openCategoryManager()"><span class="cat-circle">${iconFor('设置')}</span><span>设置</span></button>`;document.getElementById('entry-selected-label').textContent=activeCategory;}
-function chooseCategory(i){activeCategory=(entryKind==='expense'?expenseCats:incomeCats)[i];renderCategories();}
-function openCategoryManager(){const cats=entryKind==='expense'?expenseCats:incomeCats;openSheet('常用分类',`<div class="description">${cats.map(esc).join('、')}</div><form id="category-form"><label class="field">新增${entryKind==='expense'?'支出':'收入'}分类<input id="new-category" required maxlength="8" placeholder="输入分类名称"></label><button class="primary" type="submit">添加到演示分类</button></form>`);document.getElementById('category-form').onsubmit=e=>{e.preventDefault();const c=document.getElementById('new-category').value.trim();if(!c)return;if(cats.includes(c)){toast('已有这个分类。');return;}cats.push(c);activeCategory=c;closeSheet();renderCategories();};}
-function amountFromExpression(){const str=entryDraft.expression.replace(/\.$/,'');if(!/^\d+(\.\d{1,2})?([+-]\d+(\.\d{1,2})?)*$/.test(str))return NaN;const terms=str.match(/[+-]?\d+(?:\.\d{1,2})?/g);return Math.round(terms.reduce((n,t)=>n+Number(t),0)*100)/100;}
-function updateEntryAmount(){document.getElementById('keypad-amount').textContent=entryDraft.expression||'0';const amount=amountFromExpression();document.getElementById('key-done').disabled=!Number.isFinite(amount)||amount<=0||amount>99999999;document.getElementById('key-date-label').textContent=entryDraft.date===today?'今天':entryDraft.date.slice(5).replace('-','/');}
-function entryKey(key){if(key==='date'){openEntryDate();return;}if(key==='done'){saveEntry();return;}let s=entryDraft.expression;if(key==='back'){s=s.slice(0,-1);}else if(key==='+'||key==='-'){if(!s)return;if(/[+-]$/.test(s))s=s.slice(0,-1);if(s.endsWith('.'))s=s.slice(0,-1);s+=key;}else if(key==='.'){const part=s.split(/[+-]/).pop();if(part.includes('.'))return;s+=(part?'':'0')+'.';}else{const part=s.split(/[+-]/).pop();if(part.includes('.')&&part.split('.')[1].length>=2)return;if(part==='0')s=s.slice(0,-1);if(s.length>=24)return;s+=key;}entryDraft.expression=s;updateEntryAmount();}
-function openEntryDate(){openSheet('记账日期',`<form id="entry-date-form"><label class="field">选择日期<input id="entry-date" type="date" min="2026-01-01" max="${today}" value="${entryDraft.date}" required></label><button class="primary" type="submit">使用这个日期</button></form>`);document.getElementById('entry-date-form').onsubmit=e=>{e.preventDefault();const d=document.getElementById('entry-date').value;if(d<'2026-01-01'||d>today)return;entryDraft.date=d;closeSheet();updateEntryAmount();};}
-function saveEntry(){const amount=amountFromExpression();if(!Number.isFinite(amount)||amount<=0||amount>99999999)return;const r=ledgerRows.find(r=>r.id===editEntryId),v={id:r?.id||uid++,kind:entryKind,category:activeCategory,amount,date:entryDraft.date,note:entryDraft.note.trim(),auto:entryDraft.auto};const effect=(v.kind==='income'?amount:-amount)-(r?(r.kind==='income'?r.amount:-r.amount):0);if(demo.cash+effect<0){toast('现金余额不足，请先核对。');return;}if(r)Object.assign(r,v);else ledgerRows.push(v);ledgerDate=v.date;ledgerView='records';ledgerSearch='';categoryFilter='';kindFilter='all';syncLedger();go('ledger');toast('已记入演示账本，现金同步更新。');}
-document.addEventListener('keydown',e=>{if(!document.getElementById('screen-entry').classList.contains('active')||!overlay.hidden||e.metaKey||e.ctrlKey||e.target.closest('input,select,textarea'))return;const key=/^[0-9.+-]$/.test(e.key)?e.key:e.key==='Backspace'?'back':e.key==='Enter'?'done':null;if(key){e.preventDefault();entryKey(key);}if(e.key==='Escape')go(entryReturn);});
-document.getElementById('add-entry').addEventListener('click',()=>openEntry());
+  const fmt = (n, dec = 2) => Number(n).toLocaleString('zh-CN', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+  const mask = (text, force = false) => (state.amountsMasked || force) ? '••••' : text;
+  const signed = (n) => (n > 0 ? '+' : '') + fmt(n);
+  const goldVal = () => state.assets.goldGrams * state.assets.goldPrice;
+  const fundTotal = () => state.assets.fundConfirmed + state.assets.fundPending;
+  const totalAssets = () => state.assets.cash + fundTotal() + state.assets.stock + state.assets.provident + goldVal();
 
-const fundModels=[{id:'nasdaq',name:'纳指指数基金一',group:'纳斯达克指数',value:82400,cost:74600,gain:7500,positions:[{cls:'A',platform:'平台一',shares:16200,nav:2,value:32400,cost:30000},{cls:'C',platform:'平台二',shares:15000,nav:1.98,value:29700,cost:27000},{cls:'A',platform:'平台三',shares:10000,nav:2,value:20000,cost:17600}]},{id:'nasdaq2',name:'纳指指数基金二',group:'纳斯达克指数',value:29600,cost:27100,gain:2500,positions:[{cls:'A',platform:'平台一',shares:20000,nav:1.48,value:29600,cost:27100}]},{id:'tech',name:'全球科技主动基金',group:'美股科技主动',value:56000,cost:51000,gain:5000,positions:[{cls:'A',platform:'平台一',shares:10000,nav:1.8,value:18000,cost:16000},{cls:'C',platform:'平台二',shares:20000,nav:1.9,value:38000,cost:35000}]}];
-const trades=[{id:1,date:'2026-10-19',fund:'nasdaq',cls:'C',platform:'平台二',kind:'buy',amount:300,status:'pending'},{id:2,date:'2026-10-14',fund:'nasdaq',cls:'A',platform:'平台一',kind:'buy',amount:2000,status:'done',shares:1000}];
-const plans=[{id:1,fund:'nasdaq',cls:'C',platform:'平台二',amount:300,freq:'每周三',start:'2026-10-21',paused:false}];
-const fBy=id=>fundModels.find(f=>f.id===id);
-const pendingAmount=fid=>trades.filter(t=>t.status==='pending'&&t.kind==='buy'&&(!fid||t.fund===fid)).reduce((n,t)=>n+t.amount,0);
-function fValue(f){return f.value+(pendingAmount(f.id)-(f.id==='nasdaq'?300:0));}
-function setInvestView(v){investView=v;renderInvestment();document.getElementById('app-content').scrollTop=0;}
+  function eyeSvg(masked) {
+    return masked
+      ? '<svg viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 5.1A10.5 10.5 0 0 1 12 5c5 0 9 4.5 10 7a11.4 11.4 0 0 1-3.3 4.3"/><path d="M6.6 6.6A11.3 11.3 0 0 0 2 12c1 2.5 5 7 10 7 1.4 0 2.7-.3 3.9-.8"/></svg>'
+      : '<svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+  }
 
-let scopeStyle='capsules';let selectedHoldingMetrics=['value','gain','rate'],holdingSort='value',holdingDescending=true,holdingLayout='groups',holdingsQuery='',profitRange='month',profitMode='profit',importSelected=false;
-const metricNames={value:'持仓价值',gain:'持有收益',rate:'收益率',recent:'10/16收益',cost:'持仓成本',weight:'占比',platforms:'平台数',pending:'待确认'};
-const modelMeta={nasdaq:{recent:180,monthGain:800,quarterGain:3500},nasdaq2:{recent:60,monthGain:100,quarterGain:1500},tech:{recent:-40,monthGain:300,quarterGain:2000}};
-const pnl=n=>(n>=0?'+':'−')+money(Math.abs(n));
-function scopedFunds(){return fundModels.filter(f=>groupFilter==='all'||f.group===groupFilter);}
-function scopeTotals(fs){return fs.reduce((t,f)=>({value:t.value+fValue(f),gain:t.gain+f.gain,cost:t.cost+f.cost,recent:t.recent+modelMeta[f.id].recent,pending:t.pending+pendingAmount(f.id)}),{value:0,gain:0,cost:0,recent:0,pending:0});}
-function selectScope(i){groupFilter=i<0?'all':[...new Set(fundModels.map(f=>f.group))][i];renderInvestment();}
-function metricValue(f,key){return {value:fValue(f),gain:f.gain,rate:f.gain/f.cost*100,recent:modelMeta[f.id].recent,cost:f.cost,weight:fValue(f)/scopeTotals(scopedFunds()).value*100,platforms:new Set(f.positions.map(p=>p.platform)).size,pending:pendingAmount(f.id)}[key];}
-function metricText(f,key){const v=metricValue(f,key);return ['rate','weight'].includes(key)?(key==='rate'&&v>=0?'+':'')+v.toFixed(2)+'%':key==='platforms'?v.toFixed(0):['gain','recent'].includes(key)?pnl(v):money(v);}
-function sortHoldings(key){holdingDescending=holdingSort===key?!holdingDescending:true;holdingSort=key;renderInvestment();}
-function renderInvestment(){
- const scopeScroll=document.querySelector('#screen-invest .portfolio-cards')?.scrollLeft||0;const groups=[...new Set(fundModels.map(f=>f.group))];if(groupFilter!=='all'&&!groups.includes(groupFilter))groupFilter='all';const fs=scopedFunds(),t=scopeTotals(fs),isOverview=['holdings','returns'].includes(investView);
- document.querySelector('[data-asset="fund"] small').textContent='含待确认投资 '+money(pendingAmount());
- document.getElementById('screen-invest').innerHTML=`<header class="invest-header"><h1>投资</h1><div class="head-actions"><button class="invest-icon" aria-label="搜索持仓" onclick="openHoldingSearch()"><svg viewBox="0 0 24 24"><circle cx="10" cy="10" r="6.5"/><path d="m15 15 5 5"/></svg></button><button class="invest-icon" aria-label="新增投资记录" onclick="openInvestmentAdd()">＋</button></div></header><div class="invest-page-content"><section class="invest-summary" ${isOverview?'':'hidden'}><div class="tiny">${groupFilter==='all'?'全部基金':esc(groupFilter)} · CNY · 含在途资金</div><div class="invest-value"><span class="unit">¥</span><span id="invest-total">${money(t.value)}</span></div><button class="invest-pending" id="pending-shortcut" onclick="setInvestView('trades')">${t.pending?'含待确认买入 '+money(t.pending)+' · 去核对 ›':'暂无待确认买入'}</button><div class="invest-key-metrics"><div><span>持有收益</span><b class="${t.gain>=0?'pnl-positive':'pnl-negative'}">${pnl(t.gain)}</b></div><div><span>持有收益率</span><b class="pnl-positive">+${(t.gain/t.cost*100).toFixed(2)}%</b></div><div><span>10/16收益</span><b class="${t.recent>=0?'pnl-positive':'pnl-negative'}">${pnl(t.recent)}</b></div></div><button class="invest-update" onclick="showValuation()"><i></i><span>净值截至10/16 · 后续日期尚未披露 · 查看 ›</span></button></section><section class="portfolio-scope"><div class="investment-section-title"><strong>组合视角</strong><span><button onclick="scopeStyle=scopeStyle==='cards'?'capsules':'cards';renderInvestment()">${scopeStyle==='cards'?'胶囊视图':'卡片视图'}</button><button style="margin-left:12px" onclick="manageGroups()">管理组合 ›</button></span></div><div class="portfolio-cards ${scopeStyle==='capsules'?'scope-pills':''}"><button class="portfolio-card ${groupFilter==='all'?'active':''}" onclick="selectScope(-1)"><strong>全部基金</strong><b>${money(demo.fund)}</b><small>${fundModels.length}只基金 · 跨平台汇总</small></button>${groups.map((g,i)=>{const ts=scopeTotals(fundModels.filter(f=>f.group===g));return `<button class="portfolio-card ${groupFilter===g?'active':''}" onclick="selectScope(${i})"><strong>${esc(g)}</strong><b>${money(ts.value)}</b><small>持有收益 ${pnl(ts.gain)}</small></button>`;}).join('')}</div></section><nav class="invest-tabs" aria-label="投资视图">${[['holdings','持仓'],['returns','收益'],['trades','交易'],['plans','定投']].map(([id,label])=>`<button data-invest-view="${id}" class="${investView===id?'active':''}" onclick="setInvestView('${id}')">${label}</button>`).join('')}</nav><div id="invest-body" class="invest-body"></div></div>`;
- document.querySelector('#screen-invest .portfolio-cards').scrollLeft=scopeScroll;const body=document.getElementById('invest-body');
- if(investView==='returns'){renderProfitView(body,fs);return;}
- if(investView==='trades'){const ts=trades.filter(t=>fs.some(f=>f.id===t.fund)).slice().sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id);body.innerHTML=`<div class="investment-section-title"><strong>交易记录</strong><button onclick="openTrade(scopedFunds()[0].id)">＋ 记录交易</button></div>${ts.map(t=>`<button class="investment-trade-row" onclick="tradeDetail(${t.id})"><div class="title-line"><span>${t.kind==='buy'?'买入':'赎回'} · ${fBy(t.fund).name}</span><b>${money(t.amount)}</b></div><small>${t.cls}类 · ${esc(t.platform)} · ${t.date}<br><span class="investment-status ${t.status==='done'?'done':''}">${t.status==='pending'?'待确认':t.status==='receivable'?'待到账':'已完成'}</span></small></button>`).join('')||'<div class="invest-empty">该组合暂无交易记录</div>'}<button class="secondary" style="margin-top:12px" onclick="showSellJourney()">查看赎回与到账流程</button><p class="investment-note">买入待确认、赎回待到账资金仍计入基金资产；内部转换不计为日常收支。</p>`;return;}
- if(investView==='plans'){const ps=plans.filter(p=>fs.some(f=>f.id===p.fund));body.innerHTML=`<div class="investment-section-title"><strong>定投计划</strong><button onclick="openPlan(null,'${fs[0].id}')">＋ 新建</button></div>${ps.map(p=>`<article class="invest-plan"><div style="display:flex;justify-content:space-between;gap:8px"><h3>${fBy(p.fund).name} ${p.cls}类</h3><span class="investment-status ${p.paused?'':'done'}">${p.paused?'已暂停':'进行中'}</span></div><div class="plan-meta">${p.freq} · ${esc(p.platform)} · 统一现金扣款<br>${p.paused?'恢复后从后续周期继续':'下次记账：'+nextPlanDate(p)}</div><div class="plan-bottom"><b>${money(p.amount)}<small style="font-size:9px;font-weight:400;color:var(--color-text-secondary)"> / 期</small></b><button onclick="openPlan(${p.id})">编辑计划</button></div></article>`).join('')||'<div class="invest-empty">该组合还没有定投计划</div>'}<p class="investment-note">到期先记为待确认买入，实际份额按平台结果核对。余额不足时保留待处理记录。</p>`;return;}
- const matched=fs.filter(f=>!holdingsQuery||f.name.includes(holdingsQuery));
- body.innerHTML=`<div class="holding-controls"><select aria-label="持仓分组方式" onchange="holdingLayout=this.value;renderInvestment()"><option value="groups" ${holdingLayout==='groups'?'selected':''}>按投资方向 ▾</option><option value="funds" ${holdingLayout==='funds'?'selected':''}>同基金汇总 ▾</option></select><button onclick="openMetricSettings()">指标设置 ›</button></div>${holdingsQuery?`<div class="invest-filter-banner"><span>搜索：${esc(holdingsQuery)}</span><button onclick="holdingsQuery='';renderInvestment()">清除</button></div>`:''}<div class="holding-head holding-columns"><span>基金 / 类别</span>${selectedHoldingMetrics.map(k=>`<button onclick="sortHoldings('${k}')">${metricNames[k]}${holdingSort===k?(holdingDescending?'↓':'↑'):''}</button>`).join('')}</div>`;
- function rows(list){return list.slice().sort((a,b)=>(metricValue(a,holdingSort)-metricValue(b,holdingSort))*(holdingDescending?-1:1)).map(f=>`<button class="holding-data-row holding-columns" onclick="showFund('${f.id}')"><span class="holding-name">${f.name}<small>${[...new Set(f.positions.map(p=>p.cls))].join('/')}类 · ${new Set(f.positions.map(p=>p.platform)).size}个平台${pendingAmount(f.id)?`<br><em>在途 ${money(pendingAmount(f.id))}</em>`:''}</small></span>${selectedHoldingMetrics.map(k=>`<span class="data-cell right ${['gain','rate','recent'].includes(k)?metricValue(f,k)>=0?'pnl-positive':'pnl-negative':''}">${metricText(f,k)}</span>`).join('')}</button>`).join('');}
- body.innerHTML+=matched.length?(holdingLayout==='groups'?[...new Set(matched.map(f=>f.group))].map(g=>{const list=matched.filter(f=>f.group===g),ts=scopeTotals(list);return `<details class="holding-bundle" open><summary><b>${esc(g)} ⌄</b><span>${money(ts.value)} <small>· ${(ts.value/t.value*100).toFixed(1)}%</small></span></summary>${rows(list)}</details>`;}).join(''):rows(matched)):'<div class="invest-empty">未找到这只基金</div>';
- body.innerHTML+='<p class="investment-note">同基金 A/C 类按各自净值折算后汇总金额；待确认资金不计入持有收益率。</p>';
-}
-function openHoldingSearch(){openSheet('搜索持仓',`<form id="holding-search-form"><label class="field">基金名称<input id="holding-search-query" value="${esc(holdingsQuery)}" placeholder="例如：纳指" maxlength="30"></label><button type="submit" class="primary">查看持仓</button></form>`);document.getElementById('holding-search-form').onsubmit=e=>{e.preventDefault();holdingsQuery=document.getElementById('holding-search-query').value.trim();investView='holdings';closeSheet();renderInvestment();};}
-function openMetricSettings(){openSheet('持仓列表指标',`<div class="description">选择3项展示。各类份额与净值在基金详情单独查看。</div><form id="metric-form"><div class="check-list">${Object.entries(metricNames).map(([k,label])=>`<label><input type="checkbox" name="metric" value="${k}" ${selectedHoldingMetrics.includes(k)?'checked':''}>${label}</label>`).join('')}</div><p class="inline-form-error" id="metric-error"></p><button class="primary" type="submit">应用这3项指标</button></form>`);document.getElementById('metric-form').onsubmit=e=>{e.preventDefault();const keys=new FormData(e.target).getAll('metric');if(keys.length!==3){document.getElementById('metric-error').textContent='请选择恰好3项指标。';return;}selectedHoldingMetrics=keys;closeSheet();renderInvestment();};}
-function showFund(id){selectedFund=id;const f=fBy(id),t=scopeTotals([f]);document.getElementById('screen-fund-detail').innerHTML=`<header class="invest-header centered"><button class="invest-icon back-control" onclick="go('invest')" aria-label="返回投资总览">‹</button><h1>基金明细</h1><button class="invest-icon" onclick="openFundMenu('${id}')" aria-label="基金更多操作">⋯</button></header><div class="invest-page-content"><h2 class="invest-detail-title">${f.name}</h2><div class="invest-detail-sub">${esc(f.group)} · QDII · ${[...new Set(f.positions.map(p=>p.cls))].join('/')}类</div><div class="tiny">持仓价值 · 含在途 ${money(t.pending)}</div><div class="invest-value"><span class="unit">¥</span>${money(t.value)}</div><div class="invest-key-metrics"><div><span>持有收益</span><b class="pnl-positive">${pnl(t.gain)}</b></div><div><span>收益率</span><b class="pnl-positive">+${(t.gain/t.cost*100).toFixed(2)}%</b></div><div><span>10/16收益</span><b class="${t.recent>=0?'pnl-positive':'pnl-negative'}">${pnl(t.recent)}</b></div></div><div class="split-buttons" style="margin-bottom:20px"><button class="primary compact-action" onclick="openTrade('${id}')">记录交易</button><button class="secondary compact-action" onclick="openPlan(null,'${id}')">设置定投</button></div><div class="investment-section-title"><strong>份额类别与平台</strong><span style="font-size:9px">已确认 ${money(t.value-t.pending)}</span></div>${[...new Set(f.positions.map(p=>p.cls))].map(cls=>{const ps=f.positions.filter(p=>p.cls===cls),value=ps.reduce((n,p)=>n+p.value,0),cost=ps.reduce((n,p)=>n+p.cost,0);return `<details class="invest-class" open><summary><div class="class-heading"><b>${cls}类 ⌄</b><b>${money(value)}</b></div><div class="class-meta">份额 ${money(ps.reduce((n,p)=>n+p.shares,0),4)} · 成本 ${money(cost)}<br>净值 ${money(ps[0].nav,4)} · 净值日期10/16</div></summary><div class="class-inner">${ps.map(p=>`<div class="invest-position"><div class="position-top"><span>${p.platform}</span><b>${money(p.value)}</b></div><div class="position-bottom">${money(p.shares,4)}份 · 成本 ${money(p.cost)}<br>持有收益 <span class="pnl-positive">${pnl(p.value-p.cost)}</span></div></div>`).join('')}</div></details>`;}).join('')}${t.pending?`<button class="secondary" onclick="go('invest');setInvestView('trades')">待确认买入 ${money(t.pending)} · 去核对 ›</button>`:''}<p class="investment-note">A/C类各自保留份额与成本，平台明细在此展开；导入已有持仓不重复扣减现金。</p><button class="secondary" onclick="go('invest');groupFilter=fBy('${id}').group;setInvestView('returns')">查看所属组合的收益趋势 ›</button></div>`;go('fund-detail');}
-function openFundMenu(id){openSheet('基金操作',`<div class="list-box"><button class="fund-row" onclick="openTrade('${id}')"><span>记录买入或赎回</span><b>›</b></button><button class="fund-row" onclick="openPlan(null,'${id}')"><span>设置定投</span><b>›</b></button><button class="fund-row" onclick="manageGroups()"><span>调整所属组合</span><b>›</b></button><button class="fund-row" onclick="showValuation()"><span>净值更新状态</span><b>›</b></button></div>`);}
-function openInvestmentAdd(){document.getElementById('screen-invest-add').innerHTML=`<header class="invest-header centered"><button class="invest-icon back-control" onclick="go('invest')" aria-label="返回投资总览">‹</button><h1>添加持仓或交易</h1><span></span></header><div class="invest-page-content"><p class="investment-note">选择本次需要记录的内容</p><div class="invest-entry-cards"><button class="invest-entry-card" onclick="openImport()"><span class="menu-icon">⇩</span><span class="menu-copy"><b>导入已有持仓</b><small>截图识别当前持仓，核对后导入；不再次扣减现金。</small></span><span>›</span></button><button class="invest-entry-card" onclick="holdingDraft('manual')"><span class="menu-icon">＋</span><span class="menu-copy"><b>手动填写已有持仓</b><small>填写基金、份额类别、平台、数量和成本。</small></span><span>›</span></button><button class="invest-entry-card" onclick="openTrade(scopedFunds()[0].id)"><span class="menu-icon">⇄</span><span class="menu-copy"><b>记录一笔交易</b><small>新增买入或赎回，联动统一现金与在途资金。</small></span><span>›</span></button><button class="invest-entry-card" onclick="openPlan(null,scopedFunds()[0].id)"><span class="menu-icon">◷</span><span class="menu-copy"><b>设置定投</b><small>设置基金、份额类别、金额和扣款周期。</small></span><span>›</span></button></div><p class="investment-note">记录你在其他平台的持仓与交易。</p></div>`;go('invest-add');}
-function showValuation(){openSheet('净值更新状态',fundModels.map(f=>`<div class="detail-line"><span>${f.name}</span><b>2026-10-16<br>已披露净值 · 演示</b></div>`).join('')+'<div class="description">按每个份额类别的最新已披露净值估值。QDII 披露有时间差，保留净值日期；更新失败时标记旧值，不把缺失数据当作零。</div>');}
-function manageGroups(){openSheet('管理投资分组',`<div class="description">每只基金归入一个主分组，避免合计重复；A/C 类跟随同一基金。</div><form id="groups-form">${fundModels.map(f=>`<label class="field">${f.name}<input name="${f.id}" value="${esc(f.group)}" maxlength="16" required list="group-options"></label>`).join('')}<datalist id="group-options">${[...new Set(fundModels.map(f=>f.group))].map(g=>`<option value="${esc(g)}"></option>`).join('')}</datalist><div class="field-hint">可输入新分组名，例如“全球配置”。只改变展示分组。</div><button class="primary" type="submit">保存演示分组</button></form>`);document.getElementById('groups-form').onsubmit=e=>{e.preventDefault();const data=new FormData(e.target);if(fundModels.some(f=>!data.get(f.id).trim()))return;fundModels.forEach(f=>f.group=data.get(f.id).trim());groupFilter='all';closeSheet();go('invest');toast('演示分组已更新。');};}
-function fundOptions(id){return fundModels.map(f=>`<option value="${f.id}" ${id===f.id?'selected':''}>${f.name}</option>`).join('');}
-function openTrade(id='nasdaq',kind='buy'){openSheet('记录基金交易',`<div class="sheet-tabs"><button class="${kind==='buy'?'active':''}" onclick="openTrade('${id}','buy')">买入</button><button class="${kind==='sell'?'active':''}" onclick="openTrade('${id}','sell')">赎回</button></div><form id="trade-form"><label class="field">基金<select id="trade-fund" onchange="openTrade(this.value,'${kind}')">${fundOptions(id)}</select></label><div class="form-columns"><label class="field">份额类别<select id="trade-class">${[...new Set(fBy(id).positions.map(p=>p.cls))].map(c=>`<option ${c==='C'?'selected':''}>${c}</option>`).join('')}</select></label><label class="field">平台<select id="trade-platform">${[...new Set(fBy(id).positions.map(p=>p.platform))].map(p=>`<option ${p==='平台二'?'selected':''}>${p}</option>`).join('')}</select></label></div><label class="field">${kind==='buy'?'实际扣款金额（元）':'申请赎回份额（份）'}<input id="trade-amount" type="number" min="0.01" max="9999999" step="0.01" value="${kind==='buy'?'300.00':'100.00'}" required inputmode="decimal"></label><label class="field">${kind==='buy'?'实际扣款日期':'申请日期'}<input type="date" id="trade-date" value="${today}" min="2026-10-01" max="${today}" required></label><div class="block-note">${kind==='buy'?'现金减少，等额计入待确认投资。确认后补录份额、成交净值和费用。':'申请后份额仍保留估值；确认赎回后转为待到账资金，实际到账时再转入现金。'}</div><button class="primary" type="submit">${kind==='buy'?'演示保存买入':'查看赎回确认流程'}</button><p class="demo-flag">仅记录已在其他平台进行的操作</p></form>`);document.getElementById('trade-form').onsubmit=e=>{e.preventDefault();const amount=Number(document.getElementById('trade-amount').value);if(kind==='sell'){showSellJourney();return;}if(amount>demo.cash){toast('现金余额不足，请核对。');return;}const t={id:uid++,fund:document.getElementById('trade-fund').value,cls:document.getElementById('trade-class').value,platform:document.getElementById('trade-platform').value,date:document.getElementById('trade-date').value,kind:'buy',amount:Math.round(amount*100)/100,status:'pending'};trades.push(t);if(groupFilter!=='all')groupFilter=fBy(t.fund).group;investCashDelta-=t.amount;demo.fund+=t.amount;assetMoves.push({date:t.date,title:'基金买入扣款',amount:t.amount,note:`现金 −${money(t.amount)} → 待确认投资 +${money(t.amount)}`});syncLedger();closeSheet();go('invest');investView='trades';renderInvestment();toast('演示买入已记入待确认，总资产不因扣款减少。');};}
-function tradeDetail(id){const t=trades.find(t=>t.id===id),pending=t.status==='pending';openSheet('基金交易详情',`<span class="tag">${pending?'待确认':'已完成'}</span><div class="balance">${money(t.amount)}</div><div class="detail-line"><span>基金</span><b>${fBy(t.fund).name} ${t.cls}类</b></div><div class="detail-line"><span>平台 / 日期</span><b>${t.platform} / ${t.date}</b></div><div class="detail-line"><span>现金与资产</span><b>${pending?'现金已扣减<br>金额仍在基金资产中':'份额已计入持仓'}</b></div>${pending?`<div class="description">以平台最终确认结果为准，补齐份额、成交净值、费用和确认日期。此处可查看下一步核对结构。</div><button class="primary" onclick="confirmPreview(${t.id})">核对确认结果</button>`:`<div class="detail-line"><span>确认份额</span><b>${money(t.shares,4)}</b></div>`}`);}
-function confirmPreview(id){const t=trades.find(t=>t.id===id);const nav=fBy(t.fund).positions.find(p=>p.cls===t.cls).nav;openSheet('核对买入确认结果',`<div class="tiny">${fBy(t.fund).name} ${t.cls}类 · ${t.platform}</div><div class="detail-line"><span>已扣款</span><b>${money(t.amount)}</b></div><form id="confirm-preview"><div class="form-columns"><label class="field">确认份额<input type="number" min="0.0001" step="0.0001" value="${(t.amount/nav).toFixed(4)}" required></label><label class="field">成交净值<input type="number" min="0.0001" step="0.0001" value="${nav.toFixed(4)}" required></label></div><div class="form-columns"><label class="field">手续费（元）<input type="number" min="0" step="0.01" value="0.00" required></label><label class="field">确认日期<input type="date" value="${today}" required></label></div><div class="block-note">确认时把待确认资金转成对应份额，现金不再扣第二次；费用计入投资成本，不算生活支出。</div><button class="primary" type="submit">完成确认流程演示</button><p class="demo-flag">本轮展示核对结构，演示持仓不变</p></form>`);document.getElementById('confirm-preview').onsubmit=e=>{e.preventDefault();closeSheet();toast('确认流程已查看；本轮保留原演示持仓。');};}
-function showSellJourney(){openSheet('赎回与到账',`<div class="tiny">示例：赎回100份，确认净值1.98，费用0.10元</div><div class="timeline-step"><span class="number">1</span><div><b>提交赎回记录</b><small>100份仍保留估值，现金不变。</small></div></div><div class="timeline-step"><span class="number">2</span><div><b>确认赎回 · 待到账197.90元</b><small>扣减确认份额，197.90元仍在基金资产内。</small></div></div><div class="timeline-step"><span class="number">3</span><div><b>实际到账</b><small>现金 +197.90元，待到账 −197.90元，不计为日常收入。</small></div></div><label class="field">实际到账日期<input type="date" value="${today}"></label><label class="field">实际到账金额（元）<input inputmode="decimal" value="197.90"></label><button class="primary" onclick="closeSheet();toast('已查看赎回到现金的流程，未修改演示持仓。')">完成到账流程演示</button>`);}
-function previousImportSketch(){openSheet('录入已有持仓',`<div class="upload-box"><b>截图导入</b><p>选择平台持仓截图，识别后先核对，确认再保存。</p><button class="secondary" onclick="holdingDraft('screenshot')">查看识别草稿示例</button></div><div class="divider"></div><button class="secondary" onclick="holdingDraft('manual')">手动填写已有持仓</button><div class="description">起始持仓用于录入已持有的资产，不从当前现金再次扣款。之后新增购买从“记录交易”进入。</div><p class="demo-flag">当前不上传图片，仅展示内置示例</p>`);}
-function previousHoldingDraft(source){openSheet(source==='screenshot'?'核对识别草稿':'手动录入持仓',`<span class="tag">${source==='screenshot'?'识别结果待核对':'起始持仓'} · 尚未入账</span><form id="holding-draft"><label class="field">基金<select>${fundOptions('nasdaq')}</select></label><div class="form-columns"><label class="field">份额类别<select><option>A</option><option selected>C</option></select></label><label class="field">平台<input value="平台二" required></label></div><div class="form-columns"><label class="field">持有份额<input value="15000.0000" type="number" min="0.0001" step="0.0001" required></label><label class="field">持仓成本（元）<input value="27000.00" type="number" min="0" step="0.01" required></label></div><label class="field">持仓截至日期<input type="date" value="${today}" required></label><label class="field">所属分组<input value="纳斯达克指数" required></label><div class="block-note">发现同基金 C 类 / 平台二已有持仓：保存前需要选择“核对更新已有持仓”或“确认是独立持仓”。</div><label class="field">已有持仓处理<select required><option value="">请核对后选择</option><option>核对更新已有持仓</option><option>确认属于另一笔独立持仓</option></select></label><label class="inline-label"><input type="checkbox" required>我已核对截图日期、成本和重复持仓</label><button class="primary" type="submit">完成录入流程演示</button><p class="demo-flag">本轮不改写演示持仓</p></form>`);document.getElementById('holding-draft').onsubmit=e=>{e.preventDefault();closeSheet();toast('已查看持仓录入与重复核对流程。');};}
-let planEditReturn='invest';
-function openPlan(planId=null,fundId='nasdaq'){planEditReturn=document.getElementById('phone').dataset.page==='plans'?'plans':'invest';const p=plans.find(p=>p.id===planId);fundId=p?.fund||fundId;openSheet(p?'编辑定投计划':'新建定投计划',`<form id="plan-form"><label class="field">基金<select id="plan-fund" onchange="syncPlanClasses()">${fundOptions(fundId)}</select></label><div class="form-columns"><label class="field">份额类别<select id="plan-class"><option>A</option><option selected>C</option></select></label><label class="field">平台<input id="plan-platform" value="${esc(p?.platform||'平台二')}" required maxlength="20"></label></div><label class="field">每期扣款金额（元）<input id="plan-amount" type="number" min="0.01" max="9999999" step="0.01" value="${p?.amount||300}" required inputmode="decimal"></label><label class="field">重复周期<select id="plan-frequency"><option>每周三</option><option>每月15日</option></select></label><label class="field">开始日期<input id="plan-start" type="date" value="${p?.start||'2026-10-21'}" min="2026-10-21" required></label><div class="block-note">到期只生成一笔记账记录：现金 → 待确认投资。现金不足时标记待处理，补足后由你确认补记。</div><button class="primary" type="submit">保存演示计划</button>${p?`<button class="secondary" type="button" style="margin-top:9px" onclick="togglePlan(${p.id})">${p.paused?'恢复':'暂停'}此计划</button>`:''}<p class="demo-flag">记录你的定投，不操作真实基金平台</p></form>`);syncPlanClasses();if(p?.cls)document.getElementById('plan-class').value=p.cls;else if([...document.getElementById('plan-class').options].some(o=>o.value==='C'))document.getElementById('plan-class').value='C';document.getElementById('plan-frequency').value=p?.freq||'每周三';document.getElementById('plan-form').onsubmit=e=>{e.preventDefault();const next={id:p?.id||uid++,fund:document.getElementById('plan-fund').value,cls:document.getElementById('plan-class').value,platform:document.getElementById('plan-platform').value.trim(),amount:Number(document.getElementById('plan-amount').value),freq:document.getElementById('plan-frequency').value,start:document.getElementById('plan-start').value,paused:p?.paused||false};if(!fBy(next.fund).positions.some(pos=>pos.cls===next.cls)){toast('该示例基金没有所选份额类别，请选择A类。');return;}if(p)Object.assign(p,next);else plans.push(next);if(groupFilter!=='all')groupFilter=fBy(next.fund).group;closeSheet();refreshAssetLinks();if(planEditReturn==='plans')go('plans');else{go('invest');investView='plans';renderInvestment();}toast('计划已保存，仅影响后续期次。');};}
-function togglePlan(id){const p=plans.find(p=>p.id===id);p.paused=!p.paused;closeSheet();refreshAssetLinks();if(planEditReturn==='plans')go('plans');else{go('invest');investView='plans';renderInvestment();}}
+  let toastTimer;
+  function toast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.hidden = true; }, 2400);
+  }
 
+  function applyTheme(pref) {
+    state.themePref = pref;
+    const isDark = pref === 'dark' || (pref === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.dataset.colorScheme = isDark ? 'dark' : 'light';
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', isDark ? '#0B0C10' : '#F4F6FA');
+    document.querySelectorAll('[data-theme-pref]').forEach(b => b.classList.toggle('active', b.dataset.themePref === pref));
+  }
 
-const draftImportItems=[{fund:'nasdaq',cls:'C',platform:'平台二',shares:15000,cost:27000,date:'2026-10-16',reviewed:false,action:''},{fund:'tech',cls:'C',platform:'平台二',shares:20000,cost:35000,date:'2026-10-16',reviewed:false,action:''}];
-function openImport(){document.getElementById('screen-invest-import').innerHTML=`<header class="invest-header centered"><button class="invest-icon back-control" onclick="openInvestmentAdd()" aria-label="返回投资录入">‹</button><h1>截图导入持仓</h1><span></span></header><div class="invest-page-content"><div class="import-intro"><b>每个平台分别截图，无需拼接</b><small>① 选择持仓页，保留名称、类别和金额<br>② 系统生成草稿后，可修改份额与成本<br>③ 同基金、同类别、同平台先核对重复</small></div><div class="investment-section-title"><strong>示例截图 ${importSelected?'3':'0'}张</strong><span style="font-size:9px">线框演示 · 不上传图片</span></div>${importSelected?`<div class="sample-shots">${['平台一','平台二','平台三'].map((p,i)=>`<div class="sample-shot"><b>${p} · 持仓</b><i></i><i></i><i></i><i></i><small>示例截图${i+1}</small></div>`).join('')}</div>`:'<div class="invest-empty" style="border:1px dashed var(--color-border-control);border-radius:8px;margin:14px 0 20px">选择多张持仓截图<br>本轮可使用内置示例体验核对流程</div>'}<button class="secondary" onclick="importSelected=true;openImport()">${importSelected?'重新选择示例截图':'使用3张示例截图'}</button><div class="import-action-foot"><button class="primary" ${importSelected?'':'disabled'} onclick="openDrafts()">查看识别结果示例</button><p class="investment-note">此入口录入已有持仓现状。新增购买请使用“记录一笔交易”，以免重复累加。</p></div></div>`;go('invest-import');}
-function holdingDraft(source){if(source==='manual'){previousHoldingDraft(source);return;}openDrafts();}
-function openDrafts(){const n=draftImportItems.filter(d=>d.reviewed&&d.action).length;document.getElementById('screen-invest-draft').innerHTML=`<header class="invest-header centered"><button class="invest-icon back-control" onclick="openImport()" aria-label="返回截图导入">‹</button><h1>核对识别草稿</h1><span></span></header><div class="invest-page-content"><div class="investment-section-title"><strong>识别到2条持仓</strong><span style="font-size:9px">已核对 ${n}/2</span></div><p class="investment-note">来自3张示例图。确认前只保存在草稿中。</p>${draftImportItems.map((d,i)=>`<article class="draft-item"><div class="draft-title"><b>${fBy(d.fund).name} ${d.cls}类</b><button onclick="editImportDraft(${i})">修改 ›</button></div><p>${esc(d.platform)} · 持仓截至${d.date}<br>份额 ${money(d.shares,4)} · 成本 ${money(d.cost)}<br>组合：${esc(fBy(d.fund).group)}</p><span class="investment-status">同类别 / 平台已有记录，需要核对</span><select aria-label="第${i+1}条重复持仓处理" onchange="setDraftAction(${i},this.value)"><option value="">选择重复持仓处理方式</option><option value="update" ${d.action==='update'?'selected':''}>核对更新已有持仓</option><option value="separate" ${d.action==='separate'?'selected':''}>确认是另一笔独立持仓</option></select><label class="inline-label"><input type="checkbox" ${d.reviewed?'checked':''} onchange="setDraftReviewed(${i},this.checked)">已核对类别、平台、份额与成本</label></article>`).join('')}<div class="import-action-foot"><button class="primary" ${n===2?'':'disabled'} onclick="finishDraftImport()">完成导入流程演示</button><p class="investment-note">已有持仓不再从现金扣款。本轮只展示核对流程，演示持仓保持原值。</p></div></div>`;go('invest-draft');}
-function setDraftAction(i,v){draftImportItems[i].action=v;refreshDraftSubmit();}
-function setDraftReviewed(i,v){draftImportItems[i].reviewed=v;refreshDraftSubmit();}
-function refreshDraftSubmit(){const n=draftImportItems.filter(d=>d.reviewed&&d.action).length;document.querySelector('#screen-invest-draft .investment-section-title span').textContent='已核对 '+n+'/2';document.querySelector('#screen-invest-draft .import-action-foot .primary').disabled=n!==2;}
-function finishDraftImport(){if(!draftImportItems.every(d=>d.reviewed&&d.action))return;go('invest');toast('已完成草稿核对演示，未改写演示持仓。');}
-function editImportDraft(i){const d=draftImportItems[i];openSheet('修改识别草稿',`<form id="import-edit-form"><div class="tiny">${fBy(d.fund).name}</div><div class="form-columns"><label class="field">份额类别<select name="cls"><option ${d.cls==='A'?'selected':''}>A</option><option ${d.cls==='C'?'selected':''}>C</option></select></label><label class="field">平台<input name="platform" value="${esc(d.platform)}" required maxlength="20"></label></div><label class="field">持有份额<input type="number" min="0.0001" step="0.0001" name="shares" value="${d.shares}" required></label><label class="field">持仓成本（元）<input type="number" min="0" step="0.01" name="cost" value="${d.cost}" required></label><label class="field">持仓截至日期<input type="date" name="date" value="${d.date}" max="${today}" required></label><button type="submit" class="primary">保存草稿修改</button></form>`);document.getElementById('import-edit-form').onsubmit=e=>{e.preventDefault();const fd=new FormData(e.target);Object.assign(d,{cls:fd.get('cls'),platform:fd.get('platform').trim(),shares:Number(fd.get('shares')),cost:Number(fd.get('cost')),date:fd.get('date'),reviewed:false,action:''});closeSheet();openDrafts();};}
-function rangeHistory(fs,range=profitRange){const count=16,delta=f=>range==='month'?modelMeta[f.id].monthGain:range==='quarter'?modelMeta[f.id].quarterGain:f.gain;const gains=Array.from({length:count},(_,i)=>fs.reduce((n,f)=>n+f.gain-delta(f)*(1-i/(count-1))+(i===0||i===count-1?0:Math.sin(i*1.7)*delta(f)*.045),0));gains[count-2]=fs.reduce((n,f)=>n+f.gain-modelMeta[f.id].recent,0);const total=scopeTotals(fs);const values=gains;return{values,gains,change:fs.reduce((n,f)=>n+delta(f),0),start:{month:'2026-10-01',quarter:'2026-07-16',year:'2026-01-01',all:'2026-01-01'}[range],end:'2026-10-16'};}
-function renderProfitView(body,fs){const h=rangeHistory(fs),lo=Math.min(...h.values),hi=Math.max(...h.values),span=Math.max(1,hi-lo),pts=h.values.map((v,i)=>[12+i/(h.values.length-1)*300,106-(v-lo)/span*90]),path=pts.map((p,i)=>`${i?'L':'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');body.innerHTML=`<div class="invest-chart"><div class="invest-chart-head"><b>收益走势</b><button onclick="openProfitCalendar()">收益日历 ›</button></div><div class="invest-chart-ranges">${[['month','本月'],['quarter','近3月'],['year','今年'],['all','全部']].map(([r,label])=>`<button class="${profitRange===r?'active':''}" onclick="profitRange='${r}';renderInvestment()">${label}</button>`).join('')}</div><div class="profit-readout"><span>${h.start} — ${h.end}</span><b>${profitMode==='profit'?pnl(h.values.at(-1)):money(h.values.at(-1))}</b></div><svg class="profit-svg" viewBox="0 0 324 128" role="img" aria-label="${profitMode==='profit'?'累计盈亏':'基金市值'}趋势，示例数据"><path d="M12 16H312M12 61H312M12 106H312" fill="none" stroke="var(--color-chart-grid)" stroke-dasharray="3 4"/><path d="${path}" fill="none" stroke="var(--color-brand)" stroke-width="1.8"/><circle cx="312" cy="${pts.at(-1)[1]}" r="3" fill="var(--color-brand)"/><text x="12" y="124" fill="var(--color-text-secondary)" font-size="8">${h.start.slice(5).replace('-','/')}</text><text x="312" y="124" text-anchor="end" fill="var(--color-text-secondary)" font-size="8">10/16</text></svg><div class="profit-grid"><div><span>区间收益</span><b class="pnl-positive">${pnl(h.change)}</b></div><div><span>数据截至</span><b style="font-size:15px;color:var(--color-text-secondary)">10月16日</b></div></div></div><div class="investment-section-title"><strong>区间收益归属</strong><button onclick="openProfitCalendar()">收益日历 ›</button></div><div class="profit-breakdown">${fs.map(f=>`<button onclick="showFund('${f.id}')"><span>${f.name}</span><b class="pnl-positive">${pnl(profitRange==='month'?modelMeta[f.id].monthGain:profitRange==='quarter'?modelMeta[f.id].quarterGain:f.gain)} ›</b></button>`).join('')}</div><p class="investment-note">收益按净值日期归属，未披露日期留空；当前展示为线框示例曲线。</p>`;}
-function dailyGain(f,day){const h=rangeHistory([f],'month');if(day===1)return 0;return h.gains[day-1]-h.gains[day-2];}
-function openProfitCalendar(){const fs=scopedFunds(),offset=4;openSheet('收益日历 · 2026年10月',`<div class="tiny">${groupFilter==='all'?'全部基金':esc(groupFilter)} · 按净值日期归属</div><div class="pnl-calendar">${'日一二三四五六'.split('').map(t=>`<span>${t}</span>`).join('')}${'<span></span>'.repeat(offset)}${Array.from({length:31},(_,i)=>{const day=i+1,g=day<=16?fs.reduce((n,f)=>n+dailyGain(f,day),0):0;return `<button class="pnl-day ${day<=16?(g>=0?'up':'down'):''}" ${day>16?'disabled':''} onclick="profitDayDetail(${day})"><span>${day}</span><small>${day<=16?(g>=0?'+':'−')+money(Math.abs(g),0):day<=20?'未披露':'—'}</small></button>`;}).join('')}</div><div class="description">10/17—10/20暂无已披露净值；不把空白日期计为零收益。日历金额取整预览，点日期查看精确值。</div>`);}
-function profitDayDetail(day){const fs=scopedFunds();openSheet(`10月${day}日收益`,fs.map(f=>{const g=dailyGain(f,day);return `<div class="detail-line"><span>${f.name}</span><b class="${g>=0?'pnl-positive':'pnl-negative'}">${pnl(g)}</b></div>`;}).join('')+'<div class="description">金额按该净值日期归属；以上为虚拟持仓演示。</div><button class="secondary" onclick="openProfitCalendar()">返回收益日历</button>');}
+  function openSheet(title, html) {
+    document.getElementById('sheet-title').textContent = title;
+    document.getElementById('sheet-body').innerHTML = html;
+    document.getElementById('sheet-backdrop').hidden = false;
+  }
+  function closeSheet() {
+    document.getElementById('sheet-backdrop').hidden = true;
+  }
 
-document.getElementById('open-category-settings').addEventListener('click',()=>openSheet('收支分类',`<div class="description">支出：餐饮、交通、购物、居家、娱乐、医疗、学习、其他。<br>收入：工资、奖金、其他收入。<br><br>分类支持新增、编辑和排序；内部转账与投资交易使用独立类型。</div>`));
-document.getElementById('open-backup').addEventListener('click',()=>openSheet('数据导出与恢复',`<div class="description">设计中保留完整备份与恢复，以及流水、持仓导出入口。备份范围和恢复校验将在后续设计中明确。线框稿不生成真实数据文件。</div>`));
-document.getElementById('open-data-status').addEventListener('click',()=>openSheet('净值与报价更新',`<div class="detail-line"><span>基金净值</span><b>部分截至10月16日</b></div><div class="detail-line"><span>积存金报价</span><b>10月20日 · 演示报价</b></div><div class="description">实际页面会按各资产保留数据来源、业务日期与更新时间，更新失败时继续显示旧值并明确标记。</div>`));
+  function go(page) {
+    closeSheet();
+    if (page !== state.page) state.prevPage = state.page;
+    state.page = page;
+    document.getElementById('phone').dataset.page = page;
+    document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === `screen-${page}`));
+    document.querySelectorAll('#app-nav [data-nav]').forEach(b => {
+      const target = b.dataset.nav;
+      const active = target === page
+        || (target === 'home' && ['cash', 'funds', 'stocks', 'provident', 'gold'].includes(page))
+        || (target === 'ledger' && page === 'categories')
+        || (target === 'capital' && page === 'plans')
+        || (target === 'mine' && ['salary', 'backup'].includes(page));
+      b.classList.toggle('active', active);
+    });
+    document.getElementById('app-content').scrollTop = 0;
+    render();
+  }
 
-function syncPlanClasses(){const f=fBy(document.getElementById('plan-fund').value);document.getElementById('plan-class').innerHTML=[...new Set(f.positions.map(p=>p.cls))].map(c=>`<option>${c}</option>`).join('');}
-function nextPlanDate(p){const d=new Date(p.start+'T12:00:00');if(p.freq==='每周三'){while(d.getDay()!==3)d.setDate(d.getDate()+1);}else{if(d.getDate()>15)d.setMonth(d.getMonth()+1);d.setDate(15);}return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');}
+  function render() {
+    const map = {
+      home: renderHome,
+      ledger: renderLedger,
+      categories: renderCategories,
+      entry: renderEntry,
+      capital: renderCapital,
+      plans: renderPlans,
+      mine: renderMine,
+      salary: renderSalary,
+      backup: renderBackup,
+      cash: renderCash,
+      funds: renderFunds,
+      stocks: renderStocks,
+      provident: renderProvident,
+      gold: renderGold
+    };
+    map[state.page]?.();
+  }
 
+  function buildTrendSvg(points) {
+    const w = 340, h = 104, padX = 8, padY = 12;
+    const vals = points.map(p => p[1]);
+    const min = Math.min(...vals), max = Math.max(...vals);
+    const span = Math.max(max - min, 1);
+    const coords = points.map((p, i) => [
+      padX + (i / Math.max(points.length - 1, 1)) * (w - padX * 2),
+      h - padY - ((p[1] - min) / span) * (h - padY * 2)
+    ]);
+    const lineD = coords.map((c, i) => `${i === 0 ? 'M' : 'L'}${c[0].toFixed(1)},${c[1].toFixed(1)}`).join(' ');
+    const areaD = `${lineD} L${coords[coords.length - 1][0].toFixed(1)},${h} L${coords[0][0].toFixed(1)},${h} Z`;
+    const activeI = state.trendIdx == null ? coords.length - 1 : Math.min(state.trendIdx, coords.length - 1);
+    const [ax, ay] = coords[activeI];
+    return {
+      date: points[activeI][0],
+      val: points[activeI][1],
+      svg: `<svg class="trend-svg" id="home-trend-svg" viewBox="0 0 ${w} ${h}">
+        <defs>
+          <linearGradient id="mintArea" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#7CE7B1" stop-opacity="0.34"/>
+            <stop offset="100%" stop-color="#7CE7B1" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <path d="${areaD}" fill="url(#mintArea)"/>
+        <path d="${lineD}" fill="none" stroke="var(--color-hero-line)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="${ax.toFixed(1)}" cy="${ay.toFixed(1)}" r="4.5" fill="#FFFFFF" stroke="var(--color-hero-line)" stroke-width="2.5"/>
+      </svg>`
+    };
+  }
 
-// Local interaction mock: no service calls, timers, account access, or persistence.
-const roundMoney=n=>Math.round((n+Number.EPSILON)*100)/100;
-const auxiliaryChanges=[];
-const goldState={grams:30,cost:25600,quote:900,quoteDate:today,realized:0};
-const goldReceivables=[],goldRecords=[];
-const monthlyRules=[{id:'salary',title:'工资到账',amount:12000,day:15,time:'09:00',effective:'2026-10',paused:false},{id:'provident',title:'公积金缴存',amount:5200,day:15,time:'09:00',effective:'2026-10',paused:false},{id:'withdraw',title:'公积金提取',amount:2000,day:15,time:'09:05',effective:'2026-10',paused:false}];
-const completedPeriods=new Set(['salary|2026-10-15','provident|2026-10-15','withdraw|2026-10-15']);
-let cashFilter='all',planTab='plans';
-function aHeader(title,more='',back='home'){return `<header class="a-header"><button class="a-back" onclick="go('${back}')" aria-label="返回${back==='home'?'总览':'我的'}">‹</button><h1>${title}</h1>${more||'<span></span>'}</header>`;}
-function metric(label,value){return `<div><span>${label}</span><b>${value}</b></div>`;}
-function demoDateField(){return `<label class="field">记录日期<input name="date" type="date" min="2026-10-01" max="${today}" value="${today}" required></label>`;}
-function demoNote(){return '<p class="a-sheet-note">本轮可体验10月1日至20日的演示记录，刷新后重置。</p>';}
-function formMoney(label,name,value){return `<label class="field">${label}<input name="${name}" type="number" min="0.01" max="99999999" step="0.01" value="${value}" required inputmode="decimal"></label>`;}
-function changeRecord(x){auxiliaryChanges.push({id:uid++,...x});if(x.cashDelta)assetCashDelta=roundMoney(assetCashDelta+x.cashDelta);assetMoves.push({date:x.date,title:x.title,amount:Math.abs(x.pfDelta||x.cashDelta||0),note:x.note});syncLedger();}
-function refreshAssetPage(page){closeSheet();go(page);}
-function refreshAssetLinks(){document.getElementById('home-pf-note').textContent='本月缴存 +'+money(5200+assetEffects.pfContribution);document.getElementById('home-gold-note').textContent='持有 '+money(goldState.grams,4)+' 克';const heldTotal=total();const shares={cash:demo.cash,fund:demo.fund,provident:demo.provident,gold:demo.gold};Object.keys(shares).forEach(key=>{const pct=heldTotal>0?shares[key]/heldTotal*100:0;document.querySelectorAll(`[data-share="${key}"]`).forEach(el=>{el.textContent=pct.toFixed(1)+'%';});document.querySelectorAll(`[data-bar="${key}"]`).forEach(el=>{el.style.width=pct+'%';});});document.querySelectorAll('[data-recorded-count]').forEach(el=>{el.textContent='已记录 4 类';});document.getElementById('my-plan-count').textContent=(monthlyRules.length+plans.length)+' 项 ›';const upcoming=[...monthlyRules.filter(p=>!p.paused).map(p=>({title:p.title,date:nextMonthlyDate(p),amount:p.amount})),...plans.filter(p=>!p.paused).map(p=>({title:fBy(p.fund).name+'定投',date:nextPlanDate(p),amount:p.amount}))].sort((a,b)=>a.date.localeCompare(b.date));const upcomingDays=[...new Set(upcoming.map(p=>p.date))].slice(0,2).map(date=>{const group=upcoming.filter(p=>p.date===date);return group.length>1?{date,title:group.length+'项自动记账',amount:null,note:'按顺序记录工资、缴存与资产流转'}:group[0];});document.getElementById('home-plan-preview').innerHTML=upcomingDays.map(p=>`<button class="bare-btn" onclick="go('plans')"><div class="task-row"><div class="task-left"><span class="date-box">${Number(p.date.slice(5,7))}月<b>${Number(p.date.slice(8))}</b></span><div>${p.title}<small>${p.note||(p.title==='公积金提取'?'公积金 → 现金':p.title.includes('定投')?'现金 → 待确认投资':'按计划记入资产')}</small></div></div><b>${p.amount===null?'查看 ›':'¥'+money(p.amount)}</b></div></button>`).join('')||'<div class="task-row">暂无启用的计划</div>';}
-function openAssetComposition(){const living=demo.income-demo.expense;const pf=5200+assetEffects.pfContribution;const totalChange=11800+demo.income-12000-(demo.expense-6800)+assetMonthChange();const net=living+pf+assetEffects.cashCorrection;const market=totalChange-net;openSheet('本月变化构成',`<div class="tiny">2026年10月1日 — 10月20日</div><div class="balance">${pnl(totalChange)}</div><div class="detail-line"><span>市值变动</span><b>${pnl(market)}</b></div><div class="detail-line"><span>净存入·转账</span><b>${pnl(net)}</b></div><div class="detail-line"><span>本月变化</span><b>${pnl(totalChange)}</b></div><div class="detail-line"><span>新增记录（不计入变化）</span><b>¥0.00</b></div><div class="description">只比较月初和今天都已记录的类别；新增记录单独列出。基金和积存金的市值变化才叫收益，现金和公积金只叫余额变化。</div>`);}
-function cashActivity(){const rows=ledgerRows.filter(r=>r.date.startsWith('2026-10')).map(r=>({date:r.date,title:r.category,note:r.note+(r.auto?' · 自动记账':''),amount:r.kind==='income'?r.amount:-r.amount,type:'daily',icon:r.kind==='income'?'入':'出'}));rows.push({date:'2026-10-15',title:'公积金提取转入',note:'公积金 → 现金 · 自动记账',amount:2000,type:'transfer',icon:'转'},{date:'2026-10-19',title:'基金买入扣款',note:'现金 → 待确认投资',amount:-300,type:'transfer',icon:'投'},{date:'2026-10-14',title:'基金买入',note:'现金 → 基金持仓',amount:-2000,type:'transfer',icon:'投'},{date:'2026-10-03',title:'其他基金买入',note:'本月较早买入 · 示例合计',amount:-6700,type:'transfer',icon:'投'});trades.filter(t=>t.id!==1&&t.id!==2&&t.kind==='buy').forEach(t=>rows.push({date:t.date,title:'基金买入扣款',note:fBy(t.fund).name+' · 待确认',amount:-t.amount,type:'transfer',icon:'投'}));auxiliaryChanges.filter(r=>r.cashDelta).forEach(r=>rows.push({date:r.date,title:r.title,note:r.note,amount:r.cashDelta,type:r.type==='correction'?'correction':'transfer',icon:r.type==='correction'?'校':'转'}));return rows.sort((a,b)=>b.date.localeCompare(a.date));}
-function flowRows(rows){if(!rows.length)return '<div class="a-empty">暂无这类变动</div>';return [...new Set(rows.map(r=>r.date))].map(date=>`<div class="a-date"><span>${date.slice(5,7)}月${date.slice(8)}日</span><span>${rows.filter(r=>r.date===date).length}笔</span></div>${rows.filter(r=>r.date===date).map(r=>`<div class="a-flow"><span class="a-icon">${r.icon||'记'}</span><div class="a-flow-main"><strong>${esc(r.title)}</strong><small>${esc(r.note)}</small></div><div class="a-flow-value"><b class="${r.amount>0?'up':''}">${pnl(r.amount)}</b></div></div>`).join('')}`).join('');}
-function openCashEntry(kind){openEntry();setEntryKind(kind);}
-function renderCash(){const rows=cashActivity(),flow=rows.filter(r=>r.type!=='correction'),inflow=flow.reduce((n,r)=>n+Math.max(0,r.amount),0),outflow=flow.reduce((n,r)=>n-Math.min(0,r.amount),0);document.getElementById('screen-cash').innerHTML=`<div class="asset-page">${aHeader('现金','<button onclick="openCashCorrection()">核对余额</button>')}<div class="a-hero"><div class="a-eyebrow">可用现金 <span class="a-tag">统一余额</span></div><div class="a-balance"><i>¥</i>${money(demo.cash)}</div><div class="a-meta">截至10月20日 · 不区分银行卡与支付平台</div><div class="a-month">${metric('本月现金流入',money(inflow))}${metric('本月现金流出',money(outflow))}${metric('余额净变动',pnl(demo.cash-25200))}</div></div><div class="a-actions"><button class="emph" onclick="openCashEntry('expense')">记支出</button><button onclick="openCashEntry('income')">记收入</button></div><div class="a-body"><p class="a-note">现金流包含资产流转。生活收支统计仍以账本为准。</p><div class="a-section"><h2>现金变动</h2><span class="tiny">2026年10月</span></div><div class="a-filter">${[['all','全部'],['daily','日常收支'],['transfer','资产流转'],['correction','余额调整']].map(([v,t])=>`<button class="${cashFilter===v?'active':''}" onclick="cashFilter='${v}';renderCash()">${t}</button>`).join('')}</div>${flowRows(rows.filter(r=>cashFilter==='all'||cashFilter===r.type))}<div class="a-section"><h2>关联计划</h2><button onclick="go('plans')">管理计划 ›</button></div><div class="a-plan-card">${assetRuleRow('salary')}${assetRuleRow('withdraw')}</div><p class="a-note">余额调整单独留痕，不自动补成收入或支出。</p></div></div>`;}
-function openCashCorrection(){openSheet('核对现金余额',`<form id="cash-correction"><div class="detail-line"><span>当前记录</span><b>${money(demo.cash)}</b></div><label class="field">核对后的实际余额（元）<input name="balance" type="number" min="0" max="99999999" step="0.01" value="${demo.cash}" required></label><label class="field">调整原因<input name="reason" maxlength="60" placeholder="例如：首次录入遗漏" required></label><div class="block-note">只记录与当前余额的差额，不改变生活收支。</div><button class="primary">保存演示调整</button>${demoNote()}</form>`);document.getElementById('cash-correction').onsubmit=e=>{e.preventDefault();const fd=new FormData(e.target),delta=roundMoney(Number(fd.get('balance'))-demo.cash);if(!delta){toast('核对一致，无需调整。');return;}assetEffects.cashCorrection+=delta;changeRecord({date:today,title:'现金余额调整',note:fd.get('reason'),cashDelta:delta,type:'correction'});refreshAssetPage('cash');toast('余额已调整，生活收支保持原值。');};}
-function assetRuleRow(id){const p=monthlyRules.find(p=>p.id===id);return `<button class="a-plan-row" onclick="go('plans');editMonthlyRule('${id}')"><span><strong>${p.title}</strong><small>${p.paused?'已暂停':'每月'+p.day+'日 '+p.time} · ${id==='withdraw'?'转入现金':id==='provident'?'个人＋单位合计':'实际到账'}</small></span><b>${money(p.amount)} ›</b></button>`;}
-function renderProvident(){const contribution=5200+assetEffects.pfContribution,withdrawn=2000-auxiliaryChanges.filter(r=>r.type==='pf-withdraw').reduce((n,r)=>n+r.pfDelta,0),rs=[...auxiliaryChanges.filter(r=>r.pfDelta).map(r=>({date:r.date,title:r.title,note:r.note,amount:r.pfDelta,icon:r.pfDelta>0?'存':'提'})).reverse(),{date:'2026-10-15',title:'公积金提取',note:'转入现金 2,000.00 · 余额 68,000.00',amount:-2000,icon:'提'},{date:'2026-10-15',title:'公积金缴存',note:'个人＋单位合计 · 余额 70,000.00',amount:5200,icon:'存'}].sort((a,b)=>b.date.localeCompare(a.date));document.getElementById('screen-provident').innerHTML=`<div class="asset-page pf">${aHeader('公积金','<button onclick="openPfCorrection()">核对余额</button>')}<div class="a-hero"><div class="a-eyebrow">公积金余额 <span class="a-tag">个人＋单位</span></div><div class="a-balance"><i>¥</i>${money(demo.provident)}</div><div class="a-meta">截至10月20日 · 按实际缴存与提取记录</div><div class="a-month">${metric('本月缴存',money(contribution))}${metric('本月提取',money(withdrawn))}${metric('余额净变动',pnl(demo.provident-64800))}</div></div><div class="a-actions"><button class="emph" onclick="openPfRecord('deposit')">补记缴存</button><button onclick="openPfRecord('withdraw')">记录提取</button></div><div class="a-body"><div class="a-section"><h2>每月自动记账</h2><button onclick="go('plans')">管理 ›</button></div><div class="a-plan-card">${assetRuleRow('provident')}${assetRuleRow('withdraw')}<div class="a-plan-foot">同日先缴存，再提取。提取等额转入现金。</div></div><div class="a-section"><h2>余额变动</h2><span class="tiny">2026年10月</span></div>${flowRows(rs)}<p class="a-note">10月1日余额 64,800.00。缴存计入资产增加；提取不计入日常收入。</p></div></div>`;}
-function openPfRecord(kind){const withdrawal=kind==='withdraw';openSheet(withdrawal?'记录公积金提取':'补记公积金缴存',`<form id="pf-record">${formMoney(withdrawal?'实际提取金额（元）':'个人＋单位合计缴存（元）','amount',withdrawal?2000:5200)}${demoDateField()}<label class="field">备注<input name="note" maxlength="60" placeholder="选填"></label><div class="block-note">${withdrawal?'公积金减少，现金等额增加，不计入收入。':'只增加公积金余额，不重复增加现金或日常收入。'}</div><p class="a-sheet-note">10月15日的计划已记账，请确认这是另一笔补记。</p><button class="primary">保存演示记录</button>${demoNote()}</form>`);document.getElementById('pf-record').onsubmit=e=>{e.preventDefault();const fd=new FormData(e.target),a=Number(fd.get('amount'));if(withdrawal&&a>demo.provident){toast('公积金余额不足，请核对提取金额。');return;}demo.provident=roundMoney(demo.provident+(withdrawal?-a:a));if(!withdrawal)assetEffects.pfContribution+=a;changeRecord({date:fd.get('date'),title:withdrawal?'公积金提取':'公积金缴存',note:(fd.get('note')|| (withdrawal?'公积金 → 现金':'个人＋单位合计'))+' · 余额 '+money(demo.provident),cashDelta:withdrawal?a:0,pfDelta:withdrawal?-a:a,type:withdrawal?'pf-withdraw':'pf-deposit'});refreshAssetPage('provident');toast(withdrawal?'已等额转入现金，未增加日常收入。':'缴存已记入公积金。');};}
-function openPfCorrection(){openSheet('核对公积金余额',`<form id="pf-correction"><label class="field">实际余额（元）<input name="balance" type="number" min="0" max="99999999" step="0.01" value="${demo.provident}" required></label><label class="field">调整原因<input name="reason" maxlength="60" required></label><div class="block-note">核对差额单列，不推定为缴存或提取，也不影响现金。</div><button class="primary">保存演示调整</button></form>`);document.getElementById('pf-correction').onsubmit=e=>{e.preventDefault();const fd=new FormData(e.target),delta=roundMoney(Number(fd.get('balance'))-demo.provident);if(!delta){toast('核对一致，无需调整。');return;}demo.provident+=delta;assetEffects.pfCorrection+=delta;changeRecord({date:today,title:'公积金余额调整',note:fd.get('reason'),pfDelta:delta,cashDelta:0,type:'correction'});refreshAssetPage('provident');};}
-const goldHoldingValue=()=>roundMoney(goldState.grams*goldState.quote);
-const goldPending=()=>roundMoney(goldReceivables.filter(r=>!r.received).reduce((n,r)=>n+r.amount,0));
-function syncGold(){demo.gold=roundMoney(goldHoldingValue()+goldPending());}
-function renderGold(){document.getElementById('screen-gold').innerHTML=`<div class="asset-page au">${aHeader('平台积存金','<button onclick="openGoldHolding()">核对持仓</button>')}<div class="a-hero"><div class="a-eyebrow">积存金资产 <span class="a-tag">人民币</span></div><div class="a-balance"><i>¥</i>${money(demo.gold)}</div><div class="a-meta">${goldPending()?'含待到账 '+money(goldPending())+' · ':''}持仓估值 ${money(goldHoldingValue())}</div><div class="a-month">${metric('持有克数',money(goldState.grams,4)+' g')}${metric('持仓成本',money(goldState.cost))}${metric('持有盈亏',pnl(goldHoldingValue()-goldState.cost))}</div></div><div class="a-actions"><button class="emph" onclick="openGoldTrade('buy')">记录买入</button><button onclick="openGoldTrade('sell')">记录卖出</button></div><div class="a-body"><div class="a-quote"><span>估值单价 <b>${money(goldState.quote)}</b> 元/克<small>${goldState.quoteDate.replaceAll('-','/')} · 手动演示报价</small></span><button onclick="openGoldQuote()">更新报价</button></div><div class="a-submetrics">${metric('平均持仓成本',goldState.grams?money(goldState.cost/goldState.grams)+' 元/克':'—')}${metric('累计已实现盈亏',pnl(goldState.realized))}</div>${goldPending()?`<div class="a-section"><h2>卖出待到账</h2><span class="tiny">仍计入资产</span></div><div class="a-plan-card">${goldReceivables.filter(r=>!r.received).map(r=>`<button class="a-plan-row" onclick="confirmGoldReceipt(${r.id})"><span><strong>${money(r.amount)} 元</strong><small>${r.date} · ${money(r.grams,4)}克 · 确认收款 ›</small></span><b>待到账</b></button>`).join('')}</div>`:''}<div class="a-section"><h2>交易与持仓记录</h2><span class="tiny">按记录日期</span></div>${goldRecords.slice().sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id).map(r=>`<div class="a-flow"><span class="a-icon">${r.icon}</span><div class="a-flow-main"><strong>${esc(r.title)}</strong><small>${r.date} · ${esc(r.note)}</small></div><div class="a-flow-value"><b class="neutral">${r.value}</b></div></div>`).join('')}<div class="a-flow"><span class="a-icon">初</span><div class="a-flow-main"><strong>起始持仓</strong><small>2026-10-01 · 已有持仓，不重复扣现金</small></div><div class="a-flow-value"><b>30.0000 g</b><small>成本 25,600.00</small></div></div><p class="a-note">买卖按实际扣款 / 净到账记录，费用包含其中。资产转换与投资盈亏不计入生活收支。</p></div></div>`;}
-function openGoldTrade(kind){const sell=kind==='sell';openSheet(sell?'记录积存金卖出':'记录积存金买入',`<form id="gold-trade"><label class="field">${sell?'卖出':'买入'}克数<input name="grams" type="number" min="0.0001" max="${sell?goldState.grams:99999}" step="0.0001" value="1" required inputmode="decimal"></label>${formMoney(sell?'实际净到账金额（元，已扣费用）':'实际扣款金额（元，含费用）','amount',sell?898:900)}${sell?'<label class="field">收款状态<select name="settlement"><option value="received">已到账现金</option><option value="pending">待到账</option></select></label>':''}${demoDateField()}<div class="block-note">${sell?'卖出减少克数，按平均成本结转。待到账金额继续计入资产，确认收款后转入现金。':'从统一现金扣款，增加克数与持仓成本。估值按当前报价计算。'}</div><button class="primary">保存演示${sell?'卖出':'买入'}</button>${demoNote()}</form>`);document.getElementById('gold-trade').onsubmit=e=>{e.preventDefault();const fd=new FormData(e.target),g=Number(fd.get('grams')),a=Number(fd.get('amount')),date=fd.get('date'),pending=sell&&fd.get('settlement')==='pending';if((sell&&g>goldState.grams)||(!sell&&a>demo.cash)){toast(sell?'持有克数不足。':'现金余额不足。');return;}const before=demo.gold;let cd=0;if(sell){const cost=roundMoney(g/goldState.grams*goldState.cost);goldState.grams=Math.max(0,Math.round((goldState.grams-g)*10000)/10000);goldState.cost=roundMoney(goldState.cost-cost);goldState.realized=roundMoney(goldState.realized+a-cost);if(pending)goldReceivables.push({id:uid++,date,grams:g,amount:a,received:false});else cd=a;}else{goldState.grams=Math.round((goldState.grams+g)*10000)/10000;goldState.cost=roundMoney(goldState.cost+a);cd=-a;}syncGold();assetEffects.goldPerformance=roundMoney(assetEffects.goldPerformance+demo.gold-before+cd);goldRecords.push({id:uid++,date,title:sell?'卖出积存金':'买入积存金',icon:sell?'卖':'买',note:(sell?(pending?'待到账':'已到账'):'现金扣款')+' '+money(a)+'元',value:(sell?'−':'+')+money(g,4)+' g'});changeRecord({date,title:sell?'积存金卖出到账':'积存金买入扣款',note:pending?'卖出款待到账，现金未变化':'积存金与现金流转',cashDelta:cd,type:'gold-trade'});refreshAssetPage('gold');toast(pending?'已记录待到账金额，现金未变化。':'交易记录已保存，现金已同步。');};}
-function confirmGoldReceipt(id){const r=goldReceivables.find(x=>x.id===id);openSheet('确认积存金卖出到账',`<div class="balance">¥${money(r.amount)}</div><div class="description">确认已收到这笔卖出款后，从待到账转入现金，不再重复计算收益。</div><button class="primary" onclick="receiveGold(${id})">确认演示到账</button>`);}
-function receiveGold(id){const r=goldReceivables.find(x=>x.id===id);if(!r||r.received)return;r.received=true;syncGold();goldRecords.push({id:uid++,date:today,title:'卖出款到账',icon:'收',note:'待到账 → 现金',value:money(r.amount)});changeRecord({date:today,title:'积存金卖出到账',note:'待到账 → 现金，不重复确认收益',cashDelta:r.amount,type:'gold-receipt'});refreshAssetPage('gold');toast('已转入现金，总资产不变。');}
-function openGoldQuote(){openSheet('更新积存金估值报价',`<form id="gold-quote">${formMoney('估值单价（元 / 克）','quote',goldState.quote)}${demoDateField()}<div class="block-note">只更新持仓估值与盈亏，不改变持有克数、成本和现金。</div><button class="primary">保存演示报价</button></form>`);document.getElementById('gold-quote').onsubmit=e=>{e.preventDefault();const fd=new FormData(e.target),before=demo.gold;goldState.quote=Number(fd.get('quote'));goldState.quoteDate=fd.get('date');syncGold();assetEffects.goldPerformance=roundMoney(assetEffects.goldPerformance+demo.gold-before);goldRecords.push({id:uid++,date:goldState.quoteDate,title:'更新估值报价',icon:'价',note:'现金与持仓成本不变',value:money(goldState.quote)+' / g'});syncLedger();refreshAssetPage('gold');};}
-function openGoldHolding(){openSheet('核对积存金持仓',`<form id="gold-holding"><label class="field">实际持有克数<input name="grams" type="number" min="0" step="0.0001" max="99999" value="${goldState.grams}" required></label><label class="field">对应持仓成本（元）<input name="cost" type="number" min="0" step="0.01" max="99999999" value="${goldState.cost}" required></label><div class="block-note">用于已有持仓或更正遗漏，不重复扣现金。新增购买请使用“记录买入”。</div><button class="primary">保存演示核对</button></form>`);document.getElementById('gold-holding').onsubmit=e=>{e.preventDefault();const fd=new FormData(e.target),g=Number(fd.get('grams')),c=Number(fd.get('cost'));if(g===0&&c!==0){toast('持有克数为0时，持仓成本也应为0。');return;}const before=demo.gold;goldState.grams=g;goldState.cost=c;syncGold();assetEffects.goldCorrection=roundMoney(assetEffects.goldCorrection+demo.gold-before);goldRecords.push({id:uid++,date:today,title:'核对持仓',icon:'校',note:'已有持仓更正，未扣现金',value:money(g,4)+' g'});syncLedger();refreshAssetPage('gold');};}
-function localISO(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
-function ruleDate(p,month){const [y,m]=month.split('-').map(Number);return `${month}-${String(Math.min(p.day,new Date(y,m,0).getDate())).padStart(2,'0')}`;}
-function nextMonthlyDate(p){let d=new Date((p.effective>today.slice(0,7)?p.effective:today.slice(0,7))+'-01T12:00:00');for(let i=0;i<24;i++){const x=ruleDate(p,localISO(d).slice(0,7));if(x>today)return x;d.setMonth(d.getMonth()+1);}return '—';}
-function allPlanItems(){return [...monthlyRules.map(p=>({...p,key:p.id,next:nextMonthlyDate(p),effect:p.id==='salary'?'现金增加，计入工资收入':p.id==='provident'?'只增加公积金，个人＋单位合计':'公积金减少，现金等额增加'})),...plans.map(p=>({...p,key:'fund-'+p.id,title:fBy(p.fund).name+'定投',next:nextPlanDate(p),time:'09:10',effect:`${p.cls}类 · ${p.platform} · 现金 → 待确认投资`}))];}
-function renderPlans(){const items=allPlanItems(),active=items.filter(p=>!p.paused),next=active.slice().sort((a,b)=>a.next.localeCompare(b.next))[0];document.getElementById('screen-plans').innerHTML=`<div class="asset-page pl">${aHeader('自动记账','<button onclick="newAutoPlan()" aria-label="新增自动计划">＋ 新建</button>','mine')}<div class="a-tabs"><button class="${planTab==='plans'?'active':''}" onclick="planTab='plans';renderPlans()">计划 <small>${items.length}</small></button><button class="${planTab==='history'?'active':''}" onclick="planTab='history';renderPlans()">执行记录</button></div>${planTab==='plans'?`<div class="a-plan-intro">北京时间 · ${active.length}项启用<br>按记录日期自动记账，无需打开页面。</div><div class="a-body">${next?`<div class="a-preview-banner"><div><b>下次记账 · ${next.next.slice(5).replace('-','月')}日</b><small>预览金额、执行顺序与余额变化</small></div><button onclick="openPlanPreview()">查看预览 ›</button></div>`:''}${items.map(p=>`<article class="a-plan-tile"><div class="a-plan-tile-head"><strong>${esc(p.title)}</strong><span class="a-badge ${p.paused?'paused':''}">${p.paused?'已暂停':'已启用'}</span><button onclick="${p.key.startsWith('fund-')?'openPlan('+p.id+')':"editMonthlyRule('"+p.id+"')"}">编辑 ›</button></div><div class="a-plan-amount">${money(p.amount)}<small>元 / 期</small></div><div class="a-plan-line">${p.key.startsWith('fund-')?p.freq:'每月'+p.day+'日'} · ${p.time}<br>${esc(p.effect)}</div><div class="a-plan-controls"><span>${p.paused?'恢复后从下一期继续':'下次 '+p.next.replaceAll('-','/')}</span><button onclick="pauseAutoPlan('${p.key}')">${p.paused?'恢复':'暂停'}</button></div></article>`).join('')}<p class="a-note">修改只影响后续期次。遇月末不足指定天数时，在当月最后一天记账。</p><p class="a-note">本轮为计划结构演示，尚未连接后台自动任务。</p></div>`:`<div class="a-body"><div class="a-section"><h2>2026年10月15日</h2><span class="a-badge">3项已完成</span></div>${[{id:'salary',title:'工资到账',note:'现金 +12,000.00 · 计入工资收入',amount:12000},{id:'provident',title:'公积金缴存',note:'公积金 +5,200.00',amount:5200},{id:'withdraw',title:'公积金提取',note:'公积金 −2,000.00 → 现金',amount:2000}].map(r=>`<button class="a-flow" onclick="executionDetail('${r.id}')"><span class="a-icon">✓</span><span class="a-flow-main"><strong>${r.title}</strong><small>${r.note}</small></span><span class="a-flow-value"><b>${money(r.amount)}</b><small>已记账 ›</small></span></button>`).join('')}<p class="a-note">每个计划的同一期只记一次。更正已记账内容时，修改原记录并保留历史。</p><div class="a-preview-banner"><div><b>查看已记账期次</b><small>预览10月15日如何跳过重复记录</small></div><button onclick="openPlanPreview('2026-10-15')">查看 ›</button></div></div>`}</div>`;}
-function pauseAutoPlan(key){const p=key.startsWith('fund-')?plans.find(p=>p.id===Number(key.slice(5))):monthlyRules.find(p=>p.id===key);p.paused=!p.paused;refreshAssetLinks();renderPlans();toast(p.paused?'已暂停，已有记录保留。':'已恢复，从下一期继续。');}
-function newAutoPlan(){openSheet('新增自动记账计划',`<div class="description">选择记账类型。已有工资、公积金计划可直接编辑。</div>${monthlyRules.map(p=>`<button class="a-plan-row" onclick="editMonthlyRule('${p.id}')"><span><strong>${p.title}</strong><small>编辑现有每月计划</small></span><b>›</b></button>`).join('')}<button class="a-plan-row" onclick="openPlan()"><span><strong>基金定投</strong><small>新增基金、类别与扣款周期</small></span><b>＋</b></button>`);}
-function editMonthlyRule(id){const p=monthlyRules.find(p=>p.id===id);openSheet('编辑'+p.title,`<form id="monthly-rule">${formMoney('每期金额（元）','amount',p.amount)}<div class="form-columns"><label class="field">每月几日<input name="day" type="number" min="1" max="31" step="1" value="${p.day}" required></label><label class="field">记账时间<input name="time" type="time" value="${p.time}" required></label></div><label class="field">生效月份<input name="effective" type="month" min="2026-10" value="${p.effective}" required></label><div class="block-note">${id==='salary'?'按实际到账工资增加现金，记入收入 / 工资。':id==='provident'?'个人与单位合计，只增加公积金余额。':'公积金减少，现金等额增加，不计入收入。'}<br>编辑后从尚未记账的下一期生效，10月15日历史记录不变。</div><p class="a-sheet-note">同日先记工资和缴存，再处理提取与定投。月末不足指定日期时，取当月最后一天。</p><button class="primary">保存演示计划</button></form>`);document.getElementById('monthly-rule').onsubmit=e=>{e.preventDefault();const fd=new FormData(e.target),next={amount:Number(fd.get('amount')),day:Number(fd.get('day')),time:fd.get('time'),effective:fd.get('effective')},other=monthlyRules.find(r=>r.id===(id==='withdraw'?'provident':'withdraw'));if((id==='withdraw'||id==='provident')&&next.day===other.day&&((id==='withdraw'&&next.time<other.time)||(id==='provident'&&next.time>other.time))){toast('同日请先缴存，再安排提取。');return;}Object.assign(p,next);refreshAssetLinks();closeSheet();go('plans');toast('计划已更新，历史记录不变。');};}
-function executionDetail(id){const content={salary:['工资到账','现金 +12,000.00','工资已记入10月15日账本。'],provident:['公积金缴存','公积金 +5,200.00','个人＋单位合计，不增加现金。'],withdraw:['公积金提取','公积金 −2,000.00 / 现金 +2,000.00','内部资产流转，不计入收入。']}[id];openSheet(content[0]+' · 已记账',`<div class="tiny">2026年10月15日 · 本期已完成</div><div class="detail-line"><span>记账结果</span><b>${content[1]}</b></div><div class="description">${content[2]}<br>同一期再次触发会直接跳过，不重复生成记录。</div><button class="secondary" onclick="go('${id==='salary'?'ledger':'provident'}')">查看${id==='salary'?'账本':'公积金记录'}</button>`);}
-function previewDue(date){const monthly=monthlyRules.filter(p=>!p.paused&&date.slice(0,7)>=p.effective&&ruleDate(p,date.slice(0,7))===date).map(p=>({...p,key:p.id}));const funds=plans.filter(p=>!p.paused&&date>=p.start&&(p.freq==='每周三'?new Date(date+'T12:00:00').getDay()===3:Number(date.slice(8))===15)).map(p=>({...p,key:'fund-'+p.id,title:fBy(p.fund).name+'定投',time:'09:10'}));return [...monthly,...funds].sort((a,b)=>a.time.localeCompare(b.time)||(['salary','provident','withdraw'].indexOf(a.id)-['salary','provident','withdraw'].indexOf(b.id)));}
-function openPlanPreview(date=null,startingCash=null){const next=allPlanItems().filter(p=>!p.paused).sort((a,b)=>a.next.localeCompare(b.next))[0];date=date||next?.next||'2026-10-21';startingCash=startingCash??demo.cash;let c=startingCash,pf=demo.provident,pending=0,growth=0;const results=previewDue(date).map(p=>{if(completedPeriods.has(p.key+'|'+date))return {title:p.title,status:'本期已记账 · 跳过',note:'保留原记录，余额不变。',skip:true};let status='预计记账',note='';if(p.key==='salary'){c+=p.amount;growth+=p.amount;note='现金 +'+money(p.amount)+'，记入工资收入。';}else if(p.key==='provident'){pf+=p.amount;growth+=p.amount;note='公积金 +'+money(p.amount)+'。';}else if(p.key==='withdraw'){if(pf<p.amount)return {title:p.title,status:'待处理 · 公积金不足',note:'整笔不记账，现金与公积金不变。',fail:true};pf-=p.amount;c+=p.amount;note='公积金 −'+money(p.amount)+'，现金等额增加。';}else{if(c<p.amount)return {title:p.title,status:'待处理 · 现金不足',note:'需 '+money(p.amount)+'，可用 '+money(c)+'；不部分扣款。',fail:true};c-=p.amount;pending+=p.amount;note='现金 −'+money(p.amount)+'，待确认投资等额增加。';}return {title:p.title,status,note,time:p.time};});openSheet('自动记账预览',`<form id="plan-preview"><div class="form-columns"><label class="field">预览日期<input name="date" type="date" value="${date}" required></label><label class="field">试算现金（元）<input name="cash" type="number" min="0" step="0.01" value="${startingCash}" required></label></div><button class="secondary">重新试算</button></form><p class="a-sheet-note">北京时间 · 以当前资产为起点，仅试算所选日期的计划。中间日期的其他变动不计入。</p>${results.length?results.map((r,i)=>`<div class="a-preview-row ${r.fail?'fail':''}"><strong>${i+1}. ${esc(r.title)} · ${r.status}</strong><small>${r.time?r.time+' · ':''}${r.note}</small></div>`).join(''):'<div class="a-empty">这一天没有启用的计划</div>'}<div class="a-trial">试算现金余额 <b>${money(c)}</b><br>试算公积金余额 <b>${money(pf)}</b><br>新增待确认投资 <b>${money(pending)}</b><br>总资产预计增加 <b>${pnl(growth)}</b></div>${results.some(r=>r.fail)?'<div class="a-alert">待处理项保留本期记录，补足后核对补记；也可跳过本期或暂停后续计划。其他可执行计划照常处理。</div>':''}<p class="a-sheet-note">此预览不会新增流水或修改余额。实际自动任务将在后续实现。</p>`);document.getElementById('plan-preview').onsubmit=e=>{e.preventDefault();const fd=new FormData(e.target);openPlanPreview(fd.get('date'),Number(fd.get('cash')));};}
+  function renderHome() {
+    const total = totalAssets();
+    const parts = fmt(total).split('.');
+    const pts = trendSeries[state.trendRange].map((p, i, arr) => i === arr.length - 1 ? [p[0], total] : p);
+    const tr = buildTrendSvg(pts);
+    const dayChange = 721.3;
+    const monthChange = 13300 + (total - 337900);
+    const changeVal = state.changeScope === 'day' ? dayChange : monthChange;
+    const changePct = state.changeScope === 'day' ? '+0.21%' : '+4.10%';
 
-renderMoney();
-renderInvestment();
-go('home');
+    const inc = state.monthFlow.income;
+    const exp = state.monthFlow.expense;
+    const flowSum = Math.max(inc + exp, 1);
+    let incW = (inc / flowSum) * 100;
+    let expW = (exp / flowSum) * 100;
+    if (state.amountsMasked) { incW = 50; expW = 50; }
+
+    const cards = [
+      { key: 'cash', name: '现金', val: state.assets.cash, accent: 'var(--color-asset-accent-cash)', note: '统一可用现金池', deltaDay: '-56.50', deltaMonth: '-1,800', wide: true },
+      { key: 'funds', name: '基金', val: fundTotal(), accent: 'var(--color-asset-accent-fund)', note: `含待确认 ¥${fmt(state.assets.fundPending, 0)}`, deltaDay: '+613.80', deltaMonth: '+10,200' },
+      { key: 'stocks', name: '股票', val: state.assets.stock, accent: 'var(--color-asset-accent-stock)', note: 'A 股与场内 ETF', deltaDay: '+164.00', deltaMonth: '+1,500' },
+      { key: 'provident', name: '公积金', val: state.assets.provident, accent: 'var(--color-asset-accent-provident)', note: '本月缴存 +5,200', deltaDay: '0.00', deltaMonth: '+3,200' },
+      { key: 'gold', name: '贵金属', val: goldVal(), accent: 'var(--color-asset-accent-gold)', note: `持有 ${state.assets.goldGrams.toFixed(4)} 克`, deltaDay: '0.00', deltaMonth: '+200' }
+    ];
+
+    document.getElementById('screen-home').innerHTML = `
+      <section class="hero">
+        <div class="hero-top">
+          <h1 class="hero-title">总览</h1>
+          <div class="hero-right">
+            <span class="hero-date">11月19日</span>
+            <button type="button" class="hero-icon-btn" id="sync-quotes" aria-label="同步行情">
+              <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="hero-label-row">
+          <span class="hero-label">总资产 <span class="hero-tag">CNY</span></span>
+          <button type="button" class="eye-btn" id="toggle-mask" aria-label="切换金额显示">${eyeSvg(state.amountsMasked)}</button>
+        </div>
+        <div class="hero-amount tabular">
+          ${state.amountsMasked ? '¥••••' : `¥${parts[0]}<span class="cents">.${parts[1]}</span>`}
+        </div>
+        <div class="hero-change-row">
+          <button type="button" class="change-pill" id="open-change-detail">
+            <span>${state.changeScope === 'day' ? '当日变化' : '本月变化'}</span>
+            <span class="${changeVal >= 0 ? 'up' : 'down'} tabular">${mask(signed(changeVal))}</span>
+            <span>${mask(changePct)}</span>
+            <span>›</span>
+          </button>
+          <div class="hero-seg">
+            <button type="button" data-change-scope="day" class="${state.changeScope === 'day' ? 'active' : ''}">当日</button>
+            <button type="button" data-change-scope="month" class="${state.changeScope === 'month' ? 'active' : ''}">本月</button>
+          </div>
+        </div>
+        ${state.changeScope === 'day' ? '<div class="hero-subnote">含 11月18日 基金净值收益</div>' : ''}
+        <div class="trend-wrap">
+          <div class="trend-readout">
+            <span>2026-${tr.date}</span>
+            <b class="tabular">${mask('¥' + fmt(tr.val))}</b>
+          </div>
+          ${tr.svg}
+          <div class="trend-ranges">
+            ${[['week','7日'],['month','1月'],['quarter','3月'],['all','全部']].map(([k,l]) => `<button type="button" data-range="${k}" class="${state.trendRange === k ? 'active' : ''}">${l}</button>`).join('')}
+          </div>
+        </div>
+      </section>
+
+      <div class="page-body">
+        <section class="card" id="home-flow-card">
+          <div class="section-head">
+            <h2>本月收支</h2>
+            <button type="button" class="section-link" data-jump="ledger">账单明细 ›</button>
+          </div>
+          <div class="flow-top">
+            <div class="flow-col">
+              <span><i class="flow-dot income"></i>本月收入</span>
+              <b class="tabular">${mask('¥' + fmt(inc))}</b>
+            </div>
+            <div class="flow-col right">
+              <span>本月支出<i class="flow-dot expense"></i></span>
+              <b class="tabular">${mask('¥' + fmt(exp))}</b>
+            </div>
+          </div>
+          <div class="tug-bar">
+            <span class="tug-seg income" style="width:${incW.toFixed(1)}%"></span>
+            <span class="tug-seg expense" style="width:${expW.toFixed(1)}%"></span>
+          </div>
+          <div class="flow-foot">
+            <span>本月生活结余</span>
+            <b class="tabular">${mask('¥' + fmt(inc - exp))}</b>
+          </div>
+        </section>
+
+        <section>
+          <div class="section-head">
+            <h2>资产分布</h2>
+            <span style="font-size:12px;color:var(--color-text-secondary);font-weight:600">5 类资产已覆盖</span>
+          </div>
+          <div class="asset-cards-grid">
+            ${cards.map(c => {
+              const share = total > 0 ? (c.val / total) * 100 : 0;
+              return `<button type="button" class="asset-card ${c.wide ? 'wide' : ''}" data-jump="${c.key}" style="--accent:${c.accent};--share:${state.amountsMasked ? 18 : share.toFixed(1)}">
+                <div class="asset-card-glow"><svg viewBox="0 0 200 120"><path d="M10,110 C60,40 120,90 190,15 L200,120 Z" fill="${c.accent}"/></svg></div>
+                <div class="asset-card-veil"></div>
+                <div class="asset-card-inner">
+                  <div class="asset-card-top">
+                    <span class="asset-badge"><i class="asset-dot"></i>${c.name}</span>
+                    <span class="asset-share tabular">${mask(share.toFixed(1) + '%')}</span>
+                  </div>
+                  <div class="asset-card-val tabular">${mask('¥' + fmt(c.val))}</div>
+                  <div class="asset-card-meta">${c.note}</div>
+                  <div class="asset-card-foot">
+                    <span class="tabular">${state.changeScope === 'day' ? '较昨日 ' + mask(c.deltaDay) : '较上月 ' + mask(c.deltaMonth)}</span>
+                    <span>详情 ›</span>
+                  </div>
+                </div>
+              </button>`;
+            }).join('')}
+          </div>
+        </section>
+      </div>
+    `;
+
+    document.getElementById('toggle-mask').onclick = () => { state.amountsMasked = !state.amountsMasked; render(); };
+    document.getElementById('sync-quotes').onclick = (e) => {
+      const btn = e.currentTarget;
+      btn.classList.add('spinning');
+      setTimeout(() => { btn.classList.remove('spinning'); toast('已同步基金净值、A股行情与上金所参考报价'); }, 650);
+    };
+    document.querySelectorAll('[data-change-scope]').forEach(b => b.onclick = () => { state.changeScope = b.dataset.changeScope; renderHome(); });
+    document.querySelectorAll('[data-range]').forEach(b => b.onclick = () => { state.trendRange = b.dataset.range; state.trendIdx = null; renderHome(); });
+    document.querySelectorAll('[data-jump]').forEach(b => b.onclick = () => go(b.dataset.jump));
+    document.getElementById('open-change-detail').onclick = openChangeSheet;
+    document.getElementById('home-trend-svg').onclick = (e) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      state.trendIdx = Math.round(ratio * (pts.length - 1));
+      renderHome();
+    };
+  }
+
+  function openChangeSheet() {
+    if (state.changeScope === 'day') {
+      openSheet('当日变化明细（11月19日）', `
+        <div class="sheet-group-title">资产增加</div>
+        <div class="form-group">
+          <div class="row-item" style="display:block">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <b>基金盈亏（含11-18净值）</b><b class="gain tabular">${mask('+613.80')}</b>
+            </div>
+            <details style="margin-top:6px">
+              <summary style="font-size:12px;color:var(--color-text-link);cursor:pointer">展开估值计算拆解</summary>
+              <div class="sheet-detail-box tabular">
+                <div><span>今日估值</span><b>${mask('168,000.00')}</b></div>
+                <div><span>扣除昨日估值</span><b>${mask('-167,086.20')}</b></div>
+                <div><span>对应现金变动（定投扣款）</span><b>${mask('-300.00')}</b></div>
+                <div><span>扣除新增录入 / 持仓核对</span><b>0.00</b></div>
+              </div>
+            </details>
+          </div>
+          <div class="row-item">
+            <div class="row-copy"><b>股票盈亏</b><small>A 股与场内 ETF 当日市值变化</small></div>
+            <div class="row-right"><b class="gain tabular">${mask('+164.00')}</b></div>
+          </div>
+        </div>
+        <div class="sheet-group-title">资产减少</div>
+        <div class="form-group">
+          <div class="row-item">
+            <div class="row-copy"><b>现金支出</b><small>仅统计影响现金余额的账单</small></div>
+            <div class="row-right"><b class="loss tabular">${mask('-56.50')}</b></div>
+          </div>
+        </div>
+        <div class="sheet-group-title">持平或暂无数据</div>
+        <div class="form-group">
+          <div class="row-item"><div class="row-copy"><b>公积金 / 贵金属 / 核对差额</b></div><div class="row-right"><b>0.00</b></div></div>
+        </div>
+      `);
+    } else {
+      openSheet('本月变化构成（同口径）', `
+        <div class="form-group">
+          <div class="row-item"><div class="row-copy"><b>本月市值变动</b><small>基金 +1,200 · 股票 +1,500 · 贵金属 +200</small></div><div class="row-right"><b class="gain tabular">${mask('+2,900.00')}</b></div></div>
+          <div class="row-item"><div class="row-copy"><b>本月净存入 · 转账</b><small>生活结余 +5,200 · 公积金缴存 +5,200</small></div><div class="row-right"><b class="tabular">${mask('+10,400.00')}</b></div></div>
+          <div class="row-item"><div class="row-copy"><b>本月新增记录</b><small>单列，不计入本月变化</small></div><div class="row-right"><b class="tabular">0.00</b></div></div>
+        </div>
+      `);
+    }
+  }
+
+  function renderLedger() {
+    const exp = state.monthFlow.expense;
+    const budget = state.monthlyBudget;
+    const pct = budget > 0 ? Math.min(100, (exp / budget) * 100) : 0;
+    const remain = budget - exp;
+    const dash = 113.1;
+    const offset = dash * (1 - pct / 100);
+
+    let bodyHtml = '';
+    if (state.ledgerView === 'calendar') {
+      const cells = [];
+      for (let d = 1; d <= 30; d++) {
+        const dayRows = state.entries.filter(e => e.day === d);
+        const dayExp = dayRows.filter(e => e.kind === 'expense').reduce((s, e) => s + e.amount, 0);
+        const dayInc = dayRows.filter(e => e.kind === 'income').reduce((s, e) => s + e.amount, 0);
+        const sub = dayInc > 0 ? `<small class="pos">+${Math.round(dayInc)}</small>` : dayExp > 0 ? `<small class="neg">-${Math.round(dayExp)}</small>` : '';
+        cells.push(`<button type="button" class="cal-cell ${state.selectedCalDay === d ? 'active' : ''}" data-cal-day="${d}"><span>${d}</span>${sub}</button>`);
+      }
+      const picked = state.entries.filter(e => e.day === state.selectedCalDay);
+      bodyHtml = `
+        <section class="card">
+          <div class="section-head" style="margin-bottom:4px">
+            <h2>2026年11月</h2>
+            <span style="font-size:12px;color:var(--color-text-secondary)">点击日期查看流水</span>
+          </div>
+          <div class="cal-grid">
+            ${['日','一','二','三','四','五','六'].map(w => `<span class="cal-week">${w}</span>`).join('')}
+            ${cells.join('')}
+          </div>
+        </section>
+        <section>
+          <div class="day-head"><span>11月${state.selectedCalDay}日 明细</span><span>${picked.length} 笔</span></div>
+          <div class="group-card">
+            ${picked.length ? picked.map(e => `
+              <div class="row-item">
+                <div class="row-left">
+                  <span class="cat-icon" data-tone="${e.tone}">${e.cat.slice(0,1)}</span>
+                  <div class="row-copy"><b>${e.cat}</b><small>${e.group} · ${e.note || '无备注'}</small></div>
+                </div>
+                <div class="row-right"><b class="tabular ${e.kind === 'income' ? 'income-txt' : ''}">${e.kind === 'income' ? '+' : '-'}${fmt(e.amount)}</b></div>
+              </div>`).join('') : '<div style="padding:24px;text-align:center;font-size:13px;color:var(--color-text-secondary)">当日暂无收支记录</div>'}
+          </div>
+        </section>
+      `;
+    } else if (state.ledgerView === 'list') {
+      const days = [...new Set(state.entries.map(e => e.date))].sort().reverse();
+      bodyHtml = days.map(dt => {
+        const list = state.entries.filter(e => e.date === dt);
+        return `<div>
+          <div class="day-head"><span>${dt}</span><span>${list.length} 笔</span></div>
+          <div class="group-card">
+            ${list.map(e => `
+              <div class="row-item">
+                <div class="row-left">
+                  <span class="cat-icon" data-tone="${e.tone}">${e.cat.slice(0,1)}</span>
+                  <div class="row-copy"><b>${e.cat} ${e.auto ? '<span class="tag-soft">自动</span>' : ''}</b><small>${e.group} · ${e.note || '无备注'}</small></div>
+                </div>
+                <div class="row-right"><b class="tabular ${e.kind === 'income' ? 'income-txt' : ''}">${e.kind === 'income' ? '+' : '-'}${fmt(e.amount)}</b></div>
+              </div>`).join('')}
+          </div>
+        </div>`;
+      }).join('');
+    } else {
+      const rows = state.entries.filter(e => e.kind === state.ledgerChartKind);
+      const map = {};
+      rows.forEach(r => {
+        const k = state.ledgerChartLevel === 'top' ? r.group : r.cat;
+        map[k] = (map[k] || 0) + r.amount;
+      });
+      const sum = Math.max(Object.values(map).reduce((a, b) => a + b, 0), 1);
+      const ranked = Object.entries(map).sort((a, b) => b[1] - a[1]);
+      bodyHtml = `
+        <section class="card">
+          <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:14px">
+            <div class="seg-control two" style="flex:1">
+              <button type="button" data-ck="expense" class="${state.ledgerChartKind === 'expense' ? 'active' : ''}">支出</button>
+              <button type="button" data-ck="income" class="${state.ledgerChartKind === 'income' ? 'active' : ''}">收入</button>
+            </div>
+            <div class="seg-control two" style="flex:1">
+              <button type="button" data-cl="top" class="${state.ledgerChartLevel === 'top' ? 'active' : ''}">一级分类</button>
+              <button type="button" data-cl="sub" class="${state.ledgerChartLevel === 'sub' ? 'active' : ''}">二级分类</button>
+            </div>
+          </div>
+          <div style="font-size:13px;color:var(--color-text-secondary);margin-bottom:10px">
+            本月${state.ledgerChartKind === 'expense' ? '支出' : '收入'}合计 <b class="tabular" style="color:var(--color-text-primary)">¥${fmt(sum)}</b> · 日均 ¥${fmt(sum / 19)}
+          </div>
+          ${ranked.map(([name, val]) => {
+            const p = (val / sum) * 100;
+            return `<div class="rank-item">
+              <div class="rank-top"><span>${name} <small style="color:var(--color-text-secondary)">${p.toFixed(1)}%</small></span><b class="tabular">¥${fmt(val)}</b></div>
+              <div class="rank-bar"><i style="width:${p.toFixed(1)}%"></i></div>
+            </div>`;
+          }).join('')}
+        </section>
+      `;
+    }
+
+    document.getElementById('screen-ledger').innerHTML = `
+      <header class="sub-header">
+        <h1>11月账单</h1>
+        <button type="button" class="pill-action" id="go-cats">分类管理</button>
+      </header>
+      <div class="page-body" style="padding-top:4px">
+        <section class="card">
+          <div class="budget-row">
+            <div class="budget-main">
+              <span>本月支出</span>
+              <b class="tabular">¥${fmt(exp)}</b>
+              <div class="budget-sub">剩余可花 ¥${fmt(Math.max(remain, 0))} · 日均 ¥${fmt(Math.max(remain, 0) / 11)}</div>
+            </div>
+            <button type="button" class="budget-ring-btn" id="edit-budget">
+              <svg class="budget-ring" viewBox="0 0 44 44">
+                <circle class="track" cx="22" cy="22" r="18"/>
+                <circle class="prog" cx="22" cy="22" r="18" stroke-dasharray="${dash}" stroke-dashoffset="${offset.toFixed(1)}"/>
+              </svg>
+              <div class="budget-ring-text">
+                <small>月度预算</small>
+                <b class="tabular">${pct.toFixed(0)}%</b>
+              </div>
+            </button>
+          </div>
+        </section>
+
+        <div class="seg-control">
+          <button type="button" data-lv="calendar" class="${state.ledgerView === 'calendar' ? 'active' : ''}">收支日历</button>
+          <button type="button" data-lv="list" class="${state.ledgerView === 'list' ? 'active' : ''}">账单列表</button>
+          <button type="button" data-lv="chart" class="${state.ledgerView === 'chart' ? 'active' : ''}">收支图表</button>
+        </div>
+
+        ${bodyHtml}
+      </div>
+    `;
+
+    document.getElementById('go-cats').onclick = () => go('categories');
+    document.querySelectorAll('[data-lv]').forEach(b => b.onclick = () => { state.ledgerView = b.dataset.lv; renderLedger(); });
+    document.querySelectorAll('[data-cal-day]').forEach(b => b.onclick = () => { state.selectedCalDay = Number(b.dataset.calDay); renderLedger(); });
+    document.querySelectorAll('[data-ck]').forEach(b => b.onclick = () => { state.ledgerChartKind = b.dataset.ck; renderLedger(); });
+    document.querySelectorAll('[data-cl]').forEach(b => b.onclick = () => { state.ledgerChartLevel = b.dataset.cl; renderLedger(); });
+    document.getElementById('edit-budget').onclick = () => {
+      openSheet('设置本月预算', `
+        <div class="form-group">
+          <div class="form-field"><label>11月预算（元）</label><input id="inp-budget" type="number" value="${state.monthlyBudget}"></div>
+        </div>
+        <button type="button" class="btn-primary" style="width:100%" id="save-budget">保存预算</button>
+      `);
+      document.getElementById('save-budget').onclick = () => {
+        const v = Number(document.getElementById('inp-budget').value);
+        if (v > 0) { state.monthlyBudget = v; closeSheet(); renderLedger(); toast('已更新本月预算'); }
+      };
+    };
+  }
+
+  function renderCategories() {
+    document.getElementById('screen-categories').innerHTML = `
+      <header class="sub-header compact">
+        <button type="button" class="back-btn" id="cat-back"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+        <h1>分类管理</h1>
+        <button type="button" class="pill-action" id="cat-add">＋ 新增</button>
+      </header>
+      <div class="page-body" style="padding-top:4px">
+        <div style="font-size:12px;color:var(--color-text-secondary)">两级分类统一在此维护；支持改名同步历史、停用保留旧统计及长按拖拽排序。</div>
+        ${categoryGroups.expense.map(g => `
+          <details class="plan-group" open>
+            <summary><span>${g.name}（支出分组）</span><span class="tag-soft">${g.items.length} 项</span></summary>
+            <div class="plan-group-body">
+              ${g.items.map(it => `
+                <div class="row-item">
+                  <div class="row-left">
+                    <span class="cat-icon" data-tone="${it.tone}">${it.icon}</span>
+                    <div class="row-copy"><b>${it.cat}</b><small>一级分组：${g.name}</small></div>
+                  </div>
+                  <span style="color:var(--color-text-secondary);font-size:16px">≡</span>
+                </div>`).join('')}
+            </div>
+          </details>`).join('')}
+      </div>
+    `;
+    document.getElementById('cat-back').onclick = () => go(state.prevPage === 'entry' ? 'entry' : 'ledger');
+    document.getElementById('cat-add').onclick = () => toast('原型演示：正式版支持新增/拖拽与跨一级分组移动');
+  }
+
+  function evalExpr(expr) {
+    try {
+      const clean = expr.replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-').replace(/[^0-9.+\-*/]/g, '');
+      if (!clean) return 0;
+      const val = Function(`"use strict";return (${clean})`)();
+      return Number.isFinite(val) && val > 0 ? Math.round(val * 100) / 100 : 0;
+    } catch { return 0; }
+  }
+
+  function renderEntry() {
+    const groups = categoryGroups[state.entry.kind];
+    document.getElementById('screen-entry').innerHTML = `
+      <header class="entry-top">
+        <button type="button" class="section-link" id="entry-cancel">取消</button>
+        <div class="seg-control two" style="width:150px">
+          <button type="button" data-ek="expense" class="${state.entry.kind === 'expense' ? 'active' : ''}">支出</button>
+          <button type="button" data-ek="income" class="${state.entry.kind === 'income' ? 'active' : ''}">收入</button>
+        </div>
+        <button type="button" class="section-link" id="entry-cats">分类</button>
+      </header>
+      <div class="entry-cats">
+        ${groups.map(g => `
+          <div>
+            <p class="cat-group-title">${g.name}</p>
+            <div class="cat-grid">
+              ${g.items.map(it => `
+                <button type="button" class="cat-tile ${state.entry.category === it.cat ? 'active' : ''}" data-pick-cat="${it.cat}" data-pick-group="${g.name}" data-pick-tone="${it.tone}">
+                  <span class="cat-icon" data-tone="${it.tone}">${it.icon}</span>
+                  <span>${it.cat}</span>
+                </button>`).join('')}
+            </div>
+          </div>`).join('')}
+      </div>
+      <div class="entry-dock">
+        <div class="entry-display">
+          <span class="tag-soft">${state.entry.group} · ${state.entry.category}</span>
+          <div class="entry-expr tabular">¥${state.entry.expr}</div>
+        </div>
+        <div class="entry-note-row">
+          <input id="entry-note" placeholder="添加备注（如 午餐）" value="${state.entry.note}">
+        </div>
+        <div class="keypad">
+          ${['7','8','9','÷','4','5','6','×','1','2','3','−','0','00','.','＋'].map(k => `<button type="button" class="${'÷×−＋'.includes(k) ? 'op' : ''}" data-key="${k}">${k}</button>`).join('')}
+        </div>
+        <div class="keypad" style="margin-top:7px;grid-template-columns:1fr 1fr 1fr 1fr">
+          <button type="button" data-key="C">清空</button>
+          <button type="button" data-key="DEL">⌫</button>
+          <button type="button" class="op" data-key="=" style="grid-column:span 2">＝ 计算</button>
+        </div>
+        <div class="entry-submit-row">
+          <button type="button" class="btn-secondary" id="entry-again">保存后再记</button>
+          <button type="button" class="btn-primary" id="entry-done">完成</button>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('entry-cancel').onclick = () => go(state.prevPage || 'home');
+    document.getElementById('entry-cats').onclick = () => go('categories');
+    document.querySelectorAll('[data-ek]').forEach(b => b.onclick = () => {
+      state.entry.kind = b.dataset.ek;
+      const firstG = categoryGroups[state.entry.kind][0];
+      state.entry.group = firstG.name;
+      state.entry.category = firstG.items[0].cat;
+      state.entry.tone = firstG.items[0].tone;
+      renderEntry();
+    });
+    document.querySelectorAll('[data-pick-cat]').forEach(b => b.onclick = () => {
+      state.entry.category = b.dataset.pickCat;
+      state.entry.group = b.dataset.pickGroup;
+      state.entry.tone = b.dataset.pickTone;
+      renderEntry();
+    });
+    document.getElementById('entry-note').oninput = (e) => { state.entry.note = e.target.value; };
+    document.querySelectorAll('[data-key]').forEach(b => b.onclick = () => {
+      const k = b.dataset.key;
+      if (k === 'C') state.entry.expr = '0';
+      else if (k === 'DEL') state.entry.expr = state.entry.expr.length > 1 ? state.entry.expr.slice(0, -1) : '0';
+      else if (k === '=') state.entry.expr = String(evalExpr(state.entry.expr) || 0);
+      else state.entry.expr = state.entry.expr === '0' && !'.＋−×÷'.includes(k) ? k : state.entry.expr + k;
+      renderEntry();
+    });
+
+    const save = (stay) => {
+      const val = evalExpr(state.entry.expr);
+      if (val <= 0) { toast('请输入大于 0 的金额'); return; }
+      if (state.entry.kind === 'expense' && val > state.assets.cash) { toast('现金余额不足，请先核对现金'); return; }
+      state.entries.unshift({
+        id: Date.now(), day: 19, date: '2026-11-19', kind: state.entry.kind,
+        group: state.entry.group, cat: state.entry.category, tone: state.entry.tone,
+        amount: val, note: state.entry.note || '记一笔演示'
+      });
+      if (state.entry.kind === 'expense') {
+        state.assets.cash -= val;
+        state.monthFlow.expense += val;
+      } else {
+        state.assets.cash += val;
+        state.monthFlow.income += val;
+      }
+      state.entry.expr = '0';
+      state.entry.note = '';
+      toast(`已记一笔 ¥${fmt(val)}，现金已同步联动`);
+      if (stay) renderEntry();
+      else go('ledger');
+    };
+    document.getElementById('entry-again').onclick = () => save(true);
+    document.getElementById('entry-done').onclick = () => save(false);
+  }
+
+  function renderCapital() {
+    const total = totalAssets();
+    const goal = state.capitalGoalWan * 10000;
+    const pct = Math.min(100, (total / goal) * 100);
+    const gap = Math.max(0, goal - total);
+    const monthlySave = state.salary.netMonthly - state.monthFlow.expense + state.salary.providentMonthly;
+
+    document.getElementById('screen-capital').innerHTML = `
+      <header class="sub-header">
+        <h1>目标</h1>
+        <button type="button" class="circle-btn" id="open-assumptions" aria-label="调整假设">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09c-.66 0-1.25.4-1.51 1z"/></svg>
+        </button>
+      </header>
+      <div style="padding:0 20px 14px">
+        <div class="seg-control two">
+          <button type="button" class="active">资本积累</button>
+          <button type="button" id="tab-plans">自动计划</button>
+        </div>
+      </div>
+
+      <section class="hero" style="margin:0 16px;border-radius:26px">
+        <div class="hero-top">
+          <span class="hero-label">当前总资产 · 目标 ${state.capitalGoalWan} 万</span>
+          <button type="button" class="eye-btn" id="cap-eye">${eyeSvg(state.amountsMasked)}</button>
+        </div>
+        <div class="hero-amount tabular" style="font-size:34px;margin:6px 0 4px">${mask('¥' + fmt(total))}</div>
+        <div style="font-size:12px;color:var(--color-hero-text-secondary)">距目标还差 <b class="tabular" style="color:#fff">${mask('¥' + fmt(gap))}</b> · 预计 <b style="color:var(--color-accent-mint)">2031年04月</b> 达成</div>
+
+        <div class="hero-two-col">
+          <div class="hero-metric"><small>月均积累（不含年终奖）</small><b class="tabular">${mask('¥' + fmt(monthlySave, 0))}</b></div>
+          <div class="hero-metric"><small>组合综合年化</small><b class="tabular">${(state.capitalAnnualReturn * 0.72 + 1.5 * 0.2).toFixed(1)}%</b></div>
+        </div>
+
+        <div class="glass-track-wrap">
+          <div class="glass-track-labels">
+            <span>2026.11（当前 ${mask(pct.toFixed(1) + '%')}）</span>
+            <span>终点 ${state.capitalGoalWan}万</span>
+          </div>
+          <div class="glass-track">
+            <div class="glass-fill" style="width:${state.amountsMasked ? 30 : pct.toFixed(1)}%"></div>
+            <span class="glass-star" style="left:10%" title="10万里程碑">✦</span>
+            <span class="glass-star" style="left:20%" title="20万里程碑">✦</span>
+            <span class="glass-star" style="left:30%" title="30万里程碑">✦</span>
+            <span class="glass-cursor" style="left:${state.amountsMasked ? 30 : pct.toFixed(1)}%"></span>
+            <span class="glass-end"></span>
+          </div>
+        </div>
+      </section>
+
+      <div class="page-body">
+        <section class="card">
+          <div class="section-head">
+            <h2>年度积累推演</h2>
+            <span class="tag-soft">预测</span>
+          </div>
+          <table class="year-table">
+            <thead><tr><th>年份</th><th>年末资本</th><th>净储蓄*</th><th>投资收益</th></tr></thead>
+            <tbody>
+              <tr><td>2027</td><td>${mask('52.1万')}</td><td>${mask('+15.5万')}</td><td>${mask('+2.8万')}</td></tr>
+              <tr><td>2028</td><td>${mask('71.4万')}</td><td>${mask('+15.5万')}</td><td>${mask('+3.8万')}</td></tr>
+              <tr><td>2029</td><td>${mask('92.1万')}</td><td>${mask('+15.5万')}</td><td>${mask('+5.2万')}</td></tr>
+              <tr><td>2030</td><td>${mask('114.2万')}</td><td>${mask('+15.5万')}</td><td>${mask('+6.6万')}</td></tr>
+            </tbody>
+          </table>
+          <div style="margin-top:8px;font-size:11px;color:var(--color-text-secondary)">* 净储蓄含年终奖（${state.salary.bonusMonth}月发放 ${mask('¥' + fmt(state.salary.bonusNet, 0))}）与公积金双边缴存。</div>
+        </section>
+
+        <section class="card">
+          <div class="section-head"><h2>本月实际对照</h2><span class="tag-ok tag-soft">达标</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px">
+            <span style="color:var(--color-text-secondary)">本月实际净积累</span>
+            <b class="tabular">${mask('¥10,400.00')}</b>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:8px">
+            <span style="color:var(--color-text-secondary)">假设预期净积累</span>
+            <b class="tabular">${mask('¥' + fmt(monthlySave))}</b>
+          </div>
+        </section>
+      </div>
+    `;
+
+    document.getElementById('tab-plans').onclick = () => go('plans');
+    document.getElementById('cap-eye').onclick = () => { state.amountsMasked = !state.amountsMasked; renderCapital(); };
+    document.getElementById('open-assumptions').onclick = () => {
+      openSheet('目标与推演假设', `
+        <div class="form-group">
+          <div class="form-field"><label>总资产目标（万元）</label><input id="cap-goal-inp" type="number" value="${state.capitalGoalWan}"></div>
+          <div class="form-field"><label>收入/年终奖来源</label>
+            <select id="cap-src-sel">
+              <option value="profile" ${state.useSalaryProfile ? 'selected' : ''}>跟随工资档案</option>
+              <option value="manual" ${!state.useSalaryProfile ? 'selected' : ''}>手动覆盖</option>
+            </select>
+          </div>
+          <div class="form-field"><label>月收入（税后）</label><input value="${state.salary.netMonthly}" ${state.useSalaryProfile ? 'readonly' : ''}></div>
+          <div class="form-field"><label>年终奖（${state.salary.bonusMonth}月到手）</label><input value="${state.salary.bonusNet}" ${state.useSalaryProfile ? 'readonly' : ''}></div>
+          <div class="form-field"><label>投资年化（%）</label><input id="cap-ret-inp" type="number" step="0.1" value="${state.capitalAnnualReturn}"></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:14px">
+          <button type="button" class="pill-action" id="fill-ndx" style="flex:1">纳指20年 14.2%</button>
+          <button type="button" class="pill-action" id="fill-spx" style="flex:1">标普20年 9.8%</button>
+        </div>
+        <button type="button" class="btn-primary" style="width:100%" id="save-cap">保存并重算</button>
+      `);
+      document.getElementById('fill-ndx').onclick = () => { document.getElementById('cap-ret-inp').value = 14.2; };
+      document.getElementById('fill-spx').onclick = () => { document.getElementById('cap-ret-inp').value = 9.8; };
+      document.getElementById('save-cap').onclick = () => {
+        state.capitalGoalWan = Number(document.getElementById('cap-goal-inp').value) || 100;
+        state.capitalAnnualReturn = Number(document.getElementById('cap-ret-inp').value) || 7.5;
+        state.useSalaryProfile = document.getElementById('cap-src-sel').value === 'profile';
+        closeSheet();
+        renderCapital();
+        toast('已重新推演目标达成时间');
+      };
+    };
+  }
+
+  function renderPlans() {
+    const groups = ['基金定投', '公积金', '工资收入'];
+    const calCells = [];
+    for (let d = 1; d <= 30; d++) {
+      const isUsHoliday = d === 26;
+      calCells.push(`<div class="cal-cell ${d === 19 ? 'active' : ''}"><span>${d}</span>${isUsHoliday ? '<span class="holiday-dot" title="感恩节美股休市，三地定投顺延"></span>' : ''}</div>`);
+    }
+
+    document.getElementById('screen-plans').innerHTML = `
+      <header class="sub-header">
+        <h1>目标</h1>
+        <button type="button" class="pill-action" id="run-plans">立即执行</button>
+      </header>
+      <div style="padding:0 20px 14px">
+        <div class="seg-control two">
+          <button type="button" id="tab-capital">资本积累</button>
+          <button type="button" class="active">自动计划</button>
+        </div>
+      </div>
+
+      <div class="page-body" style="padding-top:2px">
+        ${groups.map(g => {
+          const items = state.plans.filter(p => p.group === g);
+          return `<details class="plan-group" open>
+            <summary><span>${g}</span><span class="tag-soft">${items.length} 条</span></summary>
+            <div class="plan-group-body">
+              ${items.map(p => `
+                <div class="row-item">
+                  <div class="row-copy">
+                    <b>${p.name} ${p.managed ? '<span class="tag-soft">工资档案</span>' : ''}</b>
+                    <small>${p.rule}${p.paused ? ' · 已暂停' : ''}</small>
+                  </div>
+                  <div class="row-right">
+                    <b class="tabular">¥${fmt(p.amount, 0)}</b>
+                    <button type="button" class="section-link" data-toggle-plan="${p.id}" style="font-size:11px">${p.paused ? '恢复' : '暂停'}</button>
+                  </div>
+                </div>`).join('')}
+            </div>
+          </details>`;
+        }).join('')}
+
+        <section class="card">
+          <div class="section-head"><h2>2026年11月 · 三地交易日历</h2><span class="tag-soft tag-warn">11/26 美股休市</span></div>
+          <div class="cal-grid">
+            ${['日','一','二','三','四','五','六'].map(w => `<span class="cal-week">${w}</span>`).join('')}
+            ${calCells.join('')}
+          </div>
+          <div style="margin-top:10px;font-size:12px;color:var(--color-text-secondary)">黄点标注因美国或香港休市而顺延的三地定投日期（如 11 月 26 日感恩节）。</div>
+        </section>
+
+        <details class="plan-group">
+          <summary><span>最近执行记录</span><span class="tag-soft">10条/页</span></summary>
+          <div class="plan-group-body">
+            <div class="row-item"><div class="row-copy"><b>摩根纳斯达克100 C 定投</b><small>2026-11-19 14:30 · 已记账</small></div><div class="row-right"><b class="tabular">¥300.00</b></div></div>
+            <div class="row-item"><div class="row-copy"><b>每月税后工资</b><small>2026-11-15 08:30 · 已记账</small></div><div class="row-right"><b class="income-txt tabular">+12,000.00</b></div></div>
+          </div>
+        </details>
+      </div>
+    `;
+
+    document.getElementById('tab-capital').onclick = () => go('capital');
+    document.getElementById('run-plans').onclick = () => toast('已检查到期计划：当前无待补跑期次');
+    document.querySelectorAll('[data-toggle-plan]').forEach(b => b.onclick = () => {
+      const p = state.plans.find(x => x.id === b.dataset.togglePlan);
+      p.paused = !p.paused;
+      renderPlans();
+      toast(p.paused ? `已暂停「${p.name}」` : `已恢复「${p.name}」`);
+    });
+  }
+
+  function renderMine() {
+    const themeLabel = { system: '跟随系统', light: '亮色 · Daylight Prism', dark: '暗色 · Obsidian Mint' }[state.themePref];
+    document.getElementById('screen-mine').innerHTML = `
+      <header class="sub-header"><h1>我的</h1></header>
+      <div class="page-body" style="padding-top:4px">
+        <div>
+          <div class="sheet-group-title">个人信息</div>
+          <div class="group-card">
+            <div class="row-item">
+              <div class="row-left">
+                <span class="cat-icon" data-tone="violet" style="border-radius:50%;width:44px;height:44px">LU</span>
+                <div class="row-copy"><b>LifeUp</b><small>个人单账本 · 本地头像与昵称</small></div>
+              </div>
+              <span class="tag-soft">自用</span>
+            </div>
+            <button type="button" class="row-item" id="go-salary">
+              <div class="row-copy"><b>工资档案</b><small>维护税后月薪、公积金与年终奖，联动三项计划</small></div>
+              <div class="row-right"><b>查看 ›</b></div>
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <div class="sheet-group-title">个性化设置</div>
+          <div class="group-card">
+            <button type="button" class="row-item" id="open-theme-sheet">
+              <div class="row-copy"><b>主题配色</b><small>Midnight Mint v2.1 双主题</small></div>
+              <div class="row-right"><b style="color:var(--color-brand)">${themeLabel} ›</b></div>
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <div class="sheet-group-title">数据管理</div>
+          <div class="group-card">
+            <button type="button" class="row-item" id="go-backup">
+              <div class="row-copy"><b>数据导出与备份</b><small>明细 CSV · 完整备份 JSON（版本 V5）</small></div>
+              <div class="row-right"><b>进入 ›</b></div>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.getElementById('go-salary').onclick = () => go('salary');
+    document.getElementById('go-backup').onclick = () => go('backup');
+    document.getElementById('open-theme-sheet').onclick = () => {
+      openSheet('主题配色', `
+        <div class="form-group">
+          ${[['system','跟随系统','按设备外观自动切换'],['light','亮色（Daylight Prism）','冷瓷白底 + 晴空极光紫 Hero'],['dark','暗色（Obsidian Mint）','冷曜石黑 + 星夜靛紫 Hero']].map(([k,t,d]) => `
+            <button type="button" class="row-item" data-pick-theme="${k}">
+              <div class="row-copy"><b>${t}</b><small>${d}</small></div>
+              <div class="row-right">${state.themePref === k ? '<span class="tag-soft">当前</span>' : ''}</div>
+            </button>`).join('')}
+        </div>
+      `);
+      document.querySelectorAll('[data-pick-theme]').forEach(b => b.onclick = () => {
+        applyTheme(b.dataset.pickTheme);
+        closeSheet();
+        renderMine();
+      });
+    };
+  }
+
+  function renderSalary() {
+    const s = state.salary;
+    const annualCash = s.netMonthly * 12 + s.bonusNet;
+    const annualPf = s.providentMonthly * 12;
+    const sm = (v) => state.salaryMasked ? '••••' : '¥' + fmt(v, 0);
+
+    document.getElementById('screen-salary').innerHTML = `
+      <header class="sub-header compact">
+        <button type="button" class="back-btn" id="sal-back"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+        <h1>工资档案</h1>
+        <button type="button" class="pill-action" id="sal-toggle">${state.salaryMasked ? '显示金额' : '隐藏金额'}</button>
+      </header>
+      <div class="page-body" style="padding-top:4px">
+        <section class="card">
+          <div class="section-head"><h2>税后收入与年度积累</h2><span class="tag-soft">默认脱敏</span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+            <div><small style="color:var(--color-text-secondary)">税后月薪</small><b class="tabular" style="display:block;font-size:20px;margin-top:4px">${sm(s.netMonthly)}</b></div>
+            <div><small style="color:var(--color-text-secondary)">公积金月缴存</small><b class="tabular" style="display:block;font-size:20px;margin-top:4px">${sm(s.providentMonthly)}</b></div>
+            <div><small style="color:var(--color-text-secondary)">年终奖（到手）</small><b class="tabular" style="display:block;font-size:20px;margin-top:4px">${sm(s.bonusNet)}</b></div>
+            <div><small style="color:var(--color-text-secondary)">发薪日</small><b class="tabular" style="display:block;font-size:20px;margin-top:4px">每月 ${s.payDay} 日</b></div>
+          </div>
+          <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--color-border-subtle);display:flex;justify-content:space-between;font-size:13px">
+            <span>年度到手现金 <b class="tabular">${sm(annualCash)}</b></span>
+            <span>公积金年积累 <b class="tabular">${sm(annualPf)}</b></span>
+          </div>
+        </section>
+        <button type="button" class="btn-secondary" style="width:100%" id="sal-plans">查看已同步的自动计划（工资 / 公积金 / 年终奖）›</button>
+      </div>
+    `;
+    document.getElementById('sal-back').onclick = () => go('mine');
+    document.getElementById('sal-toggle').onclick = () => { state.salaryMasked = !state.salaryMasked; renderSalary(); };
+    document.getElementById('sal-plans').onclick = () => go('plans');
+  }
+
+  function renderBackup() {
+    document.getElementById('screen-backup').innerHTML = `
+      <header class="sub-header compact">
+        <button type="button" class="back-btn" id="bk-back"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+        <h1>数据导出与备份</h1>
+        <span style="width:40px"></span>
+      </header>
+      <div class="page-body" style="padding-top:4px">
+        <section class="card">
+          <div class="section-head"><h2>完整备份（版本 V5）</h2><span class="tag-soft">兼容 V1–V5</span></div>
+          <p style="margin:0 0 14px;font-size:13px;color:var(--color-text-secondary);line-height:1.6">包含五类资产（现金、基金、股票、公积金、贵金属）、两级分类、收支流水、行情观测、五类自动计划与期次、资本目标与工资档案。恢复前强制执行完整性与历史重放校验。</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <button type="button" class="btn-secondary" id="dl-csv">导出明细 CSV</button>
+            <button type="button" class="btn-primary" id="dl-json">下载 JSON 备份</button>
+          </div>
+        </section>
+      </div>
+    `;
+    document.getElementById('bk-back').onclick = () => go('mine');
+    document.getElementById('dl-csv').onclick = () => toast('原型演示：正式版下载可核对明细 CSV');
+    document.getElementById('dl-json').onclick = () => toast('原型演示：正式版下载完整 V5 JSON 备份');
+  }
+
+  function renderCash() {
+    document.getElementById('screen-cash').innerHTML = `
+      <section class="hero">
+        <div class="hero-top">
+          <button type="button" class="hero-icon-btn" id="cash-back"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+          <span class="hero-label" style="margin:0;font-size:16px">现金</span>
+          <button type="button" class="hero-icon-btn" id="cash-reconcile" style="width:auto;padding:0 12px;border-radius:99px;font-size:12px;font-weight:700">核对余额</button>
+        </div>
+        <div class="hero-amount tabular" style="margin-top:16px">${mask('¥' + fmt(state.assets.cash))}</div>
+        <div class="hero-two-col" style="grid-template-columns:repeat(3,1fr)">
+          <div class="hero-metric"><small>本月流入</small><b class="tabular" style="font-size:15px">${mask('14,000')}</b></div>
+          <div class="hero-metric"><small>本月流出</small><b class="tabular" style="font-size:15px">${mask('15,800')}</b></div>
+          <div class="hero-metric"><small>余额净变动</small><b class="tabular" style="font-size:15px">${mask('-1,800')}</b></div>
+        </div>
+      </section>
+      <div class="page-body">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <button type="button" class="btn-secondary" id="cash-exp">记支出</button>
+          <button type="button" class="btn-primary" id="cash-inc">记收入</button>
+        </div>
+        <div class="group-card">
+          ${state.cashMoves.map(m => `
+            <div class="row-item">
+              <div class="row-copy"><b>${m.title}</b><small>${m.date} · ${m.note}</small></div>
+              <div class="row-right"><b class="tabular ${m.amount > 0 ? 'income-txt' : ''}">${signed(m.amount)}</b></div>
+            </div>`).join('')}
+        </div>
+      </div>
+    `;
+    document.getElementById('cash-back').onclick = () => go('home');
+    document.getElementById('cash-exp').onclick = () => { state.entry.kind = 'expense'; go('entry'); };
+    document.getElementById('cash-inc').onclick = () => { state.entry.kind = 'income'; go('entry'); };
+    document.getElementById('cash-reconcile').onclick = () => {
+      openSheet('核对现金余额', `
+        <div class="form-group">
+          <div class="form-field"><label>当前账面</label><input value="¥${fmt(state.assets.cash)}" readonly></div>
+          <div class="form-field"><label>实际余额</label><input id="rec-cash" type="number" value="${state.assets.cash}"></div>
+          <div class="form-field"><label>调整原因</label><input id="rec-reason" placeholder="如 银行卡零钱差额"></div>
+        </div>
+        <button type="button" class="btn-primary" style="width:100%" id="save-rec">保存核对</button>
+      `);
+      document.getElementById('save-rec').onclick = () => {
+        const next = Number(document.getElementById('rec-cash').value);
+        const diff = next - state.assets.cash;
+        if (Math.abs(diff) < 0.01) { closeSheet(); toast('余额一致，无需生成调整'); return; }
+        state.assets.cash = next;
+        state.cashMoves.unshift({ date: '2026-11-19', type: 'adj', title: '现金余额核对调整', amount: diff, note: document.getElementById('rec-reason').value || '手动核对（不计入生活收支）' });
+        closeSheet();
+        renderCash();
+        toast(`已生成独立核对差额 ${signed(diff)}`);
+      };
+    };
+  }
+
+  function renderFunds() {
+    const groups = ['全部', '纳斯达克', '标普500', '红利'];
+    const list = state.fundGroup === '全部' ? state.funds : state.funds.filter(f => f.group === state.fundGroup);
+    const total = list.reduce((s, f) => s + f.assetValue, 0);
+    const dayP = list.reduce((s, f) => s + f.dayProfit, 0);
+    const holdP = list.reduce((s, f) => s + (f.assetValue - f.pending - f.cost), 0);
+
+    document.getElementById('screen-funds').innerHTML = `
+      <section class="hero">
+        <div class="hero-top">
+          <button type="button" class="hero-icon-btn" id="fund-back"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+          <span class="hero-label" style="margin:0;font-size:16px">投资（基金）</span>
+          <span class="tag-soft" style="background:var(--color-hero-surface);color:#fff">☺ 3/3 已披露</span>
+        </div>
+        <div class="hero-amount tabular" style="margin-top:14px;font-size:36px">${mask('¥' + fmt(total))}</div>
+        <div class="hero-two-col">
+          <div class="hero-metric"><small>今日收益（含11-18净值）</small><b class="tabular ${dayP >= 0 ? 'gain' : 'loss'}" style="color:${dayP >= 0 ? 'var(--color-finance-gain-on-hero)' : 'var(--color-finance-loss-on-hero)'}">${mask(signed(dayP))}</b></div>
+          <div class="hero-metric"><small>持有收益</small><b class="tabular" style="color:var(--color-finance-gain-on-hero)">${mask(signed(holdP))}</b></div>
+        </div>
+      </section>
+      <div class="page-body">
+        <div class="chips-row">
+          ${groups.map(g => `<button type="button" class="chip ${state.fundGroup === g ? 'active' : ''}" data-fg="${g}">${g}</button>`).join('')}
+        </div>
+        <div class="seg-control" style="grid-template-columns:repeat(4,1fr)">
+          ${[['holdings','持仓明细'],['returns','收益日历'],['trades','交易记录'],['plans','我的定投']].map(([k,l]) => `<button type="button" data-fv="${k}" class="${state.fundView === k ? 'active' : ''}" style="font-size:12px">${l}</button>`).join('')}
+        </div>
+        ${list.map(f => {
+          const cum = (f.assetValue - f.pending - f.cost) + f.realized;
+          const cumPct = (cum / f.cost) * 100;
+          return `<details class="plan-group">
+            <summary style="display:block">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+                <span style="font-size:15px">${f.name}</span>
+                <b class="tabular">${mask('¥' + fmt(f.assetValue))}</b>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px;font-size:12px;font-weight:500">
+                <div><small style="color:var(--color-text-secondary);display:block">日收益 ${f.dayPct > 0 ? '+' : ''}${f.dayPct}%</small><b class="tabular ${f.dayProfit >= 0 ? 'gain' : 'loss'}">${mask(signed(f.dayProfit))}</b></div>
+                <div><small style="color:var(--color-text-secondary);display:block">累计收益</small><b class="tabular ${cum >= 0 ? 'gain' : 'loss'}">${mask(signed(cum))}</b></div>
+                <div style="text-align:right"><small style="color:var(--color-text-secondary);display:block">累计收益率</small><b class="tabular ${cum >= 0 ? 'gain' : 'loss'}">${cumPct > 0 ? '+' : ''}${cumPct.toFixed(1)}%</b></div>
+              </div>
+            </summary>
+            <div class="plan-group-body">
+              ${f.classes.map(c => `
+                <div class="row-item">
+                  <div class="row-copy"><b>${c.cls} · ${c.code}</b><small>份额 ${c.shares.toFixed(2)} · 净值 ${c.nav.toFixed(4)} (${c.navDate})</small></div>
+                  <div class="row-right"><b class="tabular">${mask('¥' + fmt(c.value))}</b></div>
+                </div>`).join('')}
+            </div>
+          </details>`;
+        }).join('')}
+      </div>
+    `;
+    document.getElementById('fund-back').onclick = () => go('home');
+    document.querySelectorAll('[data-fg]').forEach(b => b.onclick = () => { state.fundGroup = b.dataset.fg; renderFunds(); });
+    document.querySelectorAll('[data-fv]').forEach(b => b.onclick = () => { state.fundView = b.dataset.fv; toast(`切换至「${b.textContent}」视图`); renderFunds(); });
+  }
+
+  function renderStocks() {
+    const sorted = [...state.stocks].sort((a, b) => {
+      if (state.stockSort === 'profit') return b.totalProfit - a.totalProfit;
+      if (state.stockSort === 'name') return a.name.localeCompare(b.name, 'zh');
+      return (b.shares * b.price) - (a.shares * a.price);
+    });
+    const dayP = sorted.reduce((s, x) => s + x.dayProfit, 0);
+    const totalP = sorted.reduce((s, x) => s + x.totalProfit, 0);
+
+    document.getElementById('screen-stocks').innerHTML = `
+      <section class="hero">
+        <div class="hero-top">
+          <button type="button" class="hero-icon-btn" id="stk-back"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+          <span class="hero-label" style="margin:0;font-size:16px">股票（A 股与 ETF）</span>
+          <button type="button" class="hero-icon-btn" id="stk-sync" aria-label="刷新行情"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg></button>
+        </div>
+        <div class="hero-amount tabular" style="margin-top:14px;font-size:36px">${mask('¥' + fmt(state.assets.stock))}</div>
+        <div class="hero-two-col">
+          <div class="hero-metric"><small>今日盈亏</small><b class="tabular" style="color:var(--color-finance-gain-on-hero)">${mask(signed(dayP))}</b></div>
+          <div class="hero-metric"><small>总收益</small><b class="tabular" style="color:var(--color-finance-gain-on-hero)">${mask(signed(totalP))}</b></div>
+        </div>
+      </section>
+      <div class="page-body">
+        <div class="seg-control">
+          <button type="button" data-ss="value" class="${state.stockSort === 'value' ? 'active' : ''}">按市值</button>
+          <button type="button" data-ss="profit" class="${state.stockSort === 'profit' ? 'active' : ''}">按总收益</button>
+          <button type="button" data-ss="name" class="${state.stockSort === 'name' ? 'active' : ''}">按名称</button>
+        </div>
+        <div class="group-card">
+          ${sorted.map(s => `
+            <div class="row-item">
+              <div class="row-copy">
+                <b>${s.name} <span class="tag-soft">${s.market}</span></b>
+                <small>${s.code} · ${s.shares}股 · 现价 ${s.price.toFixed(3)} · 均价 ${s.avgCost.toFixed(3)}</small>
+              </div>
+              <div class="row-right">
+                <b class="tabular">${mask('¥' + fmt(s.shares * s.price))}</b>
+                <small class="tabular ${s.dayProfit >= 0 ? 'gain' : 'loss'}">今日 ${mask(signed(s.dayProfit))}</small>
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>
+    `;
+    document.getElementById('stk-back').onclick = () => go('home');
+    document.getElementById('stk-sync').onclick = () => toast('已从东方财富行情源刷新最新价与昨收');
+    document.querySelectorAll('[data-ss]').forEach(b => b.onclick = () => { state.stockSort = b.dataset.ss; renderStocks(); });
+  }
+
+  function renderProvident() {
+    document.getElementById('screen-provident').innerHTML = `
+      <section class="hero">
+        <div class="hero-top">
+          <button type="button" class="hero-icon-btn" id="pf-back"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+          <span class="hero-label" style="margin:0;font-size:16px">公积金</span>
+          <span style="width:38px"></span>
+        </div>
+        <div class="hero-amount tabular" style="margin-top:14px;font-size:36px">${mask('¥' + fmt(state.assets.provident))}</div>
+        <div class="hero-two-col">
+          <div class="hero-metric"><small>本月双边缴存</small><b class="tabular">+5,200.00</b></div>
+          <div class="hero-metric"><small>本月提取至现金</small><b class="tabular">-2,000.00</b></div>
+        </div>
+      </section>
+      <div class="page-body">
+        <button type="button" class="btn-primary" style="width:100%" id="pf-action">缴存 · 提取 / 每月自动缴存</button>
+        <div class="group-card">
+          <div class="row-item"><div class="row-copy"><b>本月缴存（个人+单位）</b><small>2026-11-15 · 工资档案托管</small></div><div class="row-right"><b class="income-txt tabular">+5,200.00</b></div></div>
+          <div class="row-item"><div class="row-copy"><b>公积金提取到现金</b><small>2026-11-15 · 等额转入现金池</small></div><div class="row-right"><b class="tabular">-2,000.00</b></div></div>
+        </div>
+      </div>
+    `;
+    document.getElementById('pf-back').onclick = () => go('home');
+    document.getElementById('pf-action').onclick = () => {
+      openSheet('公积金缴存 / 提取', `
+        <div class="form-group">
+          <div class="form-field"><label>提取到现金（元）</label><input id="pf-wd" type="number" value="2000"></div>
+          <div class="form-field"><label>每月自动缴存</label><input value="¥${state.salary.providentMonthly}/月 · 已启用" readonly></div>
+        </div>
+        <button type="button" class="btn-primary" style="width:100%" id="pf-save">确认提取（联动现金）</button>
+      `);
+      document.getElementById('pf-save').onclick = () => {
+        const wd = Number(document.getElementById('pf-wd').value);
+        if (wd > 0 && wd <= state.assets.provident) {
+          state.assets.provident -= wd;
+          state.assets.cash += wd;
+          state.cashMoves.unshift({ date: '2026-11-19', type: 'flow', title: '公积金提取到账', amount: wd, note: '公积金 → 现金（总资产不变）' });
+          closeSheet();
+          renderProvident();
+          toast(`已提取 ¥${fmt(wd)} 至现金，总资产保持不变`);
+        }
+      };
+    };
+  }
+
+  function renderGold() {
+    const val = goldVal();
+    const holdProfit = val - state.assets.goldCost;
+    const totalProfit = holdProfit + state.assets.goldRealized;
+    const avgCost = state.assets.goldCost / state.assets.goldGrams;
+    const totalPct = (totalProfit / state.assets.goldCost) * 100;
+
+    document.getElementById('screen-gold').innerHTML = `
+      <section class="hero">
+        <div class="hero-top">
+          <button type="button" class="hero-icon-btn" id="gold-back"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+          <span class="hero-label" style="margin:0;font-size:16px">贵金属</span>
+          <button type="button" class="hero-icon-btn" id="gold-sync" style="width:auto;padding:0 12px;border-radius:99px;font-size:12px;font-weight:700">刷新报价</button>
+        </div>
+        <div class="hero-amount tabular" style="margin-top:14px;font-size:36px">${mask('¥' + fmt(val))}</div>
+        <div class="hero-subnote">Au99.99 现货参考价 · ¥${fmt(state.assets.goldPrice)}/克 · 持有 ${state.assets.goldGrams.toFixed(4)} 克</div>
+        <div class="hero-two-col" style="grid-template-columns:repeat(3,1fr)">
+          <div class="hero-metric"><small>总收益</small><b class="tabular" style="font-size:15px;color:var(--color-finance-gain-on-hero)">${mask(signed(totalProfit))}</b></div>
+          <div class="hero-metric"><small>总收益率</small><b class="tabular" style="font-size:15px;color:var(--color-finance-gain-on-hero)">+${totalPct.toFixed(1)}%</b></div>
+          <div class="hero-metric"><small>成本均价</small><b class="tabular" style="font-size:15px">¥${fmt(avgCost)}</b></div>
+        </div>
+      </section>
+      <div class="page-body">
+        <section class="card">
+          <div class="section-head"><h2>收益拆解与说明</h2></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px"><span>持有收益</span><b class="gain tabular">${mask(signed(holdProfit))}</b></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:8px"><span>已实现收益</span><b class="gain tabular">${mask(signed(state.assets.goldRealized))}</b></div>
+          <div style="margin-top:10px;font-size:12px;color:var(--color-text-secondary)">支持自动三级参考报价（上金所 Au99.99 现货 → 上金所延时 → 工行积存金），卖出默认直接到账至现金。</div>
+        </section>
+      </div>
+    `;
+    document.getElementById('gold-back').onclick = () => go('home');
+    document.getElementById('gold-sync').onclick = () => {
+      state.assets.goldPrice = state.assets.goldPrice === 900 ? 906.5 : 900;
+      renderGold();
+      toast(`已刷新 Au99.99 现货参考价：¥${fmt(state.assets.goldPrice)}/克`);
+    };
+  }
+
+  // 全局事件绑定
+  document.querySelectorAll('#app-nav [data-nav]').forEach(b => b.onclick = () => go(b.dataset.nav));
+  document.getElementById('nav-entry').onclick = () => go('entry');
+  document.getElementById('sheet-close').onclick = closeSheet;
+  document.getElementById('sheet-backdrop').onclick = (e) => { if (e.target.id === 'sheet-backdrop') closeSheet(); };
+  document.querySelectorAll('[data-theme-pref]').forEach(b => b.onclick = () => applyTheme(b.dataset.themePref));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });
+
+  applyTheme('light');
+  render();
+})();

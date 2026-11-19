@@ -1,6 +1,6 @@
 # LifeUp UI 配色规范
 
-> 2026-11-04 起视觉主题切换为 Midnight Mint，当前色彩以 [Midnight Mint 视觉规范](MidnightMint设计规范-2026-11-04.md) 和 [CSS 色彩变量](ui-color-tokens.css) 为准。本文件保留为 v1.0 瓷白 + 克莱因蓝历史规范，供对照。
+> 2026-11-04 起视觉主题切换为 Midnight Mint（现已升级至 v2.1），当前色彩以 [Midnight Mint 视觉规范](MidnightMint设计规范-2026-11-04.md) 和 [CSS 色彩变量](ui-color-tokens.css) 为准。`ui-color-tokens.css` 中已移除历史 `[data-theme="porcelain"]` 变量块；本文件仅保留为 v1.0 瓷白 + 克莱因蓝历史配色归档，不再作为运行时引用依据。
 
 版本：v1.0 · 日期：2026-10-20 · 主题标识：`porcelain`
 
