@@ -9,6 +9,61 @@ public sealed class LedgerReplayCalculator
     public ReplayResult Calculate(LedgerReplayData data, IReadOnlyList<BusinessFact> facts, DateOnly asOfDate,
         IReadOnlyList<PriceObservation>? priceOverride = null, decimal? openingCash = null, DateOnly? cashOpeningDate = null, DateOnly? currentDate = null)
     {
+        return CalculateDates(
+            data,
+            facts,
+            [asOfDate],
+            priceOverride,
+            openingCash,
+            cashOpeningDate,
+            currentDate)[asOfDate];
+    }
+
+    public IReadOnlyDictionary<DateOnly, ReplayResult> CalculateSeries(
+        LedgerReplayData data,
+        IReadOnlyList<BusinessFact> facts,
+        DateOnly from,
+        DateOnly to,
+        IReadOnlyList<PriceObservation>? priceOverride = null,
+        decimal? openingCash = null,
+        DateOnly? cashOpeningDate = null,
+        DateOnly? currentDate = null)
+    {
+        if (to < from)
+        {
+            return new Dictionary<DateOnly, ReplayResult>();
+        }
+
+        var dates = new List<DateOnly>(to.DayNumber - from.DayNumber + 1);
+
+        for (var date = from; date <= to; date = date.AddDays(1))
+        {
+            dates.Add(date);
+        }
+
+        return CalculateDates(data, facts, dates, priceOverride, openingCash, cashOpeningDate, currentDate);
+    }
+
+    /// <summary>
+    /// 单遍前向扫描计算多个目标日期的回放快照：链接校验、事实排序与行情排序只执行一次。
+    /// </summary>
+    public IReadOnlyDictionary<DateOnly, ReplayResult> CalculateDates(
+        LedgerReplayData data,
+        IReadOnlyList<BusinessFact> facts,
+        IEnumerable<DateOnly> asOfDates,
+        IReadOnlyList<PriceObservation>? priceOverride = null,
+        decimal? openingCash = null,
+        DateOnly? cashOpeningDate = null,
+        DateOnly? currentDate = null)
+    {
+        var sortedDates = asOfDates.Distinct().OrderBy(date => date).ToList();
+
+        if (sortedDates.Count == 0)
+        {
+            return new Dictionary<DateOnly, ReplayResult>();
+        }
+
+        var maxDate = sortedDates[^1];
         var cashAccount = data.Ledger.CashAccount;
         var cashStart = cashOpeningDate ?? cashAccount.OpeningDate;
         var cashKnown = (openingCash is not null || cashAccount.HistoryConfirmed) && cashStart is not null && (openingCash ?? cashAccount.OpeningBalance) is not null;
@@ -36,149 +91,189 @@ public sealed class LedgerReplayCalculator
         var pendingBuys = ValidateFundBuyLinks(active);
         var (sellApplies, sellConfirms) = ValidateFundSellLinks(active);
         var goldSellPendings = ValidateGoldSellLinks(active);
-        var fundStates = data.Positions.ToDictionary(position => position.Id, position => new MutableHolding());
-        var stockStates = data.Stocks.ToDictionary(position => position.Id, position => new MutableHolding());
+        var fundStates = data.Positions.ToDictionary(position => position.Id, _ => new MutableHolding());
+        var stockStates = data.Stocks.ToDictionary(position => position.Id, _ => new MutableHolding());
         var goldState = data.Gold is null ? null : new MutableHolding();
         var unknownFunds = active.Where(fact => fact.NeedsDateConfirmation && fact.AssetType == AssetType.Fund)
             .Select(fact => fact.PositionId).ToHashSet();
         var unknownStocks = active.Where(fact => fact.NeedsDateConfirmation && fact.AssetType == AssetType.Stock)
             .Select(fact => fact.PositionId).ToHashSet();
         var unknownGold = active.Any(fact => fact.NeedsDateConfirmation && fact.AssetType == AssetType.Gold);
-
-        foreach (var fact in active.Where(fact => fact.Date <= asOfDate)
-            .OrderBy(fact => fact.Date).ThenBy(fact => EffectiveSequence(fact, allAnchors)).ThenBy(fact => fact.RelatedCashAdjustmentId is null ? 1 : 0).ThenBy(fact => fact.Sequence))
-        {
-            if (fact.Source == "adjustment")
-            {
-                if (!cashKnown)
-                {
-                    continue;
-                }
-
-                RequireCashCoverage(cashKnown, cashStart, fact);
-                var previous = cash;
-                cash = fact.TargetBalance!.Value;
-                adjustments.Add(new AdjustmentReplay(fact.Id, previous, cash - previous));
-                cashDate = fact.Date;
-                continue;
-            }
-
-            if (fact.CashEffect != 0m)
-            {
-                if (!cashKnown)
-                {
-                    continue;
-                }
-
-                RequireCashCoverage(cashKnown, cashStart, fact);
-                cash += fact.CashEffect;
-                cashDate = fact.Date;
-                Ensure(cash >= 0m && cash <= CashAccount.MaximumBalance, fact, "现金余额不足或超出范围");
-            }
-
-            if (fact.AssetType == AssetType.ProvidentFund)
-            {
-                if (fact.Kind == AssetTransactionKind.ProvidentOpening)
-                {
-                    Ensure(providentStart is null, fact, "起始公积金必须早于其他缴存和提取，且只能有一笔有效起始记录");
-                    provident = fact.Amount;
-                }
-                else
-                {
-                    provident += fact.Kind == AssetTransactionKind.ProvidentDeposit ? fact.Amount : -fact.Amount;
-                }
-
-                providentStart ??= fact.Date;
-                providentDate = fact.Date;
-                Ensure(provident >= 0m && provident <= ProvidentFundAccount.MaximumBalance, fact, "公积金余额不足或超出范围");
-            }
-
-            if (fact.AssetType == AssetType.Fund && fact.PositionId is not null && !unknownFunds.Contains(fact.PositionId))
-            {
-                ApplyHolding(fundStates[fact.PositionId.Value], fact, openingKeys, pendingBuys, sellApplies, sellConfirms, goldSellPendings, false);
-            }
-
-            if (fact.AssetType == AssetType.Stock && fact.PositionId is not null && !unknownStocks.Contains(fact.PositionId))
-            {
-                ApplyHolding(stockStates[fact.PositionId.Value], fact, openingKeys, pendingBuys, sellApplies, sellConfirms, goldSellPendings, true);
-            }
-
-            if (fact.AssetType == AssetType.Gold && goldState is not null && !unknownGold)
-            {
-                ApplyHolding(goldState, fact, openingKeys, pendingBuys, sellApplies, sellConfirms, goldSellPendings, true);
-            }
-        }
-
-        var observations = (priceOverride ?? data.Prices).Where(price => !price.IsSuperseded && price.EffectiveDate <= asOfDate
-            && (price.SourceTransactionId is null || activeIds.Contains(price.SourceTransactionId.Value))).ToList();
-        // 一次按资产归集行情，避免每个持仓都扫描并排序全部历史报价。
-        var latestPrices = observations.GroupBy(price => (price.AssetType, price.PositionId))
-            .ToDictionary(group => group.Key, group => group.OrderByDescending(price => price.EffectiveDate)
-                .ThenByDescending(price => price.RevisionOrder).First());
-        var funds = data.Positions.Select(position =>
-        {
-            var state = fundStates[position.Id];
-            var known = !unknownFunds.Contains(position.Id);
-            var quote = latestPrices.GetValueOrDefault((AssetType.Fund, (Guid?)position.Id));
-            return new HoldingReplay(position.Id, known ? state.Quantity : position.Shares, known ? state.Cost : position.Cost,
-                known ? state.Realized : position.RealizedProfit, known ? state.CoverageFrom : null, known,
-                (known ? state.CoverageFrom is null : asOfDate != currentDate) ? null : quote?.Price, quote?.EffectiveDate, quote?.Source,
-                known ? state.PendingAmount : 0m, known ? state.AppliedShares : 0m, known ? state.PendingArrivalAmount : 0m,
-                known ? MarkPendingBuys(state.PendingBuys.Values, quote?.Price, observations, position.Id) : null);
-        }).ToList();
-        var stocks = data.Stocks.Select(position =>
-        {
-            var state = stockStates[position.Id];
-            var known = !unknownStocks.Contains(position.Id);
-            var quote = latestPrices.GetValueOrDefault((AssetType.Stock, (Guid?)position.Id));
-            return new HoldingReplay(position.Id, known ? state.Quantity : position.Shares, known ? state.Cost : position.Cost,
-                known ? state.Realized : position.RealizedProfit, known ? state.CoverageFrom : null, known,
-                (known ? state.CoverageFrom is null : asOfDate != currentDate) ? null : quote?.Price, quote?.EffectiveDate, quote?.Source);
-        }).ToList();
-        HoldingReplay? gold = null;
-
-        if (data.Gold is not null && goldState is not null)
-        {
-            var quote = latestPrices.GetValueOrDefault((AssetType.Gold, (Guid?)null));
-            gold = new HoldingReplay(null, unknownGold ? data.Gold.Grams : goldState.Quantity, unknownGold ? data.Gold.Cost : goldState.Cost,
-                unknownGold ? data.Gold.RealizedProfit : goldState.Realized, unknownGold ? null : goldState.CoverageFrom, !unknownGold,
-                // 还没有任何积存金持仓记录时，快照克数（通常为 0）即为准绳，报价仍可用于估值和录入首笔持仓。
-                (unknownGold && asOfDate != currentDate) ? null : quote?.Price, quote?.EffectiveDate, quote?.Source,
-                PendingArrivalAmount: unknownGold ? 0m : goldState.PendingArrivalAmount);
-        }
-
-        var issues = new List<string>();
-
-        if (!cashKnown || cashStart > asOfDate)
-        {
-            issues.Add("现金起点尚未覆盖该日期");
-        }
-
-        if (providentStart is null && !(data.Ledger.ProvidentFundNotHeld && data.Provident is null))
-        {
-            issues.Add("公积金尚无该日期的起始依据");
-        }
-
-        if ((funds.Count == 0 && !data.Ledger.FundNotHeld) || funds.Any(fund => !fund.CanRebuild || fund.CoverageFrom is null || fund.Value is null))
-        {
-            issues.Add("部分基金持仓日期或行情依据不足");
-        }
-
-        if (stocks.Any(stock => !stock.CanRebuild || stock.CoverageFrom is null || stock.Value is null))
-        {
-            issues.Add("部分股票持仓日期或行情依据不足");
-        }
-
         var goldNotHeld = data.Ledger.GoldNotHeld
             && !active.Any(fact => fact.AssetType == AssetType.Gold && fact.Kind != AssetTransactionKind.GoldQuote);
 
-        if (!goldNotHeld && (gold is null || !gold.CanRebuild || gold.CoverageFrom is null || gold.Value is null))
+        var orderedFacts = active
+            .Where(fact => fact.Date <= maxDate)
+            .OrderBy(fact => fact.Date)
+            .ThenBy(fact => EffectiveSequence(fact, allAnchors))
+            .ThenBy(fact => fact.RelatedCashAdjustmentId is null ? 1 : 0)
+            .ThenBy(fact => fact.Sequence)
+            .ToList();
+        var orderedPrices = (priceOverride ?? data.Prices)
+            .Where(price => !price.IsSuperseded
+                && price.EffectiveDate <= maxDate
+                && (price.SourceTransactionId is null || activeIds.Contains(price.SourceTransactionId.Value)))
+            .OrderBy(price => price.EffectiveDate)
+            .ThenBy(price => price.RevisionOrder)
+            .ToList();
+
+        var latestPrices = new Dictionary<(AssetType AssetType, Guid? PositionId), PriceObservation>();
+        var exactPrices = new Dictionary<(AssetType AssetType, Guid? PositionId, DateOnly EffectiveDate), PriceObservation>();
+        var results = new Dictionary<DateOnly, ReplayResult>(sortedDates.Count);
+        var factIndex = 0;
+        var priceIndex = 0;
+
+        foreach (var asOfDate in sortedDates)
         {
-            issues.Add("积存金持仓日期或行情依据不足");
+            while (factIndex < orderedFacts.Count && orderedFacts[factIndex].Date <= asOfDate)
+            {
+                var fact = orderedFacts[factIndex++];
+
+                if (fact.Source == "adjustment")
+                {
+                    if (!cashKnown)
+                    {
+                        continue;
+                    }
+
+                    RequireCashCoverage(cashKnown, cashStart, fact);
+                    var previous = cash;
+                    cash = fact.TargetBalance!.Value;
+                    adjustments.Add(new AdjustmentReplay(fact.Id, previous, cash - previous));
+                    cashDate = fact.Date;
+                    continue;
+                }
+
+                if (fact.CashEffect != 0m)
+                {
+                    if (!cashKnown)
+                    {
+                        continue;
+                    }
+
+                    RequireCashCoverage(cashKnown, cashStart, fact);
+                    cash += fact.CashEffect;
+                    cashDate = fact.Date;
+                    Ensure(cash >= 0m && cash <= CashAccount.MaximumBalance, fact, "现金余额不足或超出范围");
+                }
+
+                if (fact.AssetType == AssetType.ProvidentFund)
+                {
+                    if (fact.Kind == AssetTransactionKind.ProvidentOpening)
+                    {
+                        Ensure(providentStart is null, fact, "起始公积金必须早于其他缴存和提取，且只能有一笔有效起始记录");
+                        provident = fact.Amount;
+                    }
+                    else
+                    {
+                        provident += fact.Kind == AssetTransactionKind.ProvidentDeposit ? fact.Amount : -fact.Amount;
+                    }
+
+                    providentStart ??= fact.Date;
+                    providentDate = fact.Date;
+                    Ensure(provident >= 0m && provident <= ProvidentFundAccount.MaximumBalance, fact, "公积金余额不足或超出范围");
+                }
+
+                if (fact.AssetType == AssetType.Fund && fact.PositionId is not null && !unknownFunds.Contains(fact.PositionId))
+                {
+                    ApplyHolding(fundStates[fact.PositionId.Value], fact, openingKeys, pendingBuys, sellApplies, sellConfirms, goldSellPendings, false);
+                }
+
+                if (fact.AssetType == AssetType.Stock && fact.PositionId is not null && !unknownStocks.Contains(fact.PositionId))
+                {
+                    ApplyHolding(stockStates[fact.PositionId.Value], fact, openingKeys, pendingBuys, sellApplies, sellConfirms, goldSellPendings, true);
+                }
+
+                if (fact.AssetType == AssetType.Gold && goldState is not null && !unknownGold)
+                {
+                    ApplyHolding(goldState, fact, openingKeys, pendingBuys, sellApplies, sellConfirms, goldSellPendings, true);
+                }
+            }
+
+            while (priceIndex < orderedPrices.Count && orderedPrices[priceIndex].EffectiveDate <= asOfDate)
+            {
+                var price = orderedPrices[priceIndex++];
+                latestPrices[(price.AssetType, price.PositionId)] = price;
+                exactPrices[(price.AssetType, price.PositionId, price.EffectiveDate)] = price;
+            }
+
+            var funds = data.Positions.Select(position =>
+            {
+                var state = fundStates[position.Id];
+                var known = !unknownFunds.Contains(position.Id);
+                var quote = latestPrices.GetValueOrDefault((AssetType.Fund, (Guid?)position.Id));
+                return new HoldingReplay(position.Id, known ? state.Quantity : position.Shares, known ? state.Cost : position.Cost,
+                    known ? state.Realized : position.RealizedProfit, known ? state.CoverageFrom : null, known,
+                    (known ? state.CoverageFrom is null : asOfDate != currentDate) ? null : quote?.Price, quote?.EffectiveDate, quote?.Source,
+                    known ? state.PendingAmount : 0m, known ? state.AppliedShares : 0m, known ? state.PendingArrivalAmount : 0m,
+                    known ? MarkPendingBuys(state.PendingBuys.Values, quote?.Price, exactPrices, position.Id) : null);
+            }).ToList();
+
+            var stocks = data.Stocks.Select(position =>
+            {
+                var state = stockStates[position.Id];
+                var known = !unknownStocks.Contains(position.Id);
+                var quote = latestPrices.GetValueOrDefault((AssetType.Stock, (Guid?)position.Id));
+                return new HoldingReplay(position.Id, known ? state.Quantity : position.Shares, known ? state.Cost : position.Cost,
+                    known ? state.Realized : position.RealizedProfit, known ? state.CoverageFrom : null, known,
+                    (known ? state.CoverageFrom is null : asOfDate != currentDate) ? null : quote?.Price, quote?.EffectiveDate, quote?.Source);
+            }).ToList();
+
+            HoldingReplay? gold = null;
+
+            if (data.Gold is not null && goldState is not null)
+            {
+                var quote = latestPrices.GetValueOrDefault((AssetType.Gold, (Guid?)null));
+                gold = new HoldingReplay(null, unknownGold ? data.Gold.Grams : goldState.Quantity, unknownGold ? data.Gold.Cost : goldState.Cost,
+                    unknownGold ? data.Gold.RealizedProfit : goldState.Realized, unknownGold ? null : goldState.CoverageFrom, !unknownGold,
+                    // 还没有任何积存金持仓记录时，快照克数（通常为 0）即为准绳，报价仍可用于估值和录入首笔持仓。
+                    (unknownGold && asOfDate != currentDate) ? null : quote?.Price, quote?.EffectiveDate, quote?.Source,
+                    PendingArrivalAmount: unknownGold ? 0m : goldState.PendingArrivalAmount);
+            }
+
+            var issues = new List<string>();
+
+            if (!cashKnown || cashStart > asOfDate)
+            {
+                issues.Add("现金起点尚未覆盖该日期");
+            }
+
+            if (providentStart is null && !(data.Ledger.ProvidentFundNotHeld && data.Provident is null))
+            {
+                issues.Add("公积金尚无该日期的起始依据");
+            }
+
+            if ((funds.Count == 0 && !data.Ledger.FundNotHeld) || funds.Any(fund => !fund.CanRebuild || fund.CoverageFrom is null || fund.Value is null))
+            {
+                issues.Add("部分基金持仓日期或行情依据不足");
+            }
+
+            if (stocks.Any(stock => !stock.CanRebuild || stock.CoverageFrom is null || stock.Value is null))
+            {
+                issues.Add("部分股票持仓日期或行情依据不足");
+            }
+
+            if (!goldNotHeld && (gold is null || !gold.CanRebuild || gold.CoverageFrom is null || gold.Value is null))
+            {
+                issues.Add("积存金持仓日期或行情依据不足");
+            }
+
+            results[asOfDate] = new ReplayResult(
+                asOfDate,
+                cashKnown && cashStart <= asOfDate ? cash : null,
+                cashStart,
+                cashDate,
+                providentStart is null ? null : provident,
+                providentStart,
+                providentDate,
+                funds,
+                stocks,
+                gold,
+                adjustments.ToList(),
+                issues);
         }
 
-        return new ReplayResult(asOfDate, cashKnown && cashStart <= asOfDate ? cash : null, cashStart, cashDate,
-            providentStart is null ? null : provident, providentStart, providentDate, funds, stocks, gold, adjustments, issues);
+        return results;
     }
 
     private static void ApplyHolding(MutableHolding state, BusinessFact fact,
@@ -519,25 +614,22 @@ public sealed class LedgerReplayCalculator
             && !anchor.IsReversed && fact.Date == anchor.Date ? anchor.Sequence : fact.Sequence;
     }
 
-    private static PriceObservation? At(IEnumerable<PriceObservation> prices, AssetType assetType, Guid? positionId, DateOnly date)
-    {
-        return prices.Where(price => price.AssetType == assetType && price.PositionId == positionId && price.EffectiveDate == date)
-            .OrderByDescending(price => price.RevisionOrder).FirstOrDefault();
-    }
-
     /// <summary>
     /// 待确认买入在确认前也按「T 日净值」折算成份额计值：金额 ÷ T 日净值 × 当日净值。
     /// 这样净值波动落在它真正发生的日期，确认当天不会凭空多出一笔差价。
     /// T 日净值尚未披露时退回承诺金额，相当于这段时间不参与盈亏计算。
     /// </summary>
-    private static decimal MarkPendingBuys(IEnumerable<PendingBuy> pendings, decimal? navAsOf,
-        IEnumerable<PriceObservation> prices, Guid positionId)
+    private static decimal MarkPendingBuys(
+        IEnumerable<PendingBuy> pendings,
+        decimal? navAsOf,
+        IReadOnlyDictionary<(AssetType AssetType, Guid? PositionId, DateOnly EffectiveDate), PriceObservation> exactPrices,
+        Guid positionId)
     {
         var total = 0m;
 
         foreach (var pending in pendings)
         {
-            var navTradeDate = At(prices, AssetType.Fund, positionId, pending.TradeDate)?.Price;
+            var navTradeDate = exactPrices.GetValueOrDefault((AssetType.Fund, (Guid?)positionId, pending.TradeDate))?.Price;
             var principal = pending.Amount - pending.Fee;
             total += navTradeDate is null or <= 0m || navAsOf is null
                 ? principal

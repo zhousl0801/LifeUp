@@ -43,8 +43,9 @@ public sealed class MonthChangeService
         var baselineDate = isDay
             ? (hasBaseline ? today.AddDays(-1) : ledger.StartDate)
             : (hasBaseline ? monthStart.AddDays(-1) : ledger.StartDate);
-        var before = calculator.Calculate(data, facts, baselineDate, currentDate: today);
-        var now = calculator.Calculate(data, facts, today, currentDate: today);
+        var replays = calculator.CalculateDates(data, facts, [baselineDate, today], currentDate: today);
+        var before = replays[baselineDate];
+        var now = replays[today];
 
         if (isDay)
         {
@@ -73,8 +74,13 @@ public sealed class MonthChangeService
             ? Round(addedTypes.Sum(pair => pair.Value.Value!.Value))
             : 0m;
 
-        var totals = await _ledgerRepository.GetEntryTotalsAsync(ledger.Id, from, today, cancellationToken);
-        var livingSurplus = Round(totals.Income - totals.Expense);
+        // 按实际影响现金流的收支计算生活结余，与当日变化保持一致，自动排除历史月度汇总（MonthlyImport）。
+        var livingSurplus = Round(facts
+            .Where(fact => !fact.IsReversed
+                && fact.EntryKind is not null
+                && fact.Date >= from
+                && fact.Date <= today)
+            .Sum(fact => fact.CashEffect));
         var providentDeposit = Round(facts
             .Where(fact => !fact.IsReversed
                 && fact.AssetType == AssetType.ProvidentFund

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { navigateBack } from '../utils/navigation'
 import Decimal from 'decimal.js'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { arriveGoldSell, buyGold, fetchGoldOverview, refreshGoldQuote, saveGoldHolding, sellGold } from '../api/gold'
 import { ApiError, getApiErrorMessage } from '../api/client'
@@ -12,18 +12,20 @@ import MoneyAmount from '../components/MoneyAmount.vue'
 import BackButton from '../components/BackButton.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import LoadingState from '../components/LoadingState.vue'
-import InvestmentActivityList, { type InvestmentActivityRow } from '../components/InvestmentActivityList.vue'
+import InvestmentActivityList from '../components/InvestmentActivityList.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import { useUnsavedSheet } from '../composables/useUnsavedSheet'
 import ConfirmSheet from '../components/ConfirmSheet.vue'
 import {
+  addAmounts,
   amountTone,
+  calculatePercent,
+  divideUnitPrice,
   formatBusinessDate,
-  formatBusinessTime,
   formatMoney,
+  formatPercent as formatPercentValue,
   formatQuantity,
   formatSignedMoney,
-  formatUnitPrice,
   parseAmount,
   parseNonNegativeQuantity,
   parsePrice,
@@ -31,8 +33,9 @@ import {
   parseUnitPrice,
   todayInBusinessTimeZone
 } from '../utils/format'
+import { toGoldActivityRow } from '../utils/goldActivities'
 import { createRequestId } from '../utils/request'
-import type { GoldActivity, GoldOverview, PendingGoldArrival } from '../types/gold'
+import type { GoldOverview, PendingGoldArrival } from '../types/gold'
 
 type SheetKind = 'buy' | 'sell' | 'sellArrival' | 'holding' | 'detail'
 
@@ -85,17 +88,17 @@ const totalProfit = computed<number | null>(() => {
     return null
   }
 
-  return data.holdingProfit + data.realizedProfit
+  return addAmounts(data.holdingProfit, data.realizedProfit)
 })
 
 const totalRate = computed<number | null>(() => {
   const data = overview.value
 
-  if (!data || !data.hasEffectiveQuote || data.cost <= 0) {
+  if (!data || !data.hasEffectiveQuote) {
     return null
   }
 
-  return (data.holdingProfit + data.realizedProfit) / data.cost * 100
+  return calculatePercent(addAmounts(data.holdingProfit, data.realizedProfit), data.cost)
 })
 
 const selectedPendingArrival = computed<PendingGoldArrival | null>(() =>
@@ -189,9 +192,16 @@ const holdingCostTotal = computed<number | null>(() => {
 })
 const parseGramInput = computed<number>(() => parseNonNegativeQuantity(form.grams) ?? 0)
 
+let unmounted = false
+
 onMounted(async () => {
   await loadOverview()
+  if (unmounted) return
   await refreshQuoteOnEnter()
+})
+
+onBeforeUnmount(() => {
+  unmounted = true
 })
 
 async function refreshQuoteOnEnter(): Promise<void> {
@@ -209,7 +219,11 @@ async function refreshQuoteOnEnter(): Promise<void> {
     } catch {
       // 失败原因由服务端记录在持仓状态中，下面重新读取以显示失败提示。
     }
+    if (unmounted) return
     await loadOverview()
+    if (sheet.value !== null && !isSaving.value && overview.value) {
+      expectedVersion.value = overview.value.version
+    }
   } finally {
     isRefreshing.value = false
   }
@@ -283,9 +297,7 @@ function openSheet(kind: SheetKind): void {
   if (kind === 'holding' && overview.value?.isConfigured) {
     form.grams = String(overview.value.grams)
     // 成本按元/克编辑；用总额除以克数还原单价，避免四舍五入后再乘回去产生总额漂移。
-    form.costPrice = overview.value.grams > 0
-      ? String(Number((overview.value.cost / overview.value.grams).toFixed(4)))
-      : ''
+    form.costPrice = divideUnitPrice(overview.value.cost, overview.value.grams)
   }
 }
 
@@ -478,131 +490,14 @@ async function markNotHeld(): Promise<void> {
 }
 
 function formatPercent(value: number | null): string {
-  if (value === null) {
-    return '—'
-  }
-
-  const sign = value > 0 ? '+' : value < 0 ? '−' : ''
-
-  return `${sign}${Math.abs(value).toFixed(2)}%`
+  return formatPercentValue(value, '—')
 }
 
 function profitText(value: number | null): string {
   return value === null ? '行情待补' : formatSignedMoney(value)
 }
 
-function activityLabel(activity: GoldActivity): string {
-  switch (activity.type) {
-    case 'buy':
-      return '买入'
-    case 'sell':
-      return '卖出'
-    case 'sellPending':
-      return '待到账'
-    case 'sellArrival':
-      return '到账'
-    case 'correction':
-      return '核对'
-    default:
-      return '行情'
-  }
-}
-
-function activityStatus(activity: GoldActivity): string {
-  switch (activity.type) {
-    case 'sellPending':
-      return '待到账'
-    case 'sellArrival':
-      return '已到账'
-    case 'correction':
-      return '已核对'
-    case 'quote':
-      return '仅更新估值'
-    default:
-      return '已成交'
-  }
-}
-
-function activityTime(activity: GoldActivity): string {
-  return [formatBusinessDate(activity.businessDate), formatBusinessTime(activity.createdAt)]
-    .filter(Boolean)
-    .join(' ')
-}
-
-function activityCostPerGram(activity: GoldActivity): number | null {
-  if (activity.grams === null || activity.grams <= 0) {
-    return null
-  }
-
-  return new Decimal(activity.amount)
-    .div(activity.grams)
-    .toDecimalPlaces(3, Decimal.ROUND_HALF_UP)
-    .toNumber()
-}
-
-function activityMeta(activity: GoldActivity): string {
-  if (activity.type === 'sellArrival') {
-    return `到账 ${formatMoney(activity.amount)}`
-  }
-
-  if (activity.type === 'buy' || activity.type === 'sell') {
-    const price = activity.quote === null
-      ? ''
-      : `${activity.type === 'buy' ? '成本' : '成交价'} ${formatUnitPrice(activity.quote)}/克`
-    return [`${formatQuantity(activity.grams)} 克`, price].filter(Boolean).join(' · ')
-  }
-
-  if (activity.type === 'sellPending') {
-    return `${formatQuantity(activity.grams)} 克 · 待到账 ${formatMoney(activity.amount)}`
-  }
-
-  if (activity.type === 'quote') {
-    return `报价 ${formatUnitPrice(activity.quote)}/克`
-  }
-
-  const cost = activityCostPerGram(activity)
-  return [
-    `${formatQuantity(activity.grams)} 克`,
-    cost === null ? `成本 ${formatMoney(activity.amount)}` : `成本 ${formatUnitPrice(cost)}/克`
-  ].filter(Boolean).join(' · ')
-}
-
-function activityAmount(activity: GoldActivity): string {
-  if (activity.type === 'buy' || activity.type === 'sell' || activity.type === 'sellArrival') {
-    return `${formatSignedMoney(activity.cashEffect)}元`
-  }
-
-  if (activity.type === 'quote') {
-    return `${formatUnitPrice(activity.quote)}元/克`
-  }
-
-  return `${formatMoney(activity.amount)}元`
-}
-
-function activityAmountTone(activity: GoldActivity): string {
-  if (activity.cashEffect > 0) {
-    return 'income'
-  }
-
-  return activity.cashEffect < 0 ? 'transfer' : ''
-}
-
-function toActivityRow(activity: GoldActivity): InvestmentActivityRow {
-  return {
-    key: activity.id,
-    label: activityLabel(activity),
-    labelTone: activity.type === 'buy' ? 'buy' : 'neutral',
-    title: '积存金',
-    meta: activityMeta(activity),
-    time: activityTime(activity),
-    amount: activityAmount(activity),
-    amountTone: activityAmountTone(activity),
-    status: activityStatus(activity),
-    statusTone: activity.type === 'sellPending' ? 'pending' : 'done'
-  }
-}
-
-const activityRows = computed(() => (overview.value?.activities ?? []).map(toActivityRow))
+const activityRows = computed(() => (overview.value?.activities ?? []).map(toGoldActivityRow))
 
 function goBack(): void {
   navigateBack(router)

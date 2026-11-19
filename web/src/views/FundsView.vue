@@ -15,12 +15,12 @@ import {
   deleteFundGroup,
   fetchFundOverview,
   renameFundGroup,
-  searchFunds,
   sellFund
 } from '../api/funds'
 import { fetchPlanOverview } from '../api/plans'
 import { fetchQuoteStatus, type QuoteStatus } from '../api/quotes'
 import { ApiError, getApiErrorMessage } from '../api/client'
+import { useFundSearch } from '../composables/useFundSearch'
 import { toast } from '../composables/useMessage'
 import AppNav from '../components/AppNav.vue'
 import AppIcon from '../components/AppIcon.vue'
@@ -33,11 +33,14 @@ import BottomSheet from '../components/BottomSheet.vue'
 import { useUnsavedSheet } from '../composables/useUnsavedSheet'
 import ConfirmSheet from '../components/ConfirmSheet.vue'
 import FundReturnsPanel from '../components/FundReturnsPanel.vue'
+import InvestmentActivityList, { type InvestmentActivityRow } from '../components/InvestmentActivityList.vue'
 import UpdateRing from '../components/UpdateRing.vue'
+import FundDisplaySettingsSheet, { type FundMetricKey } from '../components/funds/FundDisplaySettingsSheet.vue'
+import FundGroupManagerSheet from '../components/funds/FundGroupManagerSheet.vue'
 import {
   amountTone,
+  calculatePercent,
   formatBusinessDate,
-  formatBusinessTime,
   addAmounts,
   formatMoney,
   formatQuantity,
@@ -50,15 +53,23 @@ import {
   sumAmounts,
   todayInBusinessTimeZone
 } from '../utils/format'
+import {
+  activityTypeOptions,
+  buildFundActivityRows,
+  monthDayText,
+  type ActivityFilter,
+  type ActivityRow,
+  type ActivityStatusFilter
+} from '../utils/fundActivities'
+import { buildFallbackFunds, findDuplicateFundPosition } from '../utils/fundAggregation'
 import { createRequestId } from '../utils/request'
 import { latestFundDailyProfit } from '../utils/fundDailyProfit'
 import { fundPlanDisplayName } from '../utils/plan'
+import { planCycleLabel } from '../utils/planFormatting'
 import type {
-  FundActivity,
   FundOverview,
   FundPosition,
   FundSearchResult,
-  FundShareClass,
   FundSummary,
   PendingFundArrival,
   PendingFundBuy,
@@ -69,7 +80,6 @@ import type { AutoPlan } from '../types/plan'
 type SheetKind = 'opening' | 'buy' | 'buyConfirm' | 'shares' | 'sell' | 'sellConfirm' | 'sellArrival'
 type PortfolioView = 'positions' | 'returns' | 'activities' | 'plans'
 type GroupScope = 'all' | 'ungrouped' | string
-type FundMetricKey = 'daily' | 'value' | 'cumulative' | 'cumulativeRate' | 'cost' | 'weight' | 'pending'
 
 const metricStorageKey = 'lifeup.fund.metrics.v3'
 const defaultMetrics: FundMetricKey[] = ['daily', 'cumulative', 'cumulativeRate']
@@ -99,6 +109,7 @@ const isLoading = ref(false)
 const errorMessage = ref('')
 const quoteStatus = ref<QuoteStatus | null>(null)
 let quoteStatusTimer: ReturnType<typeof setInterval> | null = null
+let unmounted = false
 const sheet = ref<SheetKind | null>(null)
 const requestId = ref(createRequestId())
 const isSaving = ref(false)
@@ -120,6 +131,7 @@ const groupDraft = ref('')
 const groupError = ref('')
 const groupBusy = ref(false)
 const cancellingPendingId = ref<string | null>(null)
+let pendingCancelRequest: { transactionId: string; requestId: string } | null = null
 const groupBusyKey = ref('')
 const groupDetailId = ref<string | null>(null)
 const editingGroupId = ref<string | null>(null)
@@ -128,12 +140,19 @@ const plans = ref<AutoPlan[]>([])
 const plansLoaded = ref(false)
 const plansLoading = ref(false)
 const plansError = ref('')
-const fundSearch = ref('')
-const fundSearchResults = ref<FundSearchResult[]>([])
-const fundSearching = ref(false)
-const fundSearchError = ref('')
 const selectedFund = ref<FundSearchResult | null>(null)
-let fundSearchTimer: ReturnType<typeof setTimeout> | null = null
+const {
+  fundSearch,
+  fundSearchResults,
+  fundSearching,
+  fundSearchError,
+  cancelFundSearch,
+  resetFundSearch
+} = useFundSearch({
+  onNonEmptyInput: () => {
+    selectedFund.value = null
+  }
+})
 const form = reactive({
   positionId: '',
   name: '',
@@ -216,20 +235,6 @@ const groupChips = computed(() => {
 const managedGroup = computed(() =>
   groups.value.find((group) => group.id === groupDetailId.value) ?? null)
 
-const managedGroupFunds = computed(() => {
-  const groupId = managedGroup.value?.id
-
-  return groupId ? allFunds.value.filter((fund) => fund.groupId === groupId) : []
-})
-
-const managedGroupValue = computed(() =>
-  sumAmounts(managedGroupFunds.value.map((fund) => fund.assetValue)))
-
-const groupAssetFunds = computed(() =>
-  [...allFunds.value].sort((left, right) =>
-    new Decimal(right.assetValue).comparedTo(left.assetValue)
-      || left.name.localeCompare(right.name, 'zh-Hans-CN')))
-
 const scopedFunds = computed(() => {
   const search = searchText.value.trim().toLowerCase()
 
@@ -299,277 +304,17 @@ const scopedActivities = computed(() => {
   return trades.filter((item) => scopedPositionIds.value.has(item.positionId))
 })
 
-type ActivityKind = 'buy' | 'sip' | 'sell' | 'redeem' | 'arrival' | 'opening' | 'correction' | 'other'
-type ActivityFilter = 'all' | ActivityKind
-type ActivityStatusFilter = 'all' | 'pending' | 'done'
-type ActivityPendingAction = 'buy' | 'sell' | 'arrival'
-
-interface ActivityRow {
-  key: string
-  kind: ActivityKind
-  label: string
-  fundName: string
-  timestamp: string
-  amountText: string
-  statusText: string
-  statusTone: 'pending' | 'done' | 'reversed'
-  isPending: boolean
-  pendingAction: ActivityPendingAction | null
-  pending: PendingFundBuy | PendingFundSell | PendingFundArrival | null
-}
-
 const activityTypeFilter = ref<ActivityFilter>('all')
 const activityStatusFilter = ref<ActivityStatusFilter>('all')
 
-const activityTypeOptions: { value: ActivityFilter; label: string }[] = [
-  { value: 'all', label: '交易类型' },
-  { value: 'sip', label: '定投' },
-  { value: 'buy', label: '买入' },
-  { value: 'sell', label: '卖出' },
-  { value: 'redeem', label: '赎回' },
-  { value: 'arrival', label: '到账' },
-  { value: 'opening', label: '录入' },
-  { value: 'correction', label: '核对' }
-]
-
-function isSipNote(note: string | null | undefined): boolean {
-  return (note ?? '').includes('定投')
-}
-
-function activityKindOf(type: FundActivity['type'], isSip: boolean): ActivityKind {
-  switch (type) {
-    case 'buy':
-    case 'buyPending':
-    case 'buyConfirmed':
-      return isSip ? 'sip' : 'buy'
-    case 'sell':
-      return 'sell'
-    case 'sellApply':
-    case 'sellConfirm':
-      return 'redeem'
-    case 'sellArrival':
-      return 'arrival'
-    case 'opening':
-      return 'opening'
-    case 'correction':
-      return 'correction'
-    default:
-      return 'other'
-  }
-}
-
-function monthDayText(value: string): string {
-  const parts = value.split('-')
-
-  if (parts.length !== 3) {
-    return value
-  }
-
-  return `${Number(parts[1])}月${Number(parts[2])}日`
-}
-
-function activityLabelOf(kind: ActivityKind): string {
-  switch (kind) {
-    case 'sip':
-      return '定投'
-    case 'buy':
-      return '买入'
-    case 'sell':
-      return '卖出'
-    case 'redeem':
-      return '赎回'
-    case 'arrival':
-      return '到账'
-    case 'opening':
-      return '录入'
-    case 'correction':
-      return '核对'
-    default:
-      return '其他'
-  }
-}
-
-function moneyText(value: number | null | undefined): string {
-  return value === null || value === undefined ? '—' : `${formatMoney(value)}元`
-}
-
-function activityAmountTextOf(
-  activity: FundActivity,
-  pendingBuy: PendingFundBuy | undefined
-): string {
-  if (activity.type === 'sellApply') {
-    return activity.shares === null ? '—' : `${formatQuantity(activity.shares)}份`
-  }
-
-  if (activity.type === 'buyPending') {
-    return moneyText(pendingBuy?.amount ?? activity.amount)
-  }
-
-  return moneyText(activity.amount)
-}
-
-function activityStatusOf(type: FundActivity['type']): string {
-  switch (type) {
-    case 'buyPending':
-      return '交易进行中'
-    case 'buyConfirmed':
-      return '已确认'
-    case 'sellApply':
-      return '赎回申请中'
-    case 'sellConfirm':
-      return '待到账'
-    case 'sellArrival':
-      return '已到账'
-    case 'sell':
-      return '已完成'
-    case 'opening':
-      return '已录入'
-    case 'correction':
-      return '已核对'
-    default:
-      return ''
-  }
-}
-
-const activityRows = computed<ActivityRow[]>(() => {
-  const pendingBuyById = new Map(scopedPendingBuys.value.map((item) => [item.transactionId, item]))
-  const sellApplyById = new Map(scopedSellApplications.value.map((item) => [item.transactionId, item]))
-  const arrivalByConfirmId = new Map(scopedPendingArrivals.value.map((item) => [item.transactionId, item]))
-  const noteById = new Map(scopedActivities.value.map((item) => [item.id, item.note]))
-  // 已走完后续环节的下单/申请记录不再重复列出：买入看确认，赎回申请看确认，确认看待到账。
-  const settledIds = new Set<string>()
-
-  for (const activity of scopedActivities.value) {
-    if (activity.type === 'buyConfirmed' && activity.linkedTransactionId) {
-      settledIds.add(activity.linkedTransactionId)
-    }
-
-    if (activity.type === 'sellConfirm' && activity.linkedTransactionId) {
-      settledIds.add(activity.linkedTransactionId)
-    }
-
-    if (activity.type === 'sellArrival' && activity.linkedTransactionId) {
-      settledIds.add(activity.linkedTransactionId)
-    }
-  }
-
-  const rows: ActivityRow[] = []
-  const seen = new Set<string>()
-
-  for (const activity of scopedActivities.value) {
-    if (settledIds.has(activity.id)) {
-      continue
-    }
-
-    seen.add(activity.id)
-    const pendingBuy = pendingBuyById.get(activity.id)
-    const sellApply = sellApplyById.get(activity.id)
-    const arrival = arrivalByConfirmId.get(activity.id)
-    const linkedNote = activity.linkedTransactionId ? noteById.get(activity.linkedTransactionId) : null
-    const kind = activityKindOf(activity.type, isSipNote(activity.note) || isSipNote(linkedNote))
-    const isPending = activity.type === 'buyPending'
-      || activity.type === 'sellApply'
-      || activity.type === 'sellConfirm'
-    const pending = pendingBuy ?? sellApply ?? arrival ?? null
-    const pendingAction: ActivityPendingAction | null = activity.isReversed
-      ? null
-      : activity.type === 'buyPending' && pendingBuy
-        ? 'buy'
-        : activity.type === 'sellApply' && sellApply
-          ? 'sell'
-          : activity.type === 'sellConfirm' && arrival
-            ? 'arrival'
-            : null
-
-    rows.push({
-      key: activity.id,
-      kind,
-      label: activityLabelOf(kind),
-      fundName: activity.positionName,
-      timestamp: [activity.businessDate, formatBusinessTime(activity.createdAt)].filter(Boolean).join(' '),
-      amountText: activityAmountTextOf(activity, pendingBuy),
-      statusText: activity.isReversed
-        ? '已撤销'
-        : pendingBuy
-          ? `待确认 · ${monthDayText(pendingBuy.confirmationDate)}自动确认`
-          : activityStatusOf(activity.type),
-      statusTone: activity.isReversed ? 'reversed' : isPending ? 'pending' : 'done',
-      isPending: isPending && !activity.isReversed,
-      pendingAction,
-      pending
-    })
-  }
-
-  for (const pending of scopedPendingBuys.value) {
-    if (seen.has(pending.transactionId)) {
-      continue
-    }
-
-    const kind = isSipNote(pending.note) ? 'sip' : 'buy'
-    rows.push({
-      key: pending.transactionId,
-      kind,
-      label: activityLabelOf(kind),
-      fundName: pending.positionName,
-      timestamp: pending.businessDate,
-      amountText: moneyText(pending.amount),
-      statusText: `待确认 · ${monthDayText(pending.confirmationDate)}自动确认`,
-      statusTone: 'pending',
-      isPending: true,
-      pendingAction: 'buy',
-      pending
-    })
-  }
-
-  for (const application of scopedSellApplications.value) {
-    if (seen.has(application.transactionId)) {
-      continue
-    }
-
-    rows.push({
-      key: application.transactionId,
-      kind: 'redeem',
-      label: activityLabelOf('redeem'),
-      fundName: application.positionName,
-      timestamp: application.businessDate,
-      amountText: `${formatQuantity(application.shares)}份`,
-      statusText: '赎回申请中',
-      statusTone: 'pending',
-      isPending: true,
-      pendingAction: 'sell',
-      pending: application
-    })
-  }
-
-  for (const arrival of scopedPendingArrivals.value) {
-    if (seen.has(arrival.transactionId)) {
-      continue
-    }
-
-    rows.push({
-      key: arrival.transactionId,
-      kind: 'arrival',
-      label: activityLabelOf('arrival'),
-      fundName: arrival.positionName,
-      timestamp: arrival.businessDate,
-      amountText: moneyText(arrival.amount),
-      statusText: '待到账',
-      statusTone: 'pending',
-      isPending: true,
-      pendingAction: 'arrival',
-      pending: arrival
-    })
-  }
-
-  // 未确认的交易置顶（还要盯），其余按时间倒序。
-  return rows.sort((left, right) => {
-    if (left.isPending !== right.isPending) {
-      return left.isPending ? -1 : 1
-    }
-
-    return right.timestamp.localeCompare(left.timestamp)
-  })
-})
+const activityRows = computed<ActivityRow[]>(() =>
+  buildFundActivityRows(
+    scopedActivities.value,
+    scopedPendingBuys.value,
+    scopedSellApplications.value,
+    scopedPendingArrivals.value
+  )
+)
 
 const filteredActivityRows = computed(() => activityRows.value.filter((row) => {
   if (activityStatusFilter.value === 'pending' && !row.isPending) {
@@ -583,7 +328,8 @@ const filteredActivityRows = computed(() => activityRows.value.filter((row) => {
   return activityTypeFilter.value === 'all' || row.kind === activityTypeFilter.value
 }))
 
-function openActivityRow(row: ActivityRow): void {
+function openActivityRow(item: InvestmentActivityRow): void {
+  const row = item as ActivityRow
   if (!row.pending) {
     return
   }
@@ -613,7 +359,7 @@ const scope = computed(() => {
     pendingBuyAmount,
     pendingArrivalAmount,
     assetValue: addAmounts(confirmedValue, pendingBuyAmount, pendingArrivalAmount),
-    rate: cost > 0 ? holdingProfit / cost * 100 : null,
+    rate: calculatePercent(holdingProfit, cost),
     hasEffectiveQuotes: scopedFunds.value.every((fund) => fund.hasEffectiveQuotes),
     historyConfirmed: scopedFunds.value.every((fund) => fund.historyConfirmed)
   }
@@ -778,6 +524,10 @@ watch(
 
 onMounted(async () => {
   await loadOverview()
+  if (unmounted) {
+    return
+  }
+
   void loadQuoteStatus()
   startQuoteStatusPolling()
 
@@ -805,7 +555,7 @@ async function loadOverview(): Promise<void> {
     overview.value = await fetchFundOverview()
     ensureActiveGroup()
 
-    if (!form.positionId && overview.value.positions.length > 0) {
+    if (!form.positionId && sheet.value !== 'opening' && overview.value.positions.length > 0) {
       form.positionId = overview.value.positions[0]!.id
     }
   } catch (error) {
@@ -837,7 +587,7 @@ async function loadQuoteStatus(): Promise<void> {
 }
 
 function startQuoteStatusPolling(): void {
-  if (quoteStatusTimer !== null) {
+  if (unmounted || quoteStatusTimer !== null) {
     return
   }
 
@@ -957,7 +707,7 @@ function metricDisplay(fund: FundSummary): { key: FundMetricKey; label: string; 
         }
       case 'cumulativeRate': {
         const cumulative = cumulativeProfit(fund)
-        const rate = fund.cost > 0 ? cumulative / fund.cost * 100 : null
+        const rate = calculatePercent(cumulative, fund.cost)
 
         return {
           key,
@@ -972,22 +722,24 @@ function metricDisplay(fund: FundSummary): { key: FundMetricKey; label: string; 
       }
       case 'cost':
         return { key, label: '成本', value: `¥${formatMoney(fund.cost)}`, tone: '' }
-      case 'weight':
+      case 'weight': {
+        const weight = calculatePercent(fund.assetValue, total)
         return {
           key,
           label: '占比',
-          value: total > 0 ? `${formatMoney(fund.assetValue / total * 100)}%` : '—',
+          value: weight !== null ? `${formatMoney(weight)}%` : '—',
           tone: ''
         }
-      case 'pending':
+      }
+      case 'pending': {
+        const pending = addAmounts(fund.pendingBuyAmount, fund.pendingArrivalAmount)
         return {
           key,
           label: '在途',
-          value: addAmounts(fund.pendingBuyAmount, fund.pendingArrivalAmount) > 0
-            ? `¥${formatMoney(addAmounts(fund.pendingBuyAmount, fund.pendingArrivalAmount))}`
-            : '—',
+          value: pending > 0 ? `¥${formatMoney(pending)}` : '—',
           tone: ''
         }
+      }
       default:
         return { key, label: '持仓价值', value: `¥${formatMoney(fund.value)}`, tone: '' }
     }
@@ -995,140 +747,14 @@ function metricDisplay(fund: FundSummary): { key: FundMetricKey; label: string; 
 }
 
 function weightOf(fund: FundSummary): string {
-  const total = scope.value.assetValue
-  return total > 0 ? `${formatMoney(fund.assetValue / total * 100)}%` : '—'
+  const weight = calculatePercent(fund.assetValue, scope.value.assetValue)
+  return weight !== null ? `${formatMoney(weight)}%` : '—'
 }
 
 // 待确认买入在确认净值日就定了份额，只是还没确认，所以卡片资产要把它算进去，
 // 否则各只基金加起来和顶部总额对不上。
 function pendingOf(fund: FundSummary): number {
   return addAmounts(fund.pendingBuyAmount, fund.pendingArrivalAmount)
-}
-
-function buildFallbackFunds(
-  positions: FundPosition[],
-  pendingBuys: PendingFundBuy[],
-  pendingArrivals: PendingFundArrival[]
-): FundSummary[] {
-  const byName = new Map<string, FundPosition[]>()
-
-  for (const position of positions) {
-    const members = byName.get(position.name) ?? []
-    members.push(position)
-    byName.set(position.name, members)
-  }
-
-  return Array.from(byName, ([name, members]) => {
-    const classes: FundShareClass[] = []
-    const byClass = new Map<string, FundPosition[]>()
-
-    for (const member of members) {
-      const key = `${member.code?.trim() || member.name.normalize('NFKC').replace(/\s/g, '')}|${member.shareClass?.trim().toUpperCase() ?? ''}`
-      const classMembers = byClass.get(key) ?? []
-      classMembers.push(member)
-      byClass.set(key, classMembers)
-    }
-
-    for (const [key, classMembers] of byClass) {
-      const netValues = [...new Set(classMembers.map((member) => member.netValue))]
-      const netValueDates = [...new Set(classMembers.map((member) => member.netValueDate))]
-      const classValue = sumAmounts(classMembers.map(member => member.value))
-      const classDailyDate = classMembers
-        .map((member) => member.dailyProfitDate)
-        .filter((date): date is string => Boolean(date))
-        .sort()
-        .at(-1) ?? null
-      const classDailyMembers = classDailyDate === null
-        ? []
-        : classMembers.filter((member) => member.hasDailyProfit && member.dailyProfitDate === classDailyDate)
-      const hasDailyProfit = classMembers.length > 0 && classDailyMembers.length === classMembers.length
-      const dailyProfit = sumAmounts(classDailyMembers.map((member) => member.dailyProfit))
-
-      classes.push({
-        key,
-        code: classMembers[0]?.code ?? null,
-        shareClass: classMembers[0]?.shareClass || null,
-        shares: sumAmounts(classMembers.map(member => member.shares)),
-        cost: sumAmounts(classMembers.map(member => member.cost)),
-        value: classValue,
-        holdingProfit: sumAmounts(classMembers.map(member => member.holdingProfit)),
-        realizedProfit: sumAmounts(classMembers.map(member => member.realizedProfit)),
-        netValue: netValues.length === 1 ? netValues[0]! : null,
-        netValueDate: netValueDates.length === 1 ? netValueDates[0]! : null,
-        dailyProfit,
-        dailyProfitRate: hasDailyProfit && classValue - dailyProfit > 0
-          ? dailyProfit / (classValue - dailyProfit) * 100
-          : null,
-        hasDailyProfit,
-        dailyProfitDate: classDailyDate,
-        platforms: classMembers.map((member) => ({
-          positionId: member.id,
-          platform: member.platform,
-          name: member.name,
-          code: member.code,
-          shareClass: member.shareClass,
-          shares: member.shares,
-          cost: member.cost,
-          netValue: member.netValue,
-          netValueDate: member.netValueDate,
-          value: member.value,
-          holdingProfit: member.holdingProfit,
-          realizedProfit: member.realizedProfit,
-          hasEffectiveQuote: member.hasEffectiveQuote,
-          confirmationDelayDays: member.confirmationDelayDays,
-          dailyProfit: member.dailyProfit ?? 0,
-          dailyProfitRate: member.dailyProfitRate ?? null,
-          hasDailyProfit: member.hasDailyProfit,
-          dailyProfitDate: member.dailyProfitDate
-        }))
-      })
-    }
-
-    const memberIds = new Set(members.map((member) => member.id))
-    const pendingBuyAmount = sumAmounts(pendingBuys
-      .filter((item) => memberIds.has(item.positionId))
-      .map(item => item.amount))
-    const pendingArrivalAmount = sumAmounts(pendingArrivals
-      .filter((item) => memberIds.has(item.positionId))
-      .map(item => item.amount))
-    const value = sumAmounts(members.map(member => member.value))
-    const dailyProfitDate = members
-      .map((member) => member.dailyProfitDate)
-      .filter((date): date is string => Boolean(date))
-      .sort()
-      .at(-1) ?? null
-    const dailyMembers = dailyProfitDate === null
-      ? []
-      : members.filter((member) => member.hasDailyProfit && member.dailyProfitDate === dailyProfitDate)
-    const hasDailyProfit = members.length > 0 && dailyMembers.length === members.length
-    const dailyProfit = sumAmounts(dailyMembers.map((member) => member.dailyProfit))
-    const groupId = members.find((member) => member.groupId)?.groupId ?? null
-
-    return {
-      key: name,
-      name,
-      groupId,
-      groupName: members.find((member) => member.groupName)?.groupName ?? null,
-      value,
-      cost: sumAmounts(members.map(member => member.cost)),
-      holdingProfit: sumAmounts(members.map(member => member.holdingProfit)),
-      realizedProfit: sumAmounts(members.map(member => member.realizedProfit)),
-      pendingBuyAmount,
-      pendingArrivalAmount,
-      assetValue: sumAmounts([value, pendingBuyAmount, pendingArrivalAmount]),
-      platformCount: new Set(members.map((member) => member.platform).filter(Boolean)).size,
-      latestNetValueDate: members.map((member) => member.netValueDate).sort().at(-1) ?? null,
-      historyConfirmed: members.every((member) => member.historyConfirmed),
-      hasEffectiveQuotes: members.every((member) => member.hasEffectiveQuote),
-      classes,
-      dailyProfit,
-      dailyProfitRate: hasDailyProfit && value - dailyProfit > 0
-        ? dailyProfit / (value - dailyProfit) * 100
-        : null,
-      hasDailyProfit,
-      dailyProfitDate
-    } satisfies FundSummary
-  }).sort((left, right) => left.name.localeCompare(right.name, 'zh-Hans-CN'))
 }
 
 function toggleFund(key: string): void {
@@ -1326,19 +952,6 @@ async function toggleGroupFund(fund: FundSummary): Promise<void> {
   }
 }
 
-function planCycleLabel(plan: AutoPlan): string {
-  if (plan.cycle === 'tradingDay') {
-    return plan.tradingScope === 'china' ? '中国交易日' : '三地交易日'
-  }
-
-  if (plan.cycle === 'weekly') {
-    const weekdays = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日']
-    return `每周${weekdays[plan.dayOfWeek ?? 0] ?? ''}`
-  }
-
-  return `每月 ${plan.dayOfMonth ?? 1} 日`
-}
-
 function openSheet(kind: SheetKind, positionId?: string): void {
   sheet.value = kind
   confirmingSellId.value = null
@@ -1427,6 +1040,7 @@ function openArrivalSheet(arrival: PendingFundArrival): void {
 
 function closeSheet(): void {
   if (!isSaving.value) {
+    cancelFundSearch()
     sheet.value = null
   }
 }
@@ -1517,34 +1131,13 @@ async function submitOpening(forceAdd = false): Promise<void> {
   await loadOverview()
 }
 
-function normalizePositionKey(value: string | null | undefined): string {
-  return (value ?? '').normalize('NFKC').replace(/\s/g, '').toUpperCase()
-}
-
-function normalizePlatformKey(value: string | null | undefined): string {
-  const key = normalizePositionKey(value)
-  return key === '直销' ? '券商直销' : key
-}
-
 function findDuplicatePosition(): FundPosition | null {
-  const code = normalizePositionKey(form.code)
-  const shareClass = normalizePositionKey(form.shareClass)
-  const platform = normalizePlatformKey(form.platform)
-
-  if (!code) {
-    return null
-  }
-
-  return overview.value?.positions.find((position) => {
-    if (normalizePositionKey(position.code) !== code
-      || normalizePositionKey(position.shareClass) !== shareClass) {
-      return false
-    }
-
-    const existingPlatform = normalizePlatformKey(position.platform)
-
-    return existingPlatform === platform || existingPlatform === '' || platform === ''
-  }) ?? null
+  return findDuplicateFundPosition(
+    overview.value?.positions,
+    form.code,
+    form.shareClass,
+    form.platform
+  )
 }
 
 async function updateDuplicatePosition(): Promise<void> {
@@ -1563,7 +1156,7 @@ async function updateDuplicatePosition(): Promise<void> {
       shares: prompt.shares,
       cost: prompt.cost,
       note: form.note.trim() || '按新录入核对已有持仓',
-      requestId: createRequestId()
+      requestId: requestId.value
     })
     toast.success(`已更新「${prompt.position.name}」持仓为 ${formatQuantity(prompt.shares)} 份、成本 ¥${formatMoney(prompt.cost)}。`)
     duplicatePrompt.value = null
@@ -1577,8 +1170,20 @@ async function updateDuplicatePosition(): Promise<void> {
 }
 
 async function addDuplicatePosition(): Promise<void> {
+  if (isSaving.value) {
+    return
+  }
+
   duplicatePrompt.value = null
-  await submitOpening(true)
+  formError.value = ''
+
+  try {
+    await submitOpening(true)
+  } catch (error) {
+    formError.value = getApiErrorMessage(error, '保存失败，请重试。')
+  } finally {
+    isSaving.value = false
+  }
 }
 
 async function submitBuy(): Promise<void> {
@@ -1769,62 +1374,10 @@ function positionLabel(position: FundPosition): string {
   return position.shareClass ? `${position.name} ${position.shareClass}` : position.name
 }
 
-
-watch(fundSearch, (value) => {
-  fundSearchError.value = ''
-
-  if (fundSearchTimer) {
-    clearTimeout(fundSearchTimer)
-    fundSearchTimer = null
-  }
-
-  if (selectedFund.value) {
-    if (!value.trim()) {
-      return
-    }
-
-    selectedFund.value = null
-  }
-
-  const query = value.trim()
-
-  if (!query) {
-    fundSearchResults.value = []
-    return
-  }
-
-  fundSearchTimer = setTimeout(() => {
-    void runFundSearch(query)
-  }, 300)
-})
-
 onBeforeUnmount(() => {
-  if (fundSearchTimer) {
-    clearTimeout(fundSearchTimer)
-  }
-
+  unmounted = true
   stopQuoteStatusPolling()
 })
-
-async function runFundSearch(query: string): Promise<void> {
-  fundSearching.value = true
-
-  try {
-    const results = await searchFunds(query)
-
-    if (fundSearch.value.trim() === query) {
-      fundSearchResults.value = results
-      fundSearchError.value = results.length ? '' : '没有找到匹配的基金，请换一个名称或代码。'
-    }
-  } catch (error) {
-    if (fundSearch.value.trim() === query) {
-      fundSearchResults.value = []
-      fundSearchError.value = getApiErrorMessage(error, '基金搜索暂时不可用，请稍后重试。')
-    }
-  } finally {
-    fundSearching.value = false
-  }
-}
 
 function chooseFund(result: FundSearchResult): void {
   selectedFund.value = result
@@ -1832,9 +1385,7 @@ function chooseFund(result: FundSearchResult): void {
   form.code = result.code
   form.shareClass = result.shareClass ?? ''
   form.confirmationDelayDays = String(result.confirmationDelayDays)
-  fundSearchResults.value = []
-  fundSearchError.value = ''
-  fundSearch.value = ''
+  resetFundSearch()
 }
 
 function clearSelectedFund(): void {
@@ -1843,9 +1394,7 @@ function clearSelectedFund(): void {
   form.code = ''
   form.shareClass = ''
   form.confirmationDelayDays = '1'
-  fundSearch.value = ''
-  fundSearchResults.value = []
-  fundSearchError.value = ''
+  resetFundSearch()
 }
 
 async function cancelPending(transactionId: string): Promise<void> {
@@ -1854,9 +1403,13 @@ async function cancelPending(transactionId: string): Promise<void> {
   }
 
   cancellingPendingId.value = transactionId
+  if (pendingCancelRequest?.transactionId !== transactionId) {
+    pendingCancelRequest = { transactionId, requestId: createRequestId() }
+  }
 
   try {
-    await cancelFundPending(transactionId, createRequestId())
+    await cancelFundPending(transactionId, pendingCancelRequest.requestId)
+    pendingCancelRequest = null
     toast.success('待处理基金交易已撤销。')
     sheet.value = null
     await loadOverview()
@@ -2159,29 +1712,12 @@ function goBack(): void {
           </select>
         </div>
 
-        <section v-if="filteredActivityRows.length" class="activity-list">
-          <div
-            v-for="(row, index) in filteredActivityRows"
-            :key="row.key"
-            class="activity-row stagger-item"
-            :class="{ 'is-pending': row.isPending, 'is-clickable': row.pendingAction }"
-            :style="{ '--stagger': Math.min(index, 8) }"
-            :role="row.pendingAction ? 'button' : undefined"
-            :tabindex="row.pendingAction ? 0 : undefined"
-            @click="openActivityRow(row)"
-            @keydown.enter="openActivityRow(row)"
-          >
-            <span class="activity-type" :class="`type-${row.kind}`">{{ row.label }}</span>
-            <span class="activity-main">
-              <strong>基金 | {{ row.fundName }}</strong>
-              <small>{{ row.timestamp }}</small>
-            </span>
-            <span class="activity-side">
-              <b>{{ row.amountText }}</b>
-              <small :class="`status-${row.statusTone}`">{{ row.statusText }}</small>
-            </span>
-          </div>
-        </section>
+        <InvestmentActivityList
+          v-if="filteredActivityRows.length"
+          :rows="filteredActivityRows"
+          stagger
+          @select="openActivityRow"
+        />
 
         <EmptyState
           v-else
@@ -2221,145 +1757,37 @@ function goBack(): void {
 
     </template>
 
-    <BottomSheet
+    <FundDisplaySettingsSheet
+      v-model:search-text="searchText"
       :open="settingsOpen"
-      title="搜索与指标"
-      subtitle="只影响当前查看，不改变持仓"
+      :metric-keys="metricKeys"
+      :metric-options="metricOptions"
+      :metric-notice="metricNotice"
       @close="settingsOpen = false"
-    >
-      <div class="portfolio-toolbar">
-        <input v-model="searchText" type="search" placeholder="搜索基金名称或代码" aria-label="搜索基金" />
-      </div>
+      @toggle-metric="toggleMetric"
+    />
 
-      <div class="metric-picker" aria-label="持仓指标">
-        <span>显示指标</span>
-        <button
-          v-for="option in metricOptions"
-          :key="option.key"
-          type="button"
-          :class="{ active: metricKeys.includes(option.key) }"
-          @click="toggleMetric(option.key)"
-        >
-          {{ option.label }}
-        </button>
-      </div>
-      <p v-if="metricNotice" class="summary-note">{{ metricNotice }}</p>
-    </BottomSheet>
-
-    <BottomSheet
+    <FundGroupManagerSheet
+      v-model:group-draft="groupDraft"
+      v-model:editing-group-name="editingGroupName"
       :open="groupSheetOpen"
-      title="管理分组"
-      :subtitle="managedGroup ? '勾选资产加入分组，取消勾选即移出' : '新增、改名或删除分组'"
-      :close-disabled="groupBusy"
+      :groups="groups"
+      :all-funds="allFunds"
+      :detail-id="groupDetailId"
+      :editing-group-id="editingGroupId"
+      :busy="groupBusy"
+      :busy-key="groupBusyKey"
+      :error="groupError"
       @close="closeGroupSheet"
-    >
-      <div v-if="managedGroup" class="group-detail">
-        <button type="button" class="group-back" @click="backToGroupList">
-          <AppIcon name="chevron-back" />
-          全部分组
-        </button>
-
-        <div class="group-detail-head">
-          <template v-if="editingGroupId === managedGroup.id">
-            <input
-              v-model="editingGroupName"
-              type="text"
-              maxlength="20"
-              aria-label="分组名称"
-              @keydown.enter.prevent="saveGroupName(managedGroup.id)"
-            />
-            <LoadingButton class="confirm-button" :loading="groupBusy" loading-label="保存中…" @click="saveGroupName(managedGroup.id)">保存</LoadingButton>
-            <button type="button" class="text-button" :disabled="groupBusy" @click="editingGroupId = null">取消</button>
-          </template>
-          <template v-else>
-            <div class="group-detail-copy">
-              <strong>{{ managedGroup.name }}</strong>
-              <small>{{ managedGroupFunds.length }} 只基金 · {{ managedGroup.positionCount }} 个持仓</small>
-            </div>
-            <button type="button" class="text-button" @click="startRenameGroup(managedGroup.id, managedGroup.name)">改名</button>
-            <button
-              type="button"
-              class="text-button danger"
-              :disabled="groupBusy"
-              @click="removeGroup(managedGroup.id, managedGroup.name)"
-            >删除</button>
-          </template>
-        </div>
-
-        <div class="group-summary">
-          <div>
-            <span>已选资产（元）</span>
-            <b>¥{{ formatMoney(managedGroupValue) }}</b>
-          </div>
-          <div>
-            <span>已选资产数</span>
-            <b>{{ managedGroupFunds.length }}</b>
-          </div>
-        </div>
-
-        <p class="group-asset-title">选择资产</p>
-        <p v-if="!groupAssetFunds.length" class="summary-note">还没有基金持仓，先录入持仓后再添加。</p>
-        <section v-else class="group-asset-list">
-          <button
-            v-for="fund in groupAssetFunds"
-            :key="fund.key"
-            type="button"
-            class="group-asset-row"
-            :class="{ selected: fund.groupId === managedGroup.id }"
-            :disabled="groupBusy"
-            :aria-busy="groupBusyKey === fund.key"
-            @click="toggleGroupFund(fund)"
-          >
-            <span class="group-asset-copy">
-              <strong>{{ fund.name }}</strong>
-              <small>当前持仓 ¥{{ formatMoney(fund.assetValue) }} · {{ fund.classes.length }} 个类别</small>
-              <small v-if="fund.groupId && fund.groupId !== managedGroup.id" class="group-asset-hint">
-                该产品已放置「{{ fund.groupName }}」中
-              </small>
-            </span>
-            <span class="group-check" :class="{ checked: fund.groupId === managedGroup.id }">
-              <span v-if="groupBusyKey === fund.key" class="group-check-spinner" aria-hidden="true" />
-              <AppIcon v-else-if="fund.groupId === managedGroup.id" name="check" />
-            </span>
-          </button>
-        </section>
-
-        <p class="summary-note">同一基金的 A/C 类会一起调整；取消勾选后回到「未分组」。</p>
-      </div>
-
-      <div v-else class="group-list">
-        <section v-if="groups.length" class="group-manage-list">
-          <button
-            v-for="group in groups"
-            :key="group.id"
-            type="button"
-            class="group-manage-row"
-            @click="openGroupDetail(group.id)"
-          >
-            <span>
-              <strong>{{ group.name }}</strong>
-              <small>{{ group.fundCount }} 只基金 · ¥{{ formatMoney(group.confirmedValue) }}</small>
-            </span>
-            <AppIcon name="chevron" />
-          </button>
-        </section>
-        <p v-else class="summary-note">还没有分组，先在下方新增一个。</p>
-
-        <form class="form-stack" @submit.prevent="submitGroup">
-          <label class="form-field">
-            <span>新增分组</span>
-            <div class="group-create-row">
-              <input v-model="groupDraft" type="text" maxlength="20" placeholder="例如：纳斯达克指数" />
-              <LoadingButton class="primary-button" type="submit" :loading="groupBusy" loading-label="添加中…">添加</LoadingButton>
-            </div>
-          </label>
-        </form>
-
-        <p class="summary-note">分组只改变查看范围，不影响持仓、成本和收益。</p>
-      </div>
-
-      <p v-if="groupError" class="form-error" role="alert">{{ groupError }}</p>
-    </BottomSheet>
+      @open-detail="openGroupDetail"
+      @back-to-list="backToGroupList"
+      @submit-group="submitGroup"
+      @start-rename="startRenameGroup"
+      @cancel-rename="editingGroupId = null"
+      @save-group-name="saveGroupName"
+      @remove-group="removeGroup"
+      @toggle-fund="toggleGroupFund"
+    />
 
     <BottomSheet
       :open="sheet !== null"
@@ -2725,10 +2153,6 @@ function goBack(): void {
   font-size: 0.75rem;
 }
 
-.header-spacer {
-  width: 46px;
-}
-
 .funds-hero {
   margin-bottom: var(--space-4);
 }
@@ -2891,52 +2315,6 @@ function goBack(): void {
 .group-manage .app-icon {
   width: 13px;
   height: 13px;
-}
-
-.portfolio-toolbar input {
-  width: 100%;
-  min-height: var(--touch-target);
-  padding: 0 14px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-control);
-  background: var(--color-bg-subtle);
-  color: var(--color-text-primary);
-  font-size: var(--text-body);
-}
-
-.portfolio-toolbar input:focus-visible {
-  border-color: var(--color-border-focus);
-  background: var(--color-bg-surface);
-}
-
-.metric-picker {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-top: 10px;
-}
-
-.metric-picker > span {
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-}
-
-.metric-picker button {
-  min-height: 40px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-bg-subtle);
-  color: var(--color-text-secondary);
-  font-size: var(--text-footnote);
-  font-weight: 500;
-}
-
-.metric-picker button.active {
-  background: var(--color-brand);
-  color: var(--color-on-brand);
-  font-weight: 600;
 }
 
 .view-tabs {
@@ -3277,38 +2655,6 @@ function goBack(): void {
   }
 }
 
-.fund-platform-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 9px;
-  padding-top: 9px;
-  border-top: 1px dashed var(--color-border-subtle);
-}
-
-.fund-platform-row strong {
-  display: block;
-  font-size: var(--text-caption);
-  font-weight: 500;
-}
-
-.fund-platform-row small {
-  display: block;
-  margin-top: 3px;
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-}
-
-.fund-platform-value {
-  text-align: right;
-}
-
-.fund-platform-value b {
-  font-size: var(--text-caption);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-
 .fund-plan-list {
   display: flex;
   flex-direction: column;
@@ -3452,260 +2798,6 @@ function goBack(): void {
   color: var(--color-text-secondary);
 }
 
-.group-create-row {
-  display: flex;
-  gap: 8px;
-}
-
-.group-create-row input {
-  flex: 1;
-  min-width: 0;
-  text-align: left;
-  text-align-last: left;
-}
-
-.group-create-row button {
-  flex: 0 0 auto;
-  min-height: 48px;
-  padding: 0 18px;
-  border-radius: var(--radius-pill);
-  font-size: var(--text-footnote);
-}
-
-.group-detail,
-.group-list {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.group-back {
-  display: inline-flex;
-  align-items: center;
-  align-self: flex-start;
-  gap: 2px;
-  min-height: var(--touch-target);
-  padding: 0 4px 0 0;
-  border: 0;
-  background: transparent;
-  color: var(--color-brand);
-  font-size: var(--text-footnote);
-}
-
-.group-back .app-icon {
-  width: 16px;
-  height: 16px;
-}
-
-.group-detail-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px;
-  border-radius: var(--radius-control);
-  background: var(--color-bg-subtle);
-}
-
-.group-detail-copy {
-  flex: 1;
-  min-width: 0;
-}
-
-.group-detail-copy strong {
-  display: block;
-  font-size: 1rem;
-  font-weight: 600;
-}
-
-.group-detail-copy small {
-  display: block;
-  margin-top: 3px;
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-}
-
-.group-detail-head input {
-  flex: 1;
-  min-width: 0;
-  min-height: var(--touch-target);
-  padding: 0 12px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-control);
-  background: var(--color-bg-surface);
-  color: var(--color-text-primary);
-  font-size: var(--text-footnote);
-}
-
-.group-summary {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  padding: 12px;
-  border-radius: var(--radius-control);
-  background: var(--color-brand-soft);
-}
-
-.group-summary span {
-  display: block;
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-}
-
-.group-summary b {
-  display: block;
-  margin-top: 5px;
-  font-size: 1rem;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.group-summary > div:last-child {
-  text-align: right;
-}
-
-.group-asset-title {
-  margin: 0;
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-}
-
-.group-asset-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.group-asset-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  padding: 14px;
-  border: 0;
-  border-radius: var(--radius-control);
-  background: var(--color-bg-subtle);
-  color: var(--color-text-primary);
-  text-align: left;
-}
-
-.group-asset-row.selected {
-  background: var(--color-brand-soft);
-}
-
-.group-asset-copy {
-  flex: 1;
-  min-width: 0;
-}
-
-.group-asset-copy strong {
-  display: block;
-  font-size: var(--text-footnote);
-  font-weight: 600;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
-.group-asset-copy small {
-  display: block;
-  margin-top: 3px;
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-  line-height: 1.5;
-}
-
-.group-asset-copy .group-asset-hint {
-  color: var(--color-brand);
-}
-
-.group-check-spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--color-brand);
-  border-right-color: transparent;
-  border-radius: 50%;
-  animation: group-check-spin 0.7s linear infinite;
-}
-
-.group-check.checked .group-check-spinner {
-  border-color: var(--color-on-brand);
-  border-right-color: transparent;
-}
-
-@keyframes group-check-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.group-check {
-  display: grid;
-  flex: 0 0 auto;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  border: 1.5px solid var(--color-border-default);
-  border-radius: 50%;
-  color: var(--color-on-brand);
-}
-
-.group-check.checked {
-  border-color: var(--color-brand);
-  background: var(--color-brand);
-}
-
-.group-check .app-icon {
-  width: 14px;
-  height: 14px;
-}
-
-.group-manage-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.group-manage-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-height: 52px;
-  padding: 12px 14px;
-  border: 0;
-  border-radius: var(--radius-control);
-  background: var(--color-bg-subtle);
-  color: var(--color-text-primary);
-  text-align: left;
-}
-
-.group-manage-row:hover {
-  background: var(--color-bg-hover);
-}
-
-.group-manage-row > span {
-  flex: 1;
-  min-width: 0;
-}
-
-.group-manage-row strong {
-  display: block;
-  font-size: var(--text-footnote);
-  font-weight: 600;
-}
-
-.group-manage-row small {
-  display: block;
-  margin-top: 3px;
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-}
-
-.group-manage-row .app-icon {
-  width: 16px;
-  height: 16px;
-  color: var(--color-text-secondary);
-}
-
 .text-button {
   flex: 0 0 auto;
   min-height: var(--touch-target);
@@ -3714,10 +2806,6 @@ function goBack(): void {
   background: transparent;
   color: var(--color-brand);
   font-size: var(--text-caption);
-}
-
-.text-button.danger {
-  color: var(--color-finance-loss);
 }
 
 .section-head {
@@ -3738,118 +2826,6 @@ function goBack(): void {
 .meta {
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
-}
-
-.confirm-button {
-  min-height: 36px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-brand);
-  color: var(--color-on-brand);
-  font-size: var(--text-footnote);
-  font-weight: 600;
-}
-
-.position-list {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-}
-
-.position-card {
-  padding: 14px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-card);
-  background: var(--color-bg-surface);
-}
-
-.position-card header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.position-card header strong {
-  display: block;
-  font-size: 0.8125rem;
-  font-weight: 600;
-}
-
-.position-card header small {
-  display: block;
-  margin-top: 4px;
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-}
-
-.position-card header > b {
-  font-size: 1rem;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-
-.position-metrics {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 13px;
-  padding-top: 11px;
-  border-top: 1px solid var(--color-border-subtle);
-}
-
-.position-metrics > div + div {
-  padding-left: 10px;
-  border-left: 1px solid var(--color-border-subtle);
-}
-
-.position-metrics span {
-  display: block;
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-}
-
-.position-metrics b {
-  display: block;
-  margin-top: 5px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-
-.position-card footer {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 11px;
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-}
-
-.quote-error {
-  display: block;
-  margin-top: 7px;
-  color: var(--color-finance-loss);
-  font-size: var(--text-caption);
-  line-height: 1.5;
-}
-
-.empty-state {
-  padding: 34px 16px;
-  border: 1px dashed var(--color-border-default);
-  border-radius: var(--radius-card);
-  text-align: center;
-}
-
-.empty-state p {
-  margin: 0 0 14px;
-  color: var(--color-text-secondary);
-  font-size: 0.75rem;
-}
-
-.empty-state .primary-button {
-  width: 100%;
 }
 
 .activity-toolbar {
@@ -3880,107 +2856,9 @@ function goBack(): void {
   color: var(--color-brand);
 }
 
-.activity-list {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border-radius: var(--radius-card);
-  background: var(--color-bg-surface);
-  box-shadow: var(--shadow-card);
-}
-
-.activity-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  box-sizing: border-box;
-  width: 100%;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--color-border-subtle);
-  text-align: left;
-}
-
-.activity-row:last-child {
-  border-bottom: 0;
-}
-
-.activity-row.is-clickable {
-  cursor: pointer;
-}
-
-.activity-row.is-clickable:active {
-  background: var(--color-brand-soft);
-}
-
-.activity-type {
-  flex: 0 0 34px;
-  padding-top: 2px;
-  color: var(--color-text-secondary);
-  font-size: var(--text-footnote);
-  font-weight: 500;
-}
-
-.activity-type.type-sip,
-.activity-type.type-buy {
-  color: var(--color-finance-loss);
-}
-
-.activity-main {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex: 1;
-  min-width: 0;
-}
-
-.activity-main strong {
-  font-size: 0.875rem;
-  font-weight: 500;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
-.activity-main small {
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.activity-side {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  flex: 0 0 auto;
-  padding-top: 1px;
-}
-
-.activity-side b {
-  font-size: 0.875rem;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-
-.activity-side small {
-  font-size: var(--text-caption);
-}
-
-.status-pending {
-  color: var(--color-brand);
-}
-
-.status-done {
-  color: var(--color-text-secondary);
-}
-
-.status-reversed {
-  color: var(--color-finance-loss);
-}
-
 .danger-text {
   align-self: flex-start;
-  color: var(--color-finance-loss);
+  color: var(--color-danger);
 }
 
 .summary-note {

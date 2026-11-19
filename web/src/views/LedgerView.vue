@@ -230,6 +230,7 @@ watch(() => route.query, (query, previous) => {
 })
 
 watch([period, anchor, kindFilter, categoryFilter, view, selectedDate], () => {
+  window.clearTimeout(searchTimer)
   void loadEntries()
 })
 
@@ -304,6 +305,8 @@ async function loadCategories(): Promise<void> {
 
 onBeforeUnmount(() => {
   window.clearTimeout(searchTimer)
+  loadSequence++
+  statsSequence++
 })
 
 async function loadEntries(append: boolean = false): Promise<void> {
@@ -326,8 +329,13 @@ async function loadEntries(append: boolean = false): Promise<void> {
 
     const entries = append ? [...(summary.value?.entries ?? []), ...result.entries] : [...result.entries]
     let needsFocus = focusEntry && !entries.some(entry => entry.id === focusEntry)
+    const maxFocusPages = Math.max(restorePages, 20)
 
-    while (result.entries.length && entries.length < result.totalCount && (result.page < restorePages || needsFocus)) {
+    while (
+      result.entries.length
+      && entries.length < result.totalCount
+      && (result.page < restorePages || (needsFocus && result.page < maxFocusPages))
+    ) {
       result = await fetchEntryPeriod({ ...query, page: result.page + 1 })
       if (sequence !== loadSequence) return
       entries.push(...result.entries)
@@ -386,6 +394,7 @@ function setKind(kind: 'all' | EntryKind): void {
 }
 
 function clearFilters(): void {
+  window.clearTimeout(searchTimer)
   kindFilter.value = 'all'
   categoryFilter.value = ''
   search.value = ''
@@ -431,7 +440,7 @@ function openEntry(entryId?: string): void {
     </header>
 
     <section class="ledger-hero">
-      <LedgerMonthlyBudget v-if="period === 'month'" :key="anchor.slice(0, 7)"
+      <LedgerMonthlyBudget v-if="period === 'month'"
         :month="anchor.slice(0, 7)" :today="today" :expense="displayExpense">
         <span class="ledger-hero-label">▣ 本月支出</span>
         <strong class="ledger-hero-amount">¥{{ formatMoney(displayExpense) }}</strong>
@@ -639,16 +648,6 @@ function openEntry(entryId?: string): void {
 </template>
 
 <style scoped>
-.ledger-page {
-  padding-bottom: calc(97px + env(safe-area-inset-bottom));
-}
-
-.summary-scope {
-  margin: 0 0 8px;
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-}
-
 .filter-label {
   max-width: 52%;
   overflow: hidden;
@@ -659,10 +658,6 @@ function openEntry(entryId?: string): void {
 .ledger-page {
   --ledger-accent: var(--color-brand);
   background: var(--color-bg-page);
-}
-:global([data-color-scheme='dark']) .ledger-page {
-  background: var(--color-bg-page);
-  --ledger-accent: var(--color-brand);
 }
 .ledger-heading, .calendar-heading { display: flex; align-items: center; gap: 8px; }
 .ledger-heading { justify-content: space-between; margin-bottom: 14px; }
@@ -694,32 +689,6 @@ function openEntry(entryId?: string): void {
   color: var(--color-brand);
   font-size: var(--text-footnote);
   font-weight: 600;
-}
-
-.view-tabs {
-  width: 100%;
-  gap: 4px;
-  margin-bottom: 14px;
-  padding: 4px;
-  border-bottom: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-bg-subtle);
-}
-
-.view-tabs button {
-  min-height: 40px;
-  border-radius: var(--radius-pill);
-  font-weight: 600;
-}
-
-.view-tabs button.active {
-  background: var(--color-bg-surface);
-  color: var(--color-brand);
-  box-shadow: 0 2px 10px var(--color-shadow);
-}
-
-.view-tabs button.active::after {
-  display: none;
 }
 
 .filter-disclosure {
@@ -1166,40 +1135,5 @@ function openEntry(entryId?: string): void {
   font-weight: 700;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
-}
-
-.empty-state {
-  padding: 36px 16px;
-  border: 1px dashed var(--color-border-default);
-  border-radius: var(--radius-card);
-  text-align: center;
-}
-
-.empty-state p {
-  margin: 0 0 14px;
-  color: var(--color-text-secondary);
-  font-size: 0.75rem;
-}
-
-.empty-state .primary-button {
-  width: 100%;
-}
-
-@media (max-width: 360px) {
-  .period-panel {
-    padding: 16px;
-  }
-
-  .summary-grid {
-    gap: 6px;
-  }
-
-  .summary-grid > div + div {
-    padding-left: 8px;
-  }
-
-  .summary-grid b {
-    font-size: 1rem;
-  }
 }
 </style>

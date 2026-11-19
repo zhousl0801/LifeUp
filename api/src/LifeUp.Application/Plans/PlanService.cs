@@ -355,6 +355,10 @@ public sealed class PlanService
             return AssetOperationResult<PlanDto>.NotFound("计划不存在。");
         }
 
+        IReadOnlyList<FundPosition> positions = plan.Type == AutoPlanType.FundSip
+            ? await _ledgerRepository.GetFundPositionsAsync(ledger.Id, cancellationToken)
+            : [];
+
         try
         {
             transition(plan);
@@ -362,7 +366,6 @@ public sealed class PlanService
             if (plan.IsActive && plan.Type == AutoPlanType.FundSip)
             {
                 var plans = await _planRepository.GetPlansAsync(ledger.Id, cancellationToken);
-                var positions = await _ledgerRepository.GetFundPositionsAsync(ledger.Id, cancellationToken);
                 var target = new SavePlanRequest(plan.Id, plan.Type, plan.Name, plan.Amount, plan.Cycle,
                     plan.DayOfMonth, plan.DayOfWeek, plan.Time, plan.StartDate, plan.FundPositionId, Guid.Empty, null);
 
@@ -377,7 +380,9 @@ public sealed class PlanService
             return AssetOperationResult<PlanDto>.Invalid(new[] { exception.Message });
         }
 
-        return AssetOperationResult<PlanDto>.Success(Map(plan, new Dictionary<Guid, string>(), _dates.Today));
+        var positionNames = positions.ToDictionary(position => position.Id, position => position.DisplayName);
+
+        return AssetOperationResult<PlanDto>.Success(Map(plan, positionNames, _dates.Today, positions));
     }
 
     public Task<AssetOperationResult<PlanOccurrenceDto>> SkipOccurrenceAsync(
@@ -471,18 +476,6 @@ public sealed class PlanService
             AutoPlanType.ProvidentDeposit => "公积金缴存",
             AutoPlanType.ProvidentWithdrawal => "公积金提取",
             _ => $"基金定投 · {positionName ?? "基金"}"
-        };
-    }
-
-    private static string StatusText(PlanOccurrenceStatus status)
-    {
-        return status switch
-        {
-            PlanOccurrenceStatus.Completed => "已记账",
-            PlanOccurrenceStatus.Skipped => "已跳过",
-            PlanOccurrenceStatus.Waiting => "待处理",
-            PlanOccurrenceStatus.Failed => "执行失败",
-            _ => "待执行"
         };
     }
 

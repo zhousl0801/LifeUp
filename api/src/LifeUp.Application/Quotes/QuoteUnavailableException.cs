@@ -7,7 +7,7 @@ public sealed class QuoteUnavailableException : Exception
     {
     }
 
-    public QuoteUnavailableException(string message, Exception innerException)
+    public QuoteUnavailableException(string message, Exception? innerException)
         : base(message, innerException)
     {
     }

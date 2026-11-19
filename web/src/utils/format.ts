@@ -4,6 +4,45 @@ export const MaximumAmount = 1_000_000_000
 
 export const MaskedMoney = '¥••••'
 
+const shanghaiTimeFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Asia/Shanghai',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false
+})
+
+const shanghaiDateFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Asia/Shanghai',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit'
+})
+
+const decimalPatterns = new Map<number, RegExp>()
+
+function getDecimalPattern(maximumFractionDigits: number): RegExp {
+  let pattern = decimalPatterns.get(maximumFractionDigits)
+  if (!pattern) {
+    pattern = new RegExp(`^\\d+(?:\\.\\d{1,${maximumFractionDigits}})?$`)
+    decimalPatterns.set(maximumFractionDigits, pattern)
+  }
+  return pattern
+}
+
+function toFiniteDecimal(value: Decimal.Value | null | undefined): Decimal | null {
+  if (value === null || value === undefined || value === '') {
+    return null
+  }
+
+  try {
+    const decimal = new Decimal(value)
+    return decimal.isFinite() ? decimal : null
+  } catch {
+    return null
+  }
+}
+
 export function formatMoney(value: Decimal.Value | null | undefined): string {
   if (value === null || value === undefined) {
     return '—'
@@ -14,11 +53,12 @@ export function formatMoney(value: Decimal.Value | null | undefined): string {
 
 // 单价：至少两位，最多三位小数（ETF / LOF 报价到 0.001），A 股多出的尾零会去掉。
 export function formatUnitPrice(value: Decimal.Value | null | undefined): string {
-  if (value === null || value === undefined) {
+  const decimal = toFiniteDecimal(value)
+  if (decimal === null) {
     return '—'
   }
 
-  const fixed = new Decimal(value).toFixed(3)
+  const fixed = decimal.toFixed(3)
   const trimmed = fixed.replace(/(\.\d{2})0$/, '$1')
 
   return formatFixedDecimal(trimmed, trimmed.split('.')[1]?.length ?? 2)
@@ -33,11 +73,10 @@ export function formatQuantity(value: Decimal.Value | null | undefined): string 
 }
 
 export function formatSignedMoney(value: Decimal.Value | null | undefined): string {
-  if (value === null || value === undefined) {
+  const amount = toFiniteDecimal(value)
+  if (amount === null) {
     return '—'
   }
-
-  const amount = new Decimal(value)
 
   if (amount.isZero()) {
     return formatMoney(0)
@@ -50,13 +89,8 @@ export type AmountTone = 'amount-gain' | 'amount-loss' | ''
 
 /** 金额方向统一为“红增绿减”；0 和缺失值不着色。 */
 export function amountTone(value: Decimal.Value | null | undefined): AmountTone {
-  if (value === null || value === undefined) {
-    return ''
-  }
-
-  const amount = new Decimal(value)
-
-  if (!amount.isFinite() || amount.isZero()) {
+  const amount = toFiniteDecimal(value)
+  if (amount === null || amount.isZero()) {
     return ''
   }
 
@@ -104,25 +138,14 @@ export function formatBusinessTime(value: string | null | undefined): string {
     return ''
   }
 
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Shanghai',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
-  }).formatToParts(date)
+  const parts = shanghaiTimeFormatter.formatToParts(date)
   const get = (type: string) => parts.find((part) => part.type === type)?.value ?? ''
 
   return `${get('hour')}:${get('minute')}:${get('second')}`
 }
 
 export function todayInBusinessTimeZone(): string {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).formatToParts(new Date())
+  const parts = shanghaiDateFormatter.formatToParts(new Date())
   const year = parts.find((part) => part.type === 'year')?.value
   const month = parts.find((part) => part.type === 'month')?.value
   const day = parts.find((part) => part.type === 'day')?.value
@@ -194,7 +217,7 @@ export function parsePrice(value: string): number | null {
 
 function parseDecimal(value: string, maximumFractionDigits: number): Decimal | null {
   const normalized = value.trim().replaceAll(',', '')
-  const pattern = new RegExp(`^\\d+(?:\\.\\d{1,${maximumFractionDigits}})?$`)
+  const pattern = getDecimalPattern(maximumFractionDigits)
 
   if (!pattern.test(normalized)) {
     return null
@@ -225,10 +248,54 @@ export function subtractAmounts(left: Decimal.Value, right: Decimal.Value): numb
   return new Decimal(left).minus(right).toNumber()
 }
 
+export function calculatePercent(
+  numerator: Decimal.Value | null | undefined,
+  denominator: Decimal.Value | null | undefined
+): number | null {
+  const num = toFiniteDecimal(numerator)
+  const den = toFiniteDecimal(denominator)
+
+  if (num === null || den === null || den.lte(0)) {
+    return null
+  }
+
+  return num.div(den).times(100).toNumber()
+}
+
+export function formatPercent(value: Decimal.Value | null | undefined, emptyText = ''): string {
+  const decimal = toFiniteDecimal(value)
+
+  if (decimal === null) {
+    return emptyText
+  }
+
+  const sign = decimal.greaterThan(0) ? '+' : decimal.lessThan(0) ? '−' : ''
+  return `${sign}${decimal.abs().toFixed(2)}%`
+}
+
+export function divideUnitPrice(
+  totalCost: Decimal.Value | null | undefined,
+  quantity: Decimal.Value | null | undefined
+): string {
+  const cost = toFiniteDecimal(totalCost)
+  const qty = toFiniteDecimal(quantity)
+
+  if (cost === null || qty === null || qty.lte(0)) {
+    return ''
+  }
+
+  return cost.div(qty).toDecimalPlaces(4, Decimal.ROUND_HALF_UP).toString()
+}
+
 function formatFixedDecimal(value: Decimal.Value, fractionDigits: number): string {
-  const fixed = new Decimal(value).toFixed(fractionDigits)
+  const decimal = toFiniteDecimal(value)
+  if (decimal === null) {
+    return '—'
+  }
+
+  const fixed = decimal.toFixed(fractionDigits)
   const [integer, fraction] = fixed.split('.')
-  const groupedInteger = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  const groupedInteger = integer!.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 
   return `${groupedInteger}.${fraction}`
 }

@@ -2,8 +2,6 @@ import type { CapitalProjectionPoint } from '../types/capital'
 import { chartFontSize, chartTheme } from './chartTheme'
 import { MaskedMoney, formatMoney } from './format'
 
-const ReturnColor = '#25C6DA'
-
 export interface CapitalChartInput {
   points: CapitalProjectionPoint[]
   targetAmount: number | null
@@ -45,7 +43,9 @@ export function buildCapitalChartOption(input: CapitalChartInput) {
     tooltip: {
       trigger: 'axis',
       confine: true,
+      backgroundColor: theme.tooltipBg,
       borderWidth: 0,
+      textStyle: { color: theme.tooltipText, fontSize: chartFontSize(12) },
       axisPointer: { type: 'line', lineStyle: { color: theme.pointer, type: 'dashed' } },
       formatter: (params: { dataIndex?: number }[]) => {
         const index = params[0]?.dataIndex
@@ -89,7 +89,7 @@ export function buildCapitalChartOption(input: CapitalChartInput) {
         data: net,
         symbol: 'none',
         lineStyle: { width: 0 },
-        areaStyle: { color: 'rgba(91, 91, 215, 0.14)' },
+        areaStyle: { color: theme.areaStrong },
         itemStyle: { color: theme.brand }
       },
       {
@@ -99,8 +99,8 @@ export function buildCapitalChartOption(input: CapitalChartInput) {
         data: returns,
         symbol: 'none',
         lineStyle: { width: 0 },
-        areaStyle: { color: 'rgba(37, 198, 218, 0.42)' },
-        itemStyle: { color: ReturnColor }
+        areaStyle: { color: theme.propertyArea },
+        itemStyle: { color: theme.property }
       },
       {
         name: '总资本',
@@ -139,7 +139,9 @@ export function buildMonthlyChartOption(input: CapitalChartInput) {
     tooltip: {
       trigger: 'axis',
       confine: true,
+      backgroundColor: theme.tooltipBg,
       borderWidth: 0,
+      textStyle: { color: theme.tooltipText, fontSize: chartFontSize(12) },
       axisPointer: { type: 'shadow' },
       formatter: (params: { dataIndex?: number }[]) => {
         const index = params[0]?.dataIndex
@@ -181,7 +183,7 @@ export function buildMonthlyChartOption(input: CapitalChartInput) {
         type: 'bar',
         stack: 'monthly',
         data: points.map((point) => point.return),
-        itemStyle: { color: ReturnColor },
+        itemStyle: { color: theme.property },
         barMaxWidth: 18
       }
     ]

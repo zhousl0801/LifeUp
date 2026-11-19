@@ -7,6 +7,8 @@ namespace LifeUp.Application.Ledgers;
 
 public interface ILedgerRepository
 {
+    long CacheVersion => 0;
+
     Task<IReadOnlyList<HistoryAuditDto>> GetHistoryAuditAsync(Guid ledgerId, CancellationToken cancellationToken);
 
     Task<LedgerReplayData> GetReplayDataAsync(Guid ledgerId, CancellationToken cancellationToken);

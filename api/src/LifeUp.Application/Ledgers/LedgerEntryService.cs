@@ -158,9 +158,17 @@ public sealed class LedgerEntryService
 
     public Task<EntryOperationResult> CreateAsync(CreateLedgerEntryRequest request, CancellationToken cancellationToken)
     {
+        return CreateAsync(request, LedgerEntrySource.Manual, cancellationToken);
+    }
+
+    public Task<EntryOperationResult> CreateAsync(
+        CreateLedgerEntryRequest request,
+        LedgerEntrySource source,
+        CancellationToken cancellationToken)
+    {
         return new MutationExecutor(_ledgerRepository, _businessDateProvider).ExecuteAsync(
             "entry.create", request.RequestId, request,
-            () => CreateCoreAsync(request, cancellationToken),
+            () => CreateCoreAsync(request, source, cancellationToken),
             result => result.Status is EntryOperationStatus.Success or EntryOperationStatus.Created,
             result => result with { Status = EntryOperationStatus.Success },
             EntryOperationResult.Conflict,
@@ -170,6 +178,7 @@ public sealed class LedgerEntryService
 
     private async Task<EntryOperationResult> CreateCoreAsync(
         CreateLedgerEntryRequest request,
+        LedgerEntrySource source,
         CancellationToken cancellationToken)
     {
         var ledger = await _ledgerRepository.GetForUpdateAsync(cancellationToken);
@@ -226,7 +235,7 @@ public sealed class LedgerEntryService
             request.BusinessDate,
             businessToday,
             request.Note,
-            LedgerEntrySource.Manual,
+            source,
             request.RequestId,
             now);
 

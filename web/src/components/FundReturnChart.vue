@@ -1,11 +1,9 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { ECharts } from 'echarts/core'
+import { computed, ref } from 'vue'
 import type { EChartsOption } from 'echarts'
-import { loadChartRuntime } from '../utils/chartRuntime'
+import { useEChart } from '../composables/useEChart'
 import { formatSignedMoney } from '../utils/format'
 import { chartFontSize, chartTheme } from '../utils/chartTheme'
-import { resolvedTheme } from '../utils/theme'
 import type { FundReturnPoint } from '../types/fundReturn'
 
 const props = defineProps<{
@@ -22,12 +20,6 @@ const chartLabel = computed(() => {
     ? `投资收益走势图，${props.range}；最新累计收益 ${formatSignedMoney(latest.cumulativeProfit!)} 元；红涨绿跌，柱子方向表示当日盈亏`
     : `投资收益走势图，${props.range}；暂无已披露收益`
 })
-let chart: ECharts | null = null
-let disposed = false
-
-function render(): void {
-  chart?.setOption(buildOption(), { notMerge: true })
-}
 
 function buildOption(): EChartsOption {
   const theme = chartTheme()
@@ -45,6 +37,9 @@ function buildOption(): EChartsOption {
     tooltip: {
       trigger: 'axis',
       confine: true,
+      backgroundColor: theme.tooltipBg,
+      borderWidth: 0,
+      textStyle: { color: theme.tooltipText, fontSize: chartFontSize(12) },
       formatter: (params: unknown) => {
         const items = Array.isArray(params) ? params as { dataIndex?: number }[] : []
         const index = items[0]?.dataIndex
@@ -122,38 +117,8 @@ function axisInterval(): number {
   return props.range === 'month' ? 3 : 6
 }
 
-function resize(): void {
-  chart?.resize()
-}
-
-onMounted(() => {
-  window.addEventListener('resize', resize)
-
-  void loadChartRuntime().then((echarts) => {
-    if (disposed || !container.value) {
-      return
-    }
-
-    chart = echarts.init(container.value, undefined, { renderer: 'canvas' })
-    render()
-  })
-})
-
-watch(
-  () => [props.points, props.range],
-  () => {
-    render()
-  },
-  { deep: true }
-)
-
-watch(resolvedTheme, render)
-
-onBeforeUnmount(() => {
-  disposed = true
-  window.removeEventListener('resize', resize)
-  chart?.dispose()
-  chart = null
+useEChart(container, buildOption, {
+  watchSources: () => [props.points, props.points.length, props.range]
 })
 </script>
 

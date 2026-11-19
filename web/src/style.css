@@ -133,7 +133,7 @@ summary:focus-visible {
 }
 
 /* Hero 内的财务数字使用适合深色背景的文字色。 */
-:is(.home-hero, .cash-hero, .funds-hero, .stock-hero, .gold-hero, .provident-hero, .hero) {
+:is(.home-hero, .cash-hero, .funds-hero, .stock-hero, .gold-hero, .provident-hero, .investment-hero, .hero) {
   --color-finance-gain: var(--color-finance-gain-on-hero);
   --color-finance-loss: var(--color-finance-loss-on-hero);
 }
@@ -852,7 +852,7 @@ summary:focus-visible {
   .confirm-button,
   .back-button,
   .icon-button,
-  .nav-add-circle,
+  .nav-add,
   .maintenance-action,
   .row-action {
     border: 1px solid ButtonText;

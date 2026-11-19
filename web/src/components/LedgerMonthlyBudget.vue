@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import Decimal from 'decimal.js'
 import { fetchMonthlyBudget, updateMonthlyBudget } from '../api/ledger'
 import { getApiErrorMessage } from '../api/client'
@@ -36,16 +36,25 @@ const compactMoney = new Intl.NumberFormat('zh-CN', { notation: 'compact', maxim
 const ringAmount = computed(() => budget.value !== null && budget.value >= 100000
   ? '¥' + compactMoney.format(budget.value)
   : budgetAmount.value)
+let loadSequence = 0
 
 async function load(): Promise<void> {
+  const sequence = ++loadSequence
   loading.value = true
   loadError.value = ''
   try {
-    budget.value = (await fetchMonthlyBudget(props.month)).amount
+    const result = await fetchMonthlyBudget(props.month)
+    if (sequence === loadSequence) {
+      budget.value = result.amount
+    }
   } catch (error) {
-    loadError.value = getApiErrorMessage(error, '预算暂时无法读取。')
+    if (sequence === loadSequence) {
+      loadError.value = getApiErrorMessage(error, '预算暂时无法读取。')
+    }
   } finally {
-    loading.value = false
+    if (sequence === loadSequence) {
+      loading.value = false
+    }
   }
 }
 
@@ -79,7 +88,17 @@ function submit(): void {
   void save(parsed.value)
 }
 
-onMounted(load)
+watch(
+  () => props.month,
+  () => {
+    void load()
+  },
+  { immediate: true }
+)
+
+onBeforeUnmount(() => {
+  loadSequence++
+})
 </script>
 
 <template>

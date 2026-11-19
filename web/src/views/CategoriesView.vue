@@ -45,10 +45,23 @@ const nameInput = ref<HTMLInputElement | null>(null)
 const categoryList = ref<HTMLElement | null>(null)
 const folded = reactive(new Set<string>())
 const form = reactive({ name: '', isGroup: true, parentId: '', isActive: true, iconKey: '' })
-const ordered = (categories: EntryCategory[]) => categories.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
+const ordered = (categories: EntryCategory[]) => [...categories].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
 const groups = computed(() => ordered(items.value.filter(item => item.kind === kind.value && item.isGroup)))
 const activeGroups = computed(() => groups.value.filter(group => group.isActive))
 const moveGroups = computed(() => activeGroups.value.filter(group => group.id !== editing.value?.parentId))
+const childrenByGroup = computed(() => {
+  const grouped = new Map<string, EntryCategory[]>()
+  for (const item of items.value) {
+    if (!item.parentId) continue
+    const list = grouped.get(item.parentId) ?? []
+    list.push(item)
+    grouped.set(item.parentId, list)
+  }
+  for (const [groupId, list] of grouped) {
+    grouped.set(groupId, ordered(list))
+  }
+  return grouped
+})
 const dragItem = ref<EntryCategory | null>(null)
 const dragPoint = ref({ x: 0, y: 0 })
 const drop = ref<DropPosition | null>(null)
@@ -58,7 +71,7 @@ let suppressClick = false
 let clickTimer: ReturnType<typeof setTimeout> | undefined
 
 function children(id: string): EntryCategory[] {
-  return ordered(items.value.filter(item => item.parentId === id))
+  return childrenByGroup.value.get(id) ?? []
 }
 
 function siblings(item: EntryCategory): EntryCategory[] {
@@ -168,7 +181,7 @@ function openMove(item: EntryCategory): void {
 async function move(item: EntryCategory, parentId: string | undefined, index: number): Promise<void> {
   if (saving.value) return
   const crossGroup = !item.isGroup && parentId !== item.parentId
-  const target = parentId ? children(parentId) : [...groups.value]
+  const target = parentId ? [...children(parentId)] : [...groups.value]
   const targetGroup = groups.value.find(group => group.id === parentId)
   if (crossGroup && (!targetGroup?.isActive || !item.parentId)) return
 

@@ -5,7 +5,7 @@ namespace LifeUp.Api.Controllers;
 
 [ApiController]
 [Route("api/ledger/quotes")]
-public sealed class QuotesController : ControllerBase
+public sealed class QuotesController : AssetOperationsControllerBase
 {
     private readonly QuoteRefreshService _quoteRefreshService;
 
@@ -51,15 +51,5 @@ public sealed class QuotesController : ControllerBase
                 Status = StatusCodes.Status409Conflict
             });
         }
-    }
-
-    private IActionResult LedgerNotFound()
-    {
-        return NotFound(new ProblemDetails
-        {
-            Title = "账本尚未初始化",
-            Detail = "请先设置账本起始日期和现金余额。",
-            Status = StatusCodes.Status404NotFound
-        });
     }
 }

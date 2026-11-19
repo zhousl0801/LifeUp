@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Text.Json;
 using LifeUp.Application.Assets;
 using LifeUp.Application.Funds;
 using LifeUp.Application.Ledgers;
@@ -5,12 +7,16 @@ using LifeUp.Application.Mutations;
 using LifeUp.Application.Provident;
 using LifeUp.Domain.Ledgers;
 using LifeUp.Domain.Plans;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LifeUp.Application.Plans;
 
 public sealed class PlanExecutionService
 {
-    private static readonly SemaphoreSlim RunLock = new(1, 1);
+    private const string RecordOccurrenceOperation = "plan.occurrence.record";
+
+    private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> RunLocks = new();
 
     private readonly ILedgerRepository _ledgerRepository;
     private readonly IPlanRepository _planRepository;
@@ -18,6 +24,7 @@ public sealed class PlanExecutionService
     private readonly LedgerEntryService _entries;
     private readonly ProvidentFundService _provident;
     private readonly FundService _funds;
+    private readonly ILogger<PlanExecutionService> _logger;
 
     public PlanExecutionService(
         ILedgerRepository ledgerRepository,
@@ -25,7 +32,8 @@ public sealed class PlanExecutionService
         BusinessDateProvider dates,
         LedgerEntryService entries,
         ProvidentFundService provident,
-        FundService funds)
+        FundService funds,
+        ILogger<PlanExecutionService>? logger = null)
     {
         _ledgerRepository = ledgerRepository;
         _planRepository = planRepository;
@@ -33,24 +41,27 @@ public sealed class PlanExecutionService
         _entries = entries;
         _provident = provident;
         _funds = funds;
+        _logger = logger ?? NullLogger<PlanExecutionService>.Instance;
     }
 
     public async Task<PlanRunResultDto> RunDueAsync(CancellationToken cancellationToken)
     {
-        if (!await RunLock.WaitAsync(0, cancellationToken))
+        var ledger = await _ledgerRepository.GetForUpdateAsync(cancellationToken);
+
+        if (ledger is null)
+        {
+            return new PlanRunResultDto(0, 0, 0, 0);
+        }
+
+        var runLock = RunLocks.GetOrAdd(ledger.Id, _ => new SemaphoreSlim(1, 1));
+
+        if (!await runLock.WaitAsync(0, cancellationToken))
         {
             return new PlanRunResultDto(0, 0, 0, 0);
         }
 
         try
         {
-            var ledger = await _ledgerRepository.GetForUpdateAsync(cancellationToken);
-
-            if (ledger is null)
-            {
-                return new PlanRunResultDto(0, 0, 0, 0);
-            }
-
             var now = _dates.UtcNow;
             var today = _dates.Today;
             var plans = await _planRepository.GetPlansAsync(ledger.Id, cancellationToken);
@@ -127,45 +138,57 @@ public sealed class PlanExecutionService
         }
         finally
         {
-            RunLock.Release();
+            runLock.Release();
         }
     }
 
-    public Task<AssetOperationResult<RecordOccurrenceResultDto>> RecordOccurrenceAsync(
+    public async Task<AssetOperationResult<RecordOccurrenceResultDto>> RecordOccurrenceAsync(
         Guid occurrenceId,
         PlanActionRequest request,
         CancellationToken cancellationToken)
     {
-        return new MutationExecutor(_ledgerRepository, _dates).ExecuteAsync(
-            "plan.occurrence.record",
-            request.RequestId,
-            new { OccurrenceId = occurrenceId, Request = request },
-            () => RecordOccurrenceCoreAsync(occurrenceId, cancellationToken),
-            result => result.Status is AssetOperationStatus.Success,
-            result => result,
-            AssetOperationResult<RecordOccurrenceResultDto>.Conflict,
-            message => AssetOperationResult<RecordOccurrenceResultDto>.Invalid(new[] { message }),
-            cancellationToken);
-    }
+        if (request.RequestId == Guid.Empty)
+        {
+            return AssetOperationResult<RecordOccurrenceResultDto>.Invalid(["请求标识无效。"]);
+        }
 
-    private async Task<AssetOperationResult<RecordOccurrenceResultDto>> RecordOccurrenceCoreAsync(
-        Guid occurrenceId,
-        CancellationToken cancellationToken)
-    {
-        if (!await RunLock.WaitAsync(0, cancellationToken))
+        var ledger = await _ledgerRepository.GetAsync(cancellationToken);
+
+        if (ledger is null)
+        {
+            return AssetOperationResult<RecordOccurrenceResultDto>.NotFound("账本尚未初始化。");
+        }
+
+        var fingerprint = MutationExecutor.ComputeFingerprint(new { OccurrenceId = occurrenceId, Request = request });
+        var receipt = await _ledgerRepository.FindMutationReceiptAsync(ledger.Id, request.RequestId, cancellationToken);
+
+        if (receipt is not null)
+        {
+            if (receipt.Operation != RecordOccurrenceOperation || receipt.Fingerprint != fingerprint)
+            {
+                return AssetOperationResult<RecordOccurrenceResultDto>.Conflict("该请求标识已用于其他内容，请核对原记录后重新操作。");
+            }
+
+            return JsonSerializer.Deserialize<AssetOperationResult<RecordOccurrenceResultDto>>(
+                receipt.ResponseJson,
+                MutationExecutor.JsonOptions)!;
+        }
+
+        if (await _ledgerRepository.FindEntryByRequestIdAsync(ledger.Id, request.RequestId, cancellationToken) is not null
+            || await _ledgerRepository.FindAssetTransactionByRequestIdAsync(ledger.Id, request.RequestId, cancellationToken) is not null)
+        {
+            return AssetOperationResult<RecordOccurrenceResultDto>.Conflict("该历史请求已入账，缺少完整请求快照，请查看原记录，勿重复保存。");
+        }
+
+        var runLock = RunLocks.GetOrAdd(ledger.Id, _ => new SemaphoreSlim(1, 1));
+
+        if (!await runLock.WaitAsync(0, cancellationToken))
         {
             return AssetOperationResult<RecordOccurrenceResultDto>.Conflict("已有计划执行任务在运行，请稍后重试。");
         }
 
         try
         {
-            var ledger = await _ledgerRepository.GetForUpdateAsync(cancellationToken);
-
-            if (ledger is null)
-            {
-                return AssetOperationResult<RecordOccurrenceResultDto>.NotFound("账本尚未初始化。");
-            }
-
             var occurrence = await _planRepository.GetOccurrenceForUpdateAsync(
                 ledger.Id,
                 occurrenceId,
@@ -178,28 +201,63 @@ public sealed class PlanExecutionService
 
             if (occurrence.Status is PlanOccurrenceStatus.Completed or PlanOccurrenceStatus.Skipped)
             {
-                return AssetOperationResult<RecordOccurrenceResultDto>.Invalid(new[] { "已记账或已跳过的期次不能补记。" });
+                return AssetOperationResult<RecordOccurrenceResultDto>.Invalid(["已记账或已跳过的期次不能补记。"]);
             }
 
             if (_dates.ToBusinessInstant(occurrence.DueDate, occurrence.DueTime) > _dates.UtcNow)
             {
-                return AssetOperationResult<RecordOccurrenceResultDto>.Invalid(new[] { "该期次尚未到期，请等待自动执行。" });
+                return AssetOperationResult<RecordOccurrenceResultDto>.Invalid(["该期次尚未到期，请等待自动执行。"]);
             }
 
-            // 补记沿用原期次的业务日期和金额；入账本身仍以期次标识作为 requestId 防重。
+            // 子业务各自以 occurrence.Id 为幂等键独立落库；这里不再嵌套外层 MutationExecutor，
+            // 避免内层 DiscardChanges 或 SaveChanges 破坏外层跟踪状态。
             var status = await ExecuteOccurrenceAsync(ledger.Id, occurrence, cancellationToken);
             var current = await _planRepository.GetOccurrenceForUpdateAsync(ledger.Id, occurrenceId, cancellationToken)
                 ?? occurrence;
             var recorded = status == PlanOccurrenceStatus.Completed;
-
-            return AssetOperationResult<RecordOccurrenceResultDto>.Success(new RecordOccurrenceResultDto(
+            var result = AssetOperationResult<RecordOccurrenceResultDto>.Success(new RecordOccurrenceResultDto(
                 PlanService.Map(current),
                 recorded,
                 recorded ? null : current.ErrorMessage));
+
+            _ledgerRepository.DiscardChanges();
+            await _ledgerRepository.AddMutationReceiptAsync(
+                MutationReceipt.Create(
+                    ledger.Id,
+                    request.RequestId,
+                    RecordOccurrenceOperation,
+                    fingerprint,
+                    JsonSerializer.Serialize(result, MutationExecutor.JsonOptions),
+                    _dates.UtcNow,
+                    beforeJson: null),
+                cancellationToken);
+
+            try
+            {
+                await _ledgerRepository.SaveChangesAsync(cancellationToken);
+            }
+            catch (ConcurrencyConflictException)
+            {
+                _ledgerRepository.DiscardChanges();
+                var existing = await _ledgerRepository.FindMutationReceiptAsync(ledger.Id, request.RequestId, cancellationToken);
+
+                if (existing is not null
+                    && existing.Operation == RecordOccurrenceOperation
+                    && existing.Fingerprint == fingerprint)
+                {
+                    return JsonSerializer.Deserialize<AssetOperationResult<RecordOccurrenceResultDto>>(
+                        existing.ResponseJson,
+                        MutationExecutor.JsonOptions)!;
+                }
+
+                return AssetOperationResult<RecordOccurrenceResultDto>.Conflict("数据已被其他操作修改，请核实保存结果或刷新后重试。");
+            }
+
+            return result;
         }
         finally
         {
-            RunLock.Release();
+            runLock.Release();
         }
     }
 
@@ -263,9 +321,13 @@ public sealed class PlanExecutionService
                     return PlanOccurrenceStatus.Failed;
                 }
             }
-            catch
+            catch (Exception markException)
             {
-                // The background run must not stop because one occurrence could not be marked.
+                _logger.LogWarning(
+                    markException,
+                    "标记计划期次 {OccurrenceId} 失败状态时出错，原异常：{OriginalError}",
+                    occurrence.Id,
+                    exception.Message);
             }
 
             return PlanOccurrenceStatus.Failed;
@@ -326,6 +388,7 @@ public sealed class PlanExecutionService
                         occurrence.DueDate,
                         occurrence.PlanName,
                         occurrence.Id),
+                    LedgerEntrySource.Automatic,
                     cancellationToken);
 
                 if (result.Status is EntryOperationStatus.Created or EntryOperationStatus.Success)

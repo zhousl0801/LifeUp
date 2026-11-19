@@ -55,8 +55,33 @@ public sealed class LedgerService
         }
 
         var (from, to) = EntryPeriodRange.For(EntryPeriod.Month, _businessDateProvider.Today);
-        var totals = await _ledgerRepository.GetEntryTotalsAsync(ledger.Id, from, to, cancellationToken);
         var data = await _ledgerRepository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
+        var monthIncome = 0m;
+        var monthExpense = 0m;
+        var monthEntryCount = 0;
+
+        foreach (var entry in data.Entries)
+        {
+            if (entry.Status != LedgerEntryStatus.Active
+                || entry.BusinessDate < from
+                || entry.BusinessDate > to)
+            {
+                continue;
+            }
+
+            monthEntryCount++;
+
+            if (entry.Kind == LedgerEntryKind.Income)
+            {
+                monthIncome += entry.Amount;
+            }
+            else
+            {
+                monthExpense += entry.Amount;
+            }
+        }
+
+        var totals = new EntryTotals(monthIncome, monthExpense, monthEntryCount);
         var providentAccount = data.Provident;
         var fundPositions = data.Positions;
         var stockPositions = data.Stocks;

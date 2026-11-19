@@ -67,15 +67,16 @@ public sealed class SgeGoldQuoteProvider : IGoldQuoteProvider
             throw new QuoteUnavailableException("黄金现货行情服务未返回 Au99.99 报价。");
         }
 
-        if (ReadInt(data, "f59") is not int precision || precision is < 0 or > 6
-            || ReadScaledDecimal(data, "f43", precision) is not decimal quote || quote <= 0m)
+        if (EastmoneyJsonReader.ReadInt(data, "f59") is not int precision || precision is < 0 or > 6
+            || EastmoneyJsonReader.ReadScaledDecimal(data, "f43", precision) is not decimal quote || quote <= 0m)
         {
             throw new QuoteUnavailableException("黄金现货行情服务返回的报价无效。");
         }
 
         var obtainedAt = DateTimeOffset.UtcNow;
-        var timestamp = ReadLong(data, "f86");
-        if (timestamp is null or <= 0 || timestamp > obtainedAt.ToUnixTimeSeconds())
+        var timestamp = EastmoneyJsonReader.ReadLong(data, "f86");
+        // 允许源站与本机存在少量时钟偏差，避免快 1–2 秒误判为无效报价。
+        if (timestamp is null or <= 0 || timestamp > obtainedAt.ToUnixTimeSeconds() + 300)
         {
             throw new QuoteUnavailableException("黄金现货行情服务返回的报价时间无效。");
         }
@@ -87,52 +88,6 @@ public sealed class SgeGoldQuoteProvider : IGoldQuoteProvider
     private IEnumerable<string> QuoteBaseUrls()
     {
         var primary = _httpClient.BaseAddress?.ToString() ?? _options.GoldSgeBaseUrl;
-        var candidates = new[] { primary, _options.GoldSgeFallbackBaseUrl };
-
-        return candidates
-            .Where(url => !string.IsNullOrWhiteSpace(url))
-            .Select(url => url.EndsWith('/') ? url : $"{url}/")
-            .Distinct(StringComparer.OrdinalIgnoreCase);
-    }
-
-    private static decimal? ReadScaledDecimal(JsonElement element, string propertyName, int precision)
-    {
-        if (!element.TryGetProperty(propertyName, out var value))
-        {
-            return null;
-        }
-
-        if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number))
-        {
-            return number / (decimal)Math.Pow(10, precision);
-        }
-
-        if (value.ValueKind == JsonValueKind.String
-            && decimal.TryParse(value.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out number))
-        {
-            return number / (decimal)Math.Pow(10, precision);
-        }
-
-        return null;
-    }
-
-    private static int? ReadInt(JsonElement element, string propertyName)
-    {
-        if (!element.TryGetProperty(propertyName, out var value) || value.ValueKind != JsonValueKind.Number)
-        {
-            return null;
-        }
-
-        return value.TryGetInt32(out var result) ? result : null;
-    }
-
-    private static long? ReadLong(JsonElement element, string propertyName)
-    {
-        if (!element.TryGetProperty(propertyName, out var value) || value.ValueKind != JsonValueKind.Number)
-        {
-            return null;
-        }
-
-        return value.TryGetInt64(out var result) ? result : null;
+        return EastmoneyJsonReader.NormalizeBaseUrls(primary, _options.GoldSgeFallbackBaseUrl);
     }
 }

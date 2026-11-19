@@ -55,6 +55,8 @@ const fundDisclosure = shallowRef<
   | { status: 'ready'; profit: ReturnType<typeof latestFundDailyProfit> }
 >({ status: 'idle' })
 let fundDisclosureSequence = 0
+let dayChangeSequence = 0
+let monthChangeSequence = 0
 const quoteRefreshing = ref(false)
 const quoteError = ref('')
 
@@ -252,24 +254,36 @@ async function loadChanges(): Promise<void> {
 }
 
 async function loadDayChange(): Promise<void> {
+  const sequence = ++dayChangeSequence
   dayChangeError.value = ''
 
   try {
-    dayChange.value = await fetchDayChange()
+    const result = await fetchDayChange()
+    if (sequence === dayChangeSequence) {
+      dayChange.value = result
+    }
   } catch {
-    dayChange.value = null
-    dayChangeError.value = '当日变化暂时无法读取，请稍后重试。'
+    if (sequence === dayChangeSequence) {
+      dayChange.value = null
+      dayChangeError.value = '当日变化暂时无法读取，请稍后重试。'
+    }
   }
 }
 
 async function loadMonthChange(): Promise<void> {
+  const sequence = ++monthChangeSequence
   monthChangeError.value = ''
 
   try {
-    monthChange.value = await fetchMonthChange()
+    const result = await fetchMonthChange()
+    if (sequence === monthChangeSequence) {
+      monthChange.value = result
+    }
   } catch {
-    monthChange.value = null
-    monthChangeError.value = '本月变化暂时无法读取，请稍后重试。'
+    if (sequence === monthChangeSequence) {
+      monthChange.value = null
+      monthChangeError.value = '本月变化暂时无法读取，请稍后重试。'
+    }
   }
 }
 
@@ -321,6 +335,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   trendSequence++
   fundDisclosureSequence++
+  dayChangeSequence++
+  monthChangeSequence++
   const statusBar = document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-status-bar-style"]')
 
   if (statusBar) {

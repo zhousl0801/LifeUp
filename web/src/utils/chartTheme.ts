@@ -6,6 +6,8 @@ import { resolvedTheme } from './theme'
  */
 const light = {
   brand: '#4F46E5',
+  property: '#0EA5E9',
+  propertyArea: 'rgba(14, 165, 233, 0.34)',
   gain: '#C23838',
   loss: '#0F766E',
   text: '#525B6E',
@@ -15,11 +17,15 @@ const light = {
   marker: '#525B6E',
   areaStrong: 'rgba(79, 70, 229, 0.18)',
   areaSoft: 'rgba(79, 70, 229, 0.01)',
-  pointerShadow: 'rgba(15, 23, 42, 0.06)'
+  pointerShadow: 'rgba(15, 23, 42, 0.06)',
+  tooltipBg: 'rgba(255, 255, 255, 0.96)',
+  tooltipText: '#111827'
 } as const
 
 const dark = {
   brand: '#818CF8',
+  property: '#38BDF8',
+  propertyArea: 'rgba(56, 189, 248, 0.38)',
   gain: '#FF7A7A',
   loss: '#34D399',
   text: '#B4BCD0',
@@ -29,11 +35,15 @@ const dark = {
   marker: '#B4BCD0',
   areaStrong: 'rgba(129, 140, 248, 0.24)',
   areaSoft: 'rgba(129, 140, 248, 0.02)',
-  pointerShadow: 'rgba(255, 255, 255, 0.04)'
+  pointerShadow: 'rgba(255, 255, 255, 0.04)',
+  tooltipBg: 'rgba(24, 29, 44, 0.96)',
+  tooltipText: '#F1F5F9'
 } as const
 
 const hero = {
   brand: '#7CE7B1',
+  property: '#38BDF8',
+  propertyArea: 'rgba(56, 189, 248, 0.38)',
   gain: '#FF9898',
   loss: '#34D399',
   text: '#CBD5E1',
@@ -43,7 +53,9 @@ const hero = {
   marker: '#F8FAFC',
   areaStrong: 'rgba(124, 231, 177, 0.30)',
   areaSoft: 'rgba(124, 231, 177, 0.01)',
-  pointerShadow: 'rgba(0, 0, 0, 0.24)'
+  pointerShadow: 'rgba(0, 0, 0, 0.24)',
+  tooltipBg: 'rgba(46, 43, 70, 0.96)',
+  tooltipText: '#F7F5FF'
 } as const
 
 // 浅色主题的 Hero 是晴空极光紫：底色更亮，指针和文字需要更亮，曲线仍用薄荷绿，

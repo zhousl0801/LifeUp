@@ -142,6 +142,7 @@ async function toggleNotHeld(key: AssetKey, notHeld: boolean): Promise<void> {
       goldNotHeld: key === 'gold' ? notHeld : ledger.goldNotHeld,
       stockNotHeld: key === 'stock' ? notHeld : ledger.stockNotHeld
     })
+    ledgerStore.overview = overview.value
     toast.success(notHeld ? '已标记为不持有。' : '已恢复为待录入。')
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error, '保存失败，请重试。')

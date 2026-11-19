@@ -19,6 +19,8 @@ public sealed class LedgerRepository : ILedgerRepository
         _replayCache = replayCache ?? new ReplayDataCache();
     }
 
+    public long CacheVersion => _replayCache.Version;
+
     public async Task<IReadOnlyList<HistoryAuditDto>> GetHistoryAuditAsync(Guid ledgerId, CancellationToken cancellationToken)
     {
         return await _dbContext.MutationReceipts.AsNoTracking().Where(receipt => receipt.LedgerId == ledgerId && receipt.Operation == "history.change")
@@ -320,13 +322,25 @@ public sealed class LedgerRepository : ILedgerRepository
         string newName,
         CancellationToken cancellationToken)
     {
+        var normalized = EntryCategory.NormalizeName(newName);
+
+        if (_dbContext.Database.IsRelational())
+        {
+            await _dbContext.LedgerEntries
+                .Where(entry => entry.LedgerId == ledgerId && entry.Kind == kind && entry.Category == oldName)
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(entry => entry.Category, normalized),
+                    cancellationToken);
+            return;
+        }
+
         var entries = await _dbContext.LedgerEntries
             .Where(entry => entry.LedgerId == ledgerId && entry.Kind == kind && entry.Category == oldName)
             .ToListAsync(cancellationToken);
 
         foreach (var entry in entries)
         {
-            entry.ApplyCategoryRename(newName);
+            entry.ApplyCategoryRename(normalized);
         }
     }
 

@@ -44,6 +44,8 @@ export const useLedgerStore = defineStore('ledger', () => {
     try {
       const result = await initializeLedger(input)
       overview.value = result
+      errorMessage.value = null
+      lastLoadStatus.value = 'ready'
       return result
     } finally {
       isSaving.value = false

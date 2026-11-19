@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { ECharts } from 'echarts/core'
+import { computed, ref } from 'vue'
 import type { EChartsOption } from 'echarts'
-import { loadChartRuntime } from '../utils/chartRuntime'
+import { useEChart } from '../composables/useEChart'
 import { buildAssetTrend, buildTrendOption, trendAmountLabel } from '../utils/trend'
-import { resolvedTheme } from '../utils/theme'
 import type { AssetTrend, AssetTrendPoint } from '../types/trend'
 
 const props = defineProps<{
@@ -22,63 +20,26 @@ const chartLabel = computed(() => {
   const label = latest?.source.totalAssets == null ? '已记录资产' : '总资产'
   return `资产趋势图，${props.trend.from} 至 ${props.trend.to}；最新${label} ${trendAmountLabel(latest, props.amountsMasked)}`
 })
-let chart: ECharts | null = null
-let disposed = false
 
-function resize(): void {
-  chart?.resize()
-}
+useEChart(
+  container,
+  () => buildTrendOption(props.trend, series.value, props.variant ?? 'default', props.amountsMasked) as EChartsOption,
+  {
+    watchSources: () => [props.trend, props.trend.points, props.trend.points.length, props.variant, props.amountsMasked],
+    resizeOnUpdate: true,
+    onInit(chart) {
+      chart.on('updateAxisPointer', (event: unknown) => {
+        const payload = event as { axesInfo?: { axisDim: string; value: number | string }[] }
+        const value = payload.axesInfo?.find((axis) => axis.axisDim === 'x')?.value
+        const point = typeof value === 'number' && Number.isInteger(value)
+          ? props.trend.points[value]
+          : props.trend.points.find((item) => item.date === value)
 
-function render(): void {
-  chart?.setOption(
-    buildTrendOption(props.trend, series.value, props.variant ?? 'default', props.amountsMasked) as EChartsOption,
-    { notMerge: true }
-  )
-}
-
-onMounted(() => {
-  window.addEventListener('resize', resize)
-
-  void loadChartRuntime().then((echarts) => {
-    if (disposed || !container.value) {
-      return
+        if (point) emit('select', point)
+      })
     }
-
-    chart = echarts.init(container.value, undefined, { renderer: 'canvas' })
-    render()
-    chart.on('updateAxisPointer', (event: unknown) => {
-      const payload = event as { axesInfo?: { axisDim: string; value: number | string }[] }
-      const value = payload.axesInfo?.find((axis) => axis.axisDim === 'x')?.value
-      const point = typeof value === 'number' && Number.isInteger(value)
-        ? props.trend.points[value]
-        : props.trend.points.find((item) => item.date === value)
-
-      if (point) emit('select', point)
-    })
-  })
-})
-
-watch(
-  () => props.trend,
-  () => {
-    render()
-  },
-  { deep: true }
+  }
 )
-
-watch(
-  () => [props.variant, props.amountsMasked],
-  () => render()
-)
-
-watch(resolvedTheme, () => render())
-
-onBeforeUnmount(() => {
-  disposed = true
-  window.removeEventListener('resize', resize)
-  chart?.dispose()
-  chart = null
-})
 </script>
 
 <template>

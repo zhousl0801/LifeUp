@@ -198,7 +198,7 @@ public sealed class AssetTransaction
 
             Fee = fee.Value;
         }
-        else if (((pendingBuy || confirmedBuy || sellConfirm || stockTrade) && fee is not null) || stockTrade)
+        else if ((pendingBuy || confirmedBuy || sellConfirm || stockTrade) && fee is not null)
         {
             Fee = 0m;
         }

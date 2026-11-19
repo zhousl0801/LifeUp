@@ -3,24 +3,46 @@ export interface InvestmentActivityRow {
   key: string
   label: string
   labelTone?: 'buy' | 'neutral'
+  typeClass?: string
   title: string
   meta?: string
   time?: string
   amount: string
   amountTone?: string
   status?: string
-  statusTone?: 'pending' | 'done'
+  statusTone?: 'pending' | 'done' | 'reversed'
+  isPending?: boolean
+  clickable?: boolean
 }
 
 defineProps<{
   rows: InvestmentActivityRow[]
+  stagger?: boolean
+}>()
+
+const emit = defineEmits<{
+  select: [row: InvestmentActivityRow]
 }>()
 </script>
 
 <template>
   <section class="activity-list">
-    <div v-for="row in rows" :key="row.key" class="activity-row">
-      <span class="activity-type" :class="{ 'type-buy': row.labelTone === 'buy' }">{{ row.label }}</span>
+    <div
+      v-for="(row, index) in rows"
+      :key="row.key"
+      class="activity-row"
+      :class="{
+        'stagger-item': stagger,
+        'is-pending': row.isPending,
+        'is-clickable': row.clickable
+      }"
+      :style="stagger ? { '--stagger': Math.min(index, 8) } : undefined"
+      :role="row.clickable ? 'button' : undefined"
+      :tabindex="row.clickable ? 0 : undefined"
+      @click="row.clickable && emit('select', row)"
+      @keydown.enter="row.clickable && emit('select', row)"
+    >
+      <span class="activity-type" :class="[row.typeClass, { 'type-buy': row.labelTone === 'buy' }]">{{ row.label }}</span>
       <span class="activity-main">
         <strong>{{ row.title }}</strong>
         <small v-if="row.meta" class="activity-meta">{{ row.meta }}</small>
@@ -28,7 +50,16 @@ defineProps<{
       </span>
       <span class="activity-side">
         <b :class="row.amountTone">{{ row.amount }}</b>
-        <small v-if="row.status" :class="row.statusTone === 'pending' ? 'status-pending' : 'status-done'">
+        <small
+          v-if="row.status"
+          :class="
+            row.statusTone === 'pending'
+              ? 'status-pending'
+              : row.statusTone === 'reversed'
+                ? 'status-reversed'
+                : 'status-done'
+          "
+        >
           {{ row.status }}
         </small>
       </span>
@@ -50,12 +81,23 @@ defineProps<{
   display: flex;
   align-items: flex-start;
   gap: 12px;
+  box-sizing: border-box;
+  width: 100%;
   padding: 14px 16px;
   border-bottom: 1px solid var(--color-border-subtle);
+  text-align: left;
 }
 
 .activity-row:last-child {
   border-bottom: 0;
+}
+
+.activity-row.is-clickable {
+  cursor: pointer;
+}
+
+.activity-row.is-clickable:active {
+  background: var(--color-brand-soft);
 }
 
 .activity-type {
@@ -66,6 +108,7 @@ defineProps<{
   font-weight: 500;
 }
 
+.activity-type.type-sip,
 .activity-type.type-buy {
   color: var(--color-finance-loss);
 }
@@ -125,6 +168,10 @@ defineProps<{
 
 .status-done {
   color: var(--color-text-secondary);
+}
+
+.status-reversed {
+  color: var(--color-error);
 }
 
 .income {

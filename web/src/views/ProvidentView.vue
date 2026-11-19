@@ -368,7 +368,7 @@ function goBack(): void {
 
     <section v-else-if="errorMessage" class="state">
       <p>{{ errorMessage }}</p>
-      <LoadingButton class="secondary-button" :loading="isLoading" loading-label="加载中…" @click="loadOverview">重新加载</LoadingButton>
+      <LoadingButton class="secondary-button" :loading="isLoading" loading-label="加载中…" @click="loadPage">重新加载</LoadingButton>
     </section>
 
     <template v-else-if="overview">

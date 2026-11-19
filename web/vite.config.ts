@@ -16,8 +16,8 @@ export default defineConfig({
         id: '/',
         scope: '/',
         prefer_related_applications: false,
-        theme_color: '#F6F7FB',
-        background_color: '#F6F7FB',
+        theme_color: '#F4F6FA',
+        background_color: '#F4F6FA',
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',
@@ -41,6 +41,9 @@ export default defineConfig({
             purpose: 'maskable'
           }
         ]
+      },
+      workbox: {
+        navigateFallbackDenylist: [/^\/api\//]
       }
     })
   ],

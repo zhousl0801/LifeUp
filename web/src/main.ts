@@ -1,6 +1,6 @@
 import { createPinia } from 'pinia'
 import { createApp } from 'vue'
-import '../../docs/design/ui-color-tokens.css'
+import './styles/color-tokens.css'
 import './styles/tokens.css'
 import './style.css'
 import './styles/investment-hero.css'

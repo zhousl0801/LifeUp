@@ -35,24 +35,44 @@ public sealed class CapitalDefaultResolver
 
         if (hasHistory)
         {
-            var transactions = await _ledgerRepository.GetAllAssetTransactionsAsync(ledger.Id, cancellationToken);
+            var data = await _ledgerRepository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
+            var earliestMonth = months[^1];
+            var latestMonthEnd = months[0].AddMonths(1).AddDays(-1);
             var incomeTotal = 0m;
             var expenseTotal = 0m;
             var providentTotal = 0m;
 
-            foreach (var month in months)
+            foreach (var entry in data.Entries)
             {
-                var monthEnd = month.AddMonths(1).AddDays(-1);
-                var totals = await _ledgerRepository.GetEntryTotalsAsync(ledger.Id, month, monthEnd, cancellationToken);
-                incomeTotal += totals.Income;
-                expenseTotal += totals.Expense;
-                providentTotal += transactions
-                    .Where(transaction => !transaction.IsReversed
-                        && transaction.AssetType == AssetType.ProvidentFund
-                        && transaction.Kind == AssetTransactionKind.ProvidentDeposit
-                        && transaction.BusinessDate >= month
-                        && transaction.BusinessDate <= monthEnd)
-                    .Sum(transaction => transaction.Amount);
+                if (entry.Status != LedgerEntryStatus.Active
+                    || entry.BusinessDate < earliestMonth
+                    || entry.BusinessDate > latestMonthEnd)
+                {
+                    continue;
+                }
+
+                if (entry.Kind == LedgerEntryKind.Income)
+                {
+                    incomeTotal += entry.Amount;
+                }
+                else
+                {
+                    expenseTotal += entry.Amount;
+                }
+            }
+
+            foreach (var transaction in data.Transactions)
+            {
+                if (transaction.IsReversed
+                    || transaction.AssetType != AssetType.ProvidentFund
+                    || transaction.Kind != AssetTransactionKind.ProvidentDeposit
+                    || transaction.BusinessDate < earliestMonth
+                    || transaction.BusinessDate > latestMonthEnd)
+                {
+                    continue;
+                }
+
+                providentTotal += transaction.Amount;
             }
 
             income = Round(incomeTotal / months.Count);

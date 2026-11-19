@@ -64,9 +64,9 @@ export function buildTrendOption(
     tooltip: {
       trigger: 'axis',
       confine: true,
-      backgroundColor: isHero ? 'rgba(46, 43, 70, 0.96)' : undefined,
+      backgroundColor: theme.tooltipBg,
       borderWidth: 0,
-      textStyle: isHero ? { color: '#F7F5FF', fontSize: chartFontSize(12) } : undefined,
+      textStyle: { color: theme.tooltipText, fontSize: chartFontSize(12) },
       axisPointer: { type: 'line', lineStyle: { color: theme.pointer, type: 'dashed' } },
       formatter: (params: { dataIndex?: number }[]) => {
         const index = params[0]?.dataIndex

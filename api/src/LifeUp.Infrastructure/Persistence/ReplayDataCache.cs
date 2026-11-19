@@ -16,15 +16,21 @@ public sealed class ReplayDataCache
     private readonly ConcurrentDictionary<Guid, Entry> _entries = new();
     private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _gates = new();
     private readonly object _sync = new();
+    private readonly TimeProvider _timeProvider;
     private long _version;
+
+    public ReplayDataCache(TimeProvider? timeProvider = null)
+    {
+        _timeProvider = timeProvider ?? TimeProvider.System;
+    }
+
+    public long Version => Volatile.Read(ref _version);
 
     public async Task<LedgerReplayData> GetOrCreateAsync(
         Guid ledgerId,
         Func<CancellationToken, Task<LedgerReplayData>> load,
         CancellationToken cancellationToken)
     {
-        var version = Volatile.Read(ref _version);
-
         if (TryRead(ledgerId, out var cached))
         {
             return cached;
@@ -40,6 +46,8 @@ public sealed class ReplayDataCache
                 return cached;
             }
 
+            // 在拿锁后、真正加载前采样版本号，避免等待锁期间的失效误伤本次最新加载结果。
+            var version = Volatile.Read(ref _version);
             var data = await load(cancellationToken);
 
             // 加载期间发生过写入时不写入缓存，避免把旧快照留给后续请求。
@@ -47,7 +55,7 @@ public sealed class ReplayDataCache
             {
                 if (version == _version)
                 {
-                    _entries[ledgerId] = new Entry(DateTimeOffset.UtcNow.Add(Lifetime), data);
+                    _entries[ledgerId] = new Entry(_timeProvider.GetUtcNow().Add(Lifetime), data);
                 }
             }
 
@@ -70,7 +78,7 @@ public sealed class ReplayDataCache
 
     private bool TryRead(Guid ledgerId, out LedgerReplayData data)
     {
-        if (_entries.TryGetValue(ledgerId, out var entry) && entry.ExpiresAt > DateTimeOffset.UtcNow)
+        if (_entries.TryGetValue(ledgerId, out var entry) && entry.ExpiresAt > _timeProvider.GetUtcNow())
         {
             data = entry.Data;
             return true;

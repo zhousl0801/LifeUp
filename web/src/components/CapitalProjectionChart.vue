@@ -1,12 +1,10 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { ECharts } from 'echarts/core'
+import { computed, ref } from 'vue'
 import type { EChartsOption } from 'echarts'
 import type { CapitalProjectionPoint } from '../types/capital'
+import { useEChart } from '../composables/useEChart'
 import { buildCapitalChartOption, buildMonthlyChartOption, monthlySummary } from '../utils/capitalChart'
 import { MaskedMoney, formatMoney, formatSignedMoney } from '../utils/format'
-import { loadChartRuntime } from '../utils/chartRuntime'
-import { resolvedTheme } from '../utils/theme'
 
 const props = defineProps<{
   points: CapitalProjectionPoint[]
@@ -27,14 +25,8 @@ const title = computed(() => (props.view === 'monthly' ? '每月积累' : '积�
 const chartLabel = computed(() => props.view === 'monthly'
   ? '每月积累预测图，展示净积累和投资收益'
   : '资本积累预测图，展示净积累、投资收益和目标线')
-let chart: ECharts | null = null
-let disposed = false
 
-function resize(): void {
-  chart?.resize()
-}
-
-function render(): void {
+function buildOption(): EChartsOption {
   const option = props.view === 'monthly'
     ? buildMonthlyChartOption({
         points: props.points,
@@ -51,7 +43,7 @@ function render(): void {
         amountsMasked: props.amountsMasked
       })
 
-  chart?.setOption(option as EChartsOption, { notMerge: true })
+  return option as EChartsOption
 }
 
 function setView(view: 'capital' | 'monthly'): void {
@@ -62,35 +54,18 @@ function masked(value: number): string {
   return props.amountsMasked ? MaskedMoney : formatSignedMoney(value)
 }
 
-onMounted(() => {
-  window.addEventListener('resize', resize)
-
-  void loadChartRuntime().then((echarts) => {
-    if (disposed || !container.value) {
-      return
-    }
-
-    chart = echarts.init(container.value, undefined, { renderer: 'canvas' })
-    render()
-  })
-})
-
-watch(
-  () => [props.points, props.targetAmount, props.view, props.amountsMasked, props.currentTotal, props.currentMonth],
-  () => {
-    resize()
-    render()
-  },
-  { deep: true, flush: 'post' }
-)
-
-watch(resolvedTheme, () => render())
-
-onBeforeUnmount(() => {
-  disposed = true
-  window.removeEventListener('resize', resize)
-  chart?.dispose()
-  chart = null
+useEChart(container, buildOption, {
+  watchSources: () => [
+    props.points,
+    props.points.length,
+    props.targetAmount,
+    props.view,
+    props.amountsMasked,
+    props.currentTotal,
+    props.currentMonth
+  ],
+  flush: 'post',
+  resizeOnUpdate: true
 })
 </script>
 

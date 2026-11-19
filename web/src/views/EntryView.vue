@@ -410,7 +410,7 @@ function suppressCategoryClick(): void {
   suppressClickTimer = setTimeout(() => {
     suppressClickTimer = undefined
     suppressNextCategoryClick = false
-  }, 600)
+  }, 80)
 }
 
 function categoryTileAt(x: number, y: number): string | null {
@@ -724,7 +724,7 @@ function goBack(): void {
 }
 
 function handleKeydown(event: KeyboardEvent): void {
-  if (event.defaultPrevented || categorySheet.value !== null || leaveDecision.value || isSaving.value
+  if (event.defaultPrevented || categorySheet.value !== null || showReverse.value || leaveDecision.value || isSaving.value
     || (event.target instanceof Element && event.target.closest('[role="dialog"]'))
     || event.metaKey || event.ctrlKey || event.altKey) {
     return
@@ -849,6 +849,7 @@ function handleKeydown(event: KeyboardEvent): void {
             @pointermove="moveCategoryPress"
             @pointerup="endCategoryPress"
             @pointercancel="endCategoryPress"
+            @lostpointercapture="endCategoryPress"
             @click="handleCategoryClick(option)"
             @contextmenu.prevent
           >

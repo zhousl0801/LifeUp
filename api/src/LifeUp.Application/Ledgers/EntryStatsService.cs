@@ -82,7 +82,7 @@ public sealed class EntryStatsService
         IReadOnlyList<LedgerEntry> entries,
         IReadOnlyDictionary<(LedgerEntryKind Kind, string Name), string?> iconsByCategory)
     {
-        if (to < from || from > to)
+        if (to < from)
         {
             return [];
         }
@@ -102,15 +102,39 @@ public sealed class EntryStatsService
 
         if (period == EntryPeriod.Month)
         {
+            var entriesByDate = entries.ToLookup(entry => entry.BusinessDate);
+
             for (var date = from; date <= to; date = date.AddDays(1))
             {
-                var dayEntries = entries.Where(entry => entry.BusinessDate == date).ToList();
-                var representative = dayEntries.OrderByDescending(entry => entry.Amount).ThenBy(entry => entry.Id).FirstOrDefault();
+                var dayEntries = entriesByDate[date];
+                var income = 0m;
+                var expense = 0m;
+                LedgerEntry? representative = null;
+
+                foreach (var entry in dayEntries)
+                {
+                    if (entry.Kind == LedgerEntryKind.Income)
+                    {
+                        income += entry.Amount;
+                    }
+                    else
+                    {
+                        expense += entry.Amount;
+                    }
+
+                    if (representative is null
+                        || entry.Amount > representative.Amount
+                        || (entry.Amount == representative.Amount && entry.Id.CompareTo(representative.Id) < 0))
+                    {
+                        representative = entry;
+                    }
+                }
+
                 points.Add(new EntryStatsPointDto(
                     date,
                     $"{date.Day}日",
-                    Round(dayEntries.Where(entry => entry.Kind == LedgerEntryKind.Income).Sum(entry => entry.Amount)),
-                    Round(dayEntries.Where(entry => entry.Kind == LedgerEntryKind.Expense).Sum(entry => entry.Amount)),
+                    Round(income),
+                    Round(expense),
                     representative?.Category,
                     representative is null ? null : iconsByCategory.GetValueOrDefault((representative.Kind, representative.Category))));
             }
@@ -118,18 +142,33 @@ public sealed class EntryStatsService
             return points;
         }
 
+        var entriesByMonth = entries
+            .Where(entry => entry.BusinessDate.Year == from.Year)
+            .ToLookup(entry => entry.BusinessDate.Month);
+
         for (var month = 1; month <= to.Month; month++)
         {
             var monthStart = new DateOnly(from.Year, month, 1);
-            var monthEnd = new DateOnly(from.Year, month, DateTime.DaysInMonth(from.Year, month));
-            var monthEntries = entries
-                .Where(entry => entry.BusinessDate >= monthStart && entry.BusinessDate <= monthEnd)
-                .ToList();
+            var income = 0m;
+            var expense = 0m;
+
+            foreach (var entry in entriesByMonth[month])
+            {
+                if (entry.Kind == LedgerEntryKind.Income)
+                {
+                    income += entry.Amount;
+                }
+                else
+                {
+                    expense += entry.Amount;
+                }
+            }
+
             points.Add(new EntryStatsPointDto(
                 monthStart,
                 $"{month}月",
-                Round(monthEntries.Where(entry => entry.Kind == LedgerEntryKind.Income).Sum(entry => entry.Amount)),
-                Round(monthEntries.Where(entry => entry.Kind == LedgerEntryKind.Expense).Sum(entry => entry.Amount))));
+                Round(income),
+                Round(expense)));
         }
 
         return points;

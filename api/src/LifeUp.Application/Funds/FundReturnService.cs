@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using LifeUp.Application.History;
 using LifeUp.Application.Ledgers;
 using LifeUp.Domain.Assets;
@@ -7,16 +6,18 @@ namespace LifeUp.Application.Funds;
 
 public sealed class FundReturnService
 {
-    private static readonly ConcurrentDictionary<string, CacheEntry> Cache = new();
-    private static readonly TimeSpan CacheLifetime = TimeSpan.FromSeconds(20);
-
     private readonly ILedgerRepository _ledgerRepository;
     private readonly BusinessDateProvider _dates;
+    private readonly DerivedReadCache _cache;
 
-    public FundReturnService(ILedgerRepository ledgerRepository, BusinessDateProvider dates)
+    public FundReturnService(
+        ILedgerRepository ledgerRepository,
+        BusinessDateProvider dates,
+        DerivedReadCache? cache = null)
     {
         _ledgerRepository = ledgerRepository;
         _dates = dates;
+        _cache = cache ?? new DerivedReadCache();
     }
 
     public async Task<FundReturnDto?> GetAsync(
@@ -34,6 +35,25 @@ public sealed class FundReturnService
         }
 
         var today = _dates.Today;
+        var anchorDate = anchor ?? today;
+
+        if (anchorDate > today)
+        {
+            anchorDate = today;
+        }
+
+        if (anchorDate < ledger.StartDate)
+        {
+            anchorDate = ledger.StartDate;
+        }
+
+        var cacheKey = $"fund-return:{ledger.Id:N}:{ledger.Version}:{_ledgerRepository.CacheVersion}:{range}:{anchorDate:yyyyMMdd}:{groupId}:{ungrouped}:{today:yyyyMMdd}";
+
+        if (_cache.TryGet<FundReturnDto>(cacheKey, out var cached))
+        {
+            return cached;
+        }
+
         var data = await _ledgerRepository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
         var facts = BusinessFact.From(data);
         var active = facts.Where(fact => !fact.IsReversed).ToList();
@@ -53,29 +73,6 @@ public sealed class FundReturnService
             return EmptyResult(range, today, today, ["当前分组没有基金持仓。"]);
         }
 
-        var anchorDate = anchor ?? today;
-
-        if (anchorDate > today)
-        {
-            anchorDate = today;
-        }
-
-        if (anchorDate < ledger.StartDate)
-        {
-            anchorDate = ledger.StartDate;
-        }
-
-        var scopeKey = string.Join(",", positions.Select(position => $"{position.Id:N}:{position.FundGroupId}"));
-        var groupKey = string.Join(",", groups
-            .OrderBy(group => group.Id)
-            .Select(group => $"{group.Id:N}:{group.Name}:{group.SortOrder}"));
-        var cacheKey = $"{ledger.Id:N}:{ledger.Version}:{range}:{anchorDate:yyyyMMdd}:{groupId}:{ungrouped}:{today:yyyyMMdd}:{scopeKey}:{groupKey}";
-
-        if (TryGetCached(cacheKey, out var cached))
-        {
-            return cached;
-        }
-
         var familyKeys = FundIdentity.FamilyKeys(positions);
         var fundNames = positions
             .GroupBy(position => familyKeys[position.Id], StringComparer.Ordinal)
@@ -89,8 +86,41 @@ public sealed class FundReturnService
             from = today;
         }
 
+        var observations = positions.ToDictionary(
+            position => position.Id,
+            position => BuildObservations(data, activeIds, ledger.StartDate, today, position.Id));
+        var requiredDates = new HashSet<DateOnly> { today };
+
+        for (var date = from; date <= today; date = date.AddDays(1))
+        {
+            requiredDates.Add(date);
+        }
+
+        var candidateBaseline = from.AddDays(-1);
+
+        if (candidateBaseline >= ledger.StartDate)
+        {
+            requiredDates.Add(candidateBaseline);
+        }
+
+        foreach (var position in positions)
+        {
+            var series = observations[position.Id];
+
+            foreach (var observation in series.Where(item => item.Date >= from && item.Date <= today))
+            {
+                var previous = series.LastOrDefault(item => item.Date < observation.Date);
+
+                if (previous is not null)
+                {
+                    requiredDates.Add(previous.Date);
+                }
+            }
+        }
+
         var calculator = new LedgerReplayCalculator();
-        var replays = new Dictionary<DateOnly, ReplayResult>();
+        var replays = new Dictionary<DateOnly, ReplayResult>(
+            calculator.CalculateDates(data, facts, requiredDates, currentDate: today));
 
         ReplayResult Replay(DateOnly date)
         {
@@ -106,7 +136,7 @@ public sealed class FundReturnService
         var coverage = positions.ToDictionary(
             position => position.Id,
             position => Replay(today).Funds.FirstOrDefault(fund => fund.PositionId == position.Id)?.CoverageFrom);
-        var baseline = from.AddDays(-1);
+        var baseline = candidateBaseline;
         var intervalFrom = from;
         var usesLedgerStart = baseline < ledger.StartDate;
 
@@ -137,9 +167,6 @@ public sealed class FundReturnService
             notes.Add("区间盈亏自账本起始日收盘起算。");
         }
 
-        var observations = positions.ToDictionary(
-            position => position.Id,
-            position => BuildObservations(data, activeIds, ledger.StartDate, today, position.Id));
         var (corrections, correctionsKnown) = BuildCorrections(data, facts, calculator, positions, today);
         var profits = CalculateProfitTable(
             positions,
@@ -293,39 +320,9 @@ public sealed class FundReturnService
             points,
             fundSummaries,
             notes.Distinct().ToList());
-        Store(cacheKey, result);
+        _cache.Set(cacheKey, result);
         return result;
     }
-
-    private static bool TryGetCached(string key, out FundReturnDto value)
-    {
-        if (Cache.TryGetValue(key, out var entry) && entry.ExpiresAt > DateTimeOffset.UtcNow)
-        {
-            value = entry.Data;
-            return true;
-        }
-
-        Cache.TryRemove(key, out _);
-        value = null!;
-        return false;
-    }
-
-    private static void Store(string key, FundReturnDto value)
-    {
-        if (Cache.Count >= 64)
-        {
-            var now = DateTimeOffset.UtcNow;
-
-            foreach (var pair in Cache.Where(pair => pair.Value.ExpiresAt <= now).ToList())
-            {
-                Cache.TryRemove(pair.Key, out _);
-            }
-        }
-
-        Cache[key] = new CacheEntry(DateTimeOffset.UtcNow.Add(CacheLifetime), value);
-    }
-
-    private sealed record CacheEntry(DateTimeOffset ExpiresAt, FundReturnDto Data);
 
     public async Task<FundReturnDayDto?> GetDayAsync(
         DateOnly date,
@@ -638,8 +635,30 @@ public sealed class FundReturnService
     {
         var active = facts.Where(fact => !fact.IsReversed).ToList();
         var activeIds = active.Select(fact => fact.Id).ToHashSet();
+        var observations = positions.ToDictionary(
+            position => position.Id,
+            position => BuildObservations(data, activeIds, ledgerStart, date, position.Id));
+        var requiredDates = new HashSet<DateOnly> { date };
+
+        foreach (var position in positions)
+        {
+            var series = observations[position.Id];
+            var observation = series.LastOrDefault(item => item.Date == date);
+
+            if (observation is not null)
+            {
+                var previous = series.LastOrDefault(item => item.Date < date);
+
+                if (previous is not null)
+                {
+                    requiredDates.Add(previous.Date);
+                }
+            }
+        }
+
         var calculator = new LedgerReplayCalculator();
-        var replays = new Dictionary<DateOnly, ReplayResult>();
+        var replays = new Dictionary<DateOnly, ReplayResult>(
+            calculator.CalculateDates(data, facts, requiredDates, currentDate: today));
 
         ReplayResult Replay(DateOnly target)
         {
@@ -652,9 +671,6 @@ public sealed class FundReturnService
             return result;
         }
 
-        var observations = positions.ToDictionary(
-            position => position.Id,
-            position => BuildObservations(data, activeIds, ledgerStart, date, position.Id));
         var (corrections, correctionsKnown) = BuildCorrections(data, facts, calculator, positions, date);
         var profits = new Dictionary<Guid, decimal?>();
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { navigateBack } from '../utils/navigation'
 import Decimal from 'decimal.js'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ApiError, getApiErrorMessage } from '../api/client'
 import { toast } from '../composables/useMessage'
@@ -12,27 +12,31 @@ import MoneyAmount from '../components/MoneyAmount.vue'
 import BackButton from '../components/BackButton.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import LoadingState from '../components/LoadingState.vue'
-import InvestmentActivityList, { type InvestmentActivityRow } from '../components/InvestmentActivityList.vue'
+import InvestmentActivityList from '../components/InvestmentActivityList.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import { useUnsavedSheet } from '../composables/useUnsavedSheet'
 import ConfirmSheet from '../components/ConfirmSheet.vue'
 import {
+  addAmounts,
   amountTone,
+  calculatePercent,
+  divideUnitPrice,
   formatBusinessDate,
-  formatBusinessTime,
   formatMoney,
-  formatQuantity,
+  formatPercent,
   formatSignedMoney,
   formatUnitPrice,
   parseNonNegativeQuantity,
   parsePrice,
   parseQuantity,
   parseUnitPrice,
+  subtractAmounts,
+  sumAmounts,
   todayInBusinessTimeZone
 } from '../utils/format'
 import { createRequestId } from '../utils/request'
+import { formatShares, toStockActivityRow } from '../utils/stockActivities'
 import type {
-  StockActivity,
   StockMarket,
   StockOverview,
   StockPosition,
@@ -119,17 +123,18 @@ const sortedPositions = computed(() => {
 })
 
 const groupedPositions = computed(() => marketOrder
-  .map((market) => ({
-    market,
-    label: marketLabels[market],
-    positions: sortedPositions.value.filter((position) => position.market === market),
-    value: sortedPositions.value
-      .filter((position) => position.market === market)
-      .reduce((total, position) => total + position.value, 0),
-    todayProfit: sortedPositions.value
-      .filter((position) => position.market === market && position.todayProfit !== null)
-      .reduce((total, position) => total + (position.todayProfit ?? 0), 0)
-  }))
+  .map((market) => {
+    const positions = sortedPositions.value.filter((position) => position.market === market)
+    return {
+      market,
+      label: marketLabels[market],
+      positions,
+      value: sumAmounts(positions.map((position) => position.value)),
+      todayProfit: sumAmounts(positions
+        .filter((position) => position.todayProfit !== null)
+        .map((position) => position.todayProfit))
+    }
+  })
   .filter((group) => group.positions.length > 0))
 
 const detailActivities = computed(() => selectedPosition.value
@@ -161,30 +166,24 @@ const totalTodayPercent = computed(() => {
     return null
   }
 
-  const previousValue = data.totalValue - data.todayProfit
-
-  if (previousValue <= 0) {
-    return null
-  }
-
-  return data.todayProfit / previousValue * 100
+  return calculatePercent(data.todayProfit, subtractAmounts(data.totalValue, data.todayProfit))
 })
 
 // 总收益按持有收益加已实现收益展示，总收益率用剩余持仓成本作分母。
 const totalProfit = computed<number | null>(() => {
   const data = overview.value
 
-  return data ? data.holdingProfit + data.realizedProfit : null
+  return data ? addAmounts(data.holdingProfit, data.realizedProfit) : null
 })
 
 const totalRate = computed<number | null>(() => {
   const data = overview.value
 
-  if (!data || data.totalCost <= 0) {
+  if (!data) {
     return null
   }
 
-  return (data.holdingProfit + data.realizedProfit) / data.totalCost * 100
+  return calculatePercent(addAmounts(data.holdingProfit, data.realizedProfit), data.totalCost)
 })
 
 const shareMax = computed(() => selectedPosition.value?.shares ?? 0)
@@ -308,10 +307,20 @@ const canSubmit = computed(() => {
   }
 })
 
+let unmounted = false
+let searchSequence = 0
+
 onMounted(async () => {
   await loadOverview()
+  if (unmounted) return
   await loadLedgerStartDate()
+  if (unmounted) return
   await refreshOnEnter()
+})
+
+onBeforeUnmount(() => {
+  unmounted = true
+  searchSequence++
 })
 
 async function loadLedgerStartDate(): Promise<void> {
@@ -328,6 +337,12 @@ async function loadOverview(): Promise<void> {
 
   try {
     overview.value = await fetchStockOverview()
+    if (selectedPosition.value) {
+      const updated = overview.value.positions.find((position) => position.id === selectedPosition.value?.id)
+      if (updated) {
+        selectedPosition.value = updated
+      }
+    }
   } catch (error) {
     overview.value = null
 
@@ -421,16 +436,11 @@ function openSheet(kind: SheetKind, position: StockPosition | null = null): void
   if (kind === 'holding' && position) {
     form.shares = String(position.shares)
     // 成本按元/股编辑；用总额除以股数还原单价，避免四舍五入后再乘回去产生总额漂移。
-    form.cost = position.shares > 0 ? String(Number((position.cost / position.shares).toFixed(4))) : ''
+    form.cost = divideUnitPrice(position.cost, position.shares)
   }
 
-  if (kind === 'holding' || kind === 'buy') {
-    const market = kind === 'holding' ? position?.market : undefined
-    const code = kind === 'holding' ? position?.code : undefined
-
-    if (market && code) {
-      void loadQuote(market, code)
-    }
+  if (kind === 'holding' && position) {
+    void loadQuote(position.market, position.code)
   }
 }
 
@@ -480,6 +490,8 @@ function openDetail(position: StockPosition): void {
 
 function closeSheet(): void {
   if (!isSaving.value) {
+    searchSequence++
+    searching.value = false
     sheet.value = null
     selectedPosition.value = null
     selectedStock.value = null
@@ -494,17 +506,25 @@ async function runSearch(): Promise<void> {
     return
   }
 
+  const sequence = ++searchSequence
   searching.value = true
   searched.value = true
   searchResults.value = []
   formError.value = ''
 
   try {
-    searchResults.value = await searchStocks(query)
+    const results = await searchStocks(query)
+    if (sequence === searchSequence) {
+      searchResults.value = results
+    }
   } catch (error) {
-    formError.value = getApiErrorMessage(error, '股票搜索失败，请稍后重试。')
+    if (sequence === searchSequence) {
+      formError.value = getApiErrorMessage(error, '股票搜索失败，请稍后重试。')
+    }
   } finally {
-    searching.value = false
+    if (sequence === searchSequence) {
+      searching.value = false
+    }
   }
 }
 
@@ -661,14 +681,6 @@ async function submitHolding(): Promise<void> {
   await loadOverview()
 }
 
-function formatShares(value: number | null | undefined): string {
-  if (value === null || value === undefined) {
-    return '—'
-  }
-
-  return formatQuantity(value).replace(/\.?0+$/, '') || '0'
-}
-
 function positionTodayText(position: StockPosition): string {
   return position.todayProfit === null ? '—' : formatSignedMoney(position.todayProfit)
 }
@@ -681,17 +693,7 @@ function positionChangePercent(position: StockPosition): number | null {
     return null
   }
 
-  return (position.price - previousClose) / previousClose * 100
-}
-
-function formatPercent(value: number | null): string {
-  if (value === null) {
-    return ''
-  }
-
-  const sign = value > 0 ? '+' : value < 0 ? '−' : ''
-
-  return `${sign}${Math.abs(value).toFixed(2)}%`
+  return calculatePercent(subtractAmounts(position.price, previousClose), previousClose)
 }
 
 function positionAverageCostText(position: StockPosition): string {
@@ -699,11 +701,11 @@ function positionAverageCostText(position: StockPosition): string {
 }
 
 function positionTotalProfit(position: StockPosition): number {
-  return position.holdingProfit + position.realizedProfit
+  return addAmounts(position.holdingProfit, position.realizedProfit)
 }
 
 function positionTotalRate(position: StockPosition): number | null {
-  return position.cost > 0 ? positionTotalProfit(position) / position.cost * 100 : null
+  return calculatePercent(positionTotalProfit(position), position.cost)
 }
 
 async function markNotHeld(): Promise<void> {
@@ -732,110 +734,8 @@ function positionTodayLabel(position: StockPosition): string {
   return position.todayProfit === null ? `${prefix} —` : `${prefix} ${positionTodayText(position)}`
 }
 
-function activityLabel(activity: StockActivity): string {
-  switch (activity.type) {
-    case 'buy':
-      return '买入'
-    case 'sell':
-      return '卖出'
-    case 'opening':
-      return '建仓'
-    case 'correction':
-      return '核对'
-    default:
-      return '行情'
-  }
-}
-
-function activityStatus(activity: StockActivity): string {
-  switch (activity.type) {
-    case 'buy':
-    case 'sell':
-      return '已成交'
-    case 'opening':
-      return '已录入'
-    case 'correction':
-      return '已核对'
-    default:
-      return '仅更新估值'
-  }
-}
-
-function activityTime(activity: StockActivity): string {
-  return [formatBusinessDate(activity.businessDate), formatBusinessTime(activity.createdAt)]
-    .filter(Boolean)
-    .join(' ')
-}
-
-function activityCostPerShare(activity: StockActivity): number | null {
-  if (activity.shares === null || activity.shares <= 0) {
-    return null
-  }
-
-  return new Decimal(activity.amount)
-    .div(activity.shares)
-    .toDecimalPlaces(3, Decimal.ROUND_HALF_UP)
-    .toNumber()
-}
-
-function activityMeta(activity: StockActivity): string {
-  const quantity = activity.shares === null ? '' : `${formatShares(activity.shares)} 股`
-
-  if (activity.type === 'buy' || activity.type === 'sell') {
-    const price = activity.price === null
-      ? ''
-      : `${activity.type === 'buy' ? '成本' : '成交价'} ${formatUnitPrice(activity.price)}/股`
-    return [quantity, price].filter(Boolean).join(' · ')
-  }
-
-  if (activity.type === 'correction' || activity.type === 'opening') {
-    const cost = activityCostPerShare(activity)
-    return [
-      quantity,
-      cost === null ? `成本 ${formatMoney(activity.amount)}` : `成本 ${formatUnitPrice(cost)}/股`
-    ].filter(Boolean).join(' · ')
-  }
-
-  return ''
-}
-
-function activityAmount(activity: StockActivity): string {
-  if (activity.type === 'buy' || activity.type === 'sell') {
-    return `${formatSignedMoney(activity.cashEffect)}元`
-  }
-
-  if (activity.type === 'correction' || activity.type === 'opening') {
-    return `${formatMoney(activity.amount)}元`
-  }
-
-  return activity.price === null ? '—' : `${formatUnitPrice(activity.price)}元/股`
-}
-
-function activityAmountTone(activity: StockActivity): string {
-  if (activity.type === 'buy') {
-    return 'transfer'
-  }
-
-  return activity.type === 'sell' ? 'income' : ''
-}
-
-function toActivityRow(activity: StockActivity): InvestmentActivityRow {
-  return {
-    key: activity.id,
-    label: activityLabel(activity),
-    labelTone: activity.type === 'buy' ? 'buy' : 'neutral',
-    title: `股票 | ${activity.positionName}`,
-    meta: activityMeta(activity),
-    time: activityTime(activity),
-    amount: activityAmount(activity),
-    amountTone: activityAmountTone(activity),
-    status: activityStatus(activity),
-    statusTone: 'done'
-  }
-}
-
-const activityRows = computed(() => (overview.value?.activities ?? []).map(toActivityRow))
-const detailActivityRows = computed(() => detailActivities.value.map(toActivityRow))
+const activityRows = computed(() => (overview.value?.activities ?? []).map(toStockActivityRow))
+const detailActivityRows = computed(() => detailActivities.value.map(toStockActivityRow))
 
 function goBack(): void {
   navigateBack(router)
@@ -1129,7 +1029,7 @@ function goBack(): void {
             <span>成交价（元）</span>
             <input v-model="form.price" type="text" inputmode="decimal" autocomplete="off" placeholder="0.00" @input="formError = ''" />
             <small v-if="quoteLoading">正在获取最新价…</small>
-            <small v-else-if="form.price">默认取最新价 {{ formatUnitPrice(Number(form.price)) }}（{{ formatBusinessDate(form.priceDate) }}），可按实际成交价修改</small>
+            <small v-else-if="form.price">默认取最新价 {{ formatUnitPrice(parseUnitPrice(form.price)) }}（{{ formatBusinessDate(form.priceDate) }}），可按实际成交价修改</small>
             <small v-else-if="quoteError">{{ quoteError }}</small>
           </label>
           <label class="form-field">
@@ -1178,7 +1078,7 @@ function goBack(): void {
           <div class="quote-line">
             <span>现价</span>
             <b v-if="quoteLoading">正在获取…</b>
-            <b v-else-if="form.price && form.priceDate">{{ formatUnitPrice(Number(form.price)) }} 元 · {{ formatBusinessDate(form.priceDate) }}</b>
+            <b v-else-if="form.price && form.priceDate">{{ formatUnitPrice(parseUnitPrice(form.price)) }} 元 · {{ formatBusinessDate(form.priceDate) }}</b>
             <b v-else>未获取到行情</b>
             <LoadingButton class="text-button" :loading="quoteLoading" loading-label="获取中…" @click="retryQuote">重新获取</LoadingButton>
           </div>

@@ -2,42 +2,28 @@
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import type {
   CapitalEffectiveInputs,
-  CapitalEffectiveValue,
   CapitalGoalSettings,
   CapitalOverview,
   CapitalSuggestions
 } from '../types/capital'
 import { useUnsavedSheet } from '../composables/useUnsavedSheet'
-import { formatMoney, formatSignedMoney, parseAmount, parseSignedAmount } from '../utils/format'
+import {
+  amountHint,
+  fieldKeys,
+  formatNet,
+  formatRate,
+  investmentPresets,
+  parseInput,
+  percentHint,
+  toAssumptionsForm,
+  toAssumptionsSettings,
+  validateAssumptionsFields,
+  type FieldKey
+} from '../utils/capitalAssumptionsForm'
+import { formatMoney, parseAmount } from '../utils/format'
 import BottomSheet from './BottomSheet.vue'
 import ConfirmSheet from './ConfirmSheet.vue'
 import LoadingButton from './LoadingButton.vue'
-
-type FieldKey =
-  | 'targetAmount'
-  | 'monthlyIncome'
-  | 'monthlyExpense'
-  | 'monthlyProvidentDeposit'
-  | 'incomeGrowthPercent'
-  | 'expenseGrowthPercent'
-  | 'investmentAnnualReturnPercent'
-  | 'providentAnnualReturnPercent'
-  | 'annualBonus'
-  | 'bonusPayoutMonth'
-
-const amountFields: FieldKey[] = ['monthlyIncome', 'monthlyExpense', 'monthlyProvidentDeposit', 'annualBonus']
-const monthFields: FieldKey[] = ['bonusPayoutMonth']
-const percentFields: FieldKey[] = [
-  'incomeGrowthPercent',
-  'expenseGrowthPercent',
-  'investmentAnnualReturnPercent',
-  'providentAnnualReturnPercent'
-]
-const fieldKeys: FieldKey[] = ['targetAmount', ...amountFields, ...monthFields, ...percentFields]
-const investmentPresets = [
-  { label: '纳指100 20年 ≈13%', value: 13 },
-  { label: '标普500 20年 ≈10%', value: 10 }
-]
 
 const props = defineProps<{
   open: boolean
@@ -72,12 +58,33 @@ const errors = reactive<Partial<Record<FieldKey, string>>>({})
 const sessionKey = ref(0)
 const followProfile = ref(false)
 let previewTimer: ReturnType<typeof setTimeout> | null = null
+let skipNextPreviewSchedule = false
+
+function clearPreviewTimer(): void {
+  if (previewTimer) {
+    clearTimeout(previewTimer)
+    previewTimer = null
+  }
+}
+
+function assignFieldsSilently(next: Partial<Record<FieldKey, string>>): void {
+  const changed = Object.entries(next).some(([key, value]) => fields[key as FieldKey] !== value)
+  if (!changed) {
+    return
+  }
+
+  skipNextPreviewSchedule = true
+  Object.assign(fields, next)
+  void Promise.resolve().then(() => {
+    skipNextPreviewSchedule = false
+  })
+}
 
 const { discardOpen, requestClose, resolveDiscard } = useUnsavedSheet(
   () => String(sessionKey.value),
   () => props.open,
   () => props.saving,
-  () => ({ ...fields }),
+  () => ({ ...fields, followProfile: String(followProfile.value) }),
   () => emit('close')
 )
 
@@ -110,18 +117,16 @@ const previewBlended = computed(() => props.preview?.projection.blendedAnnualRet
 watch(
   () => props.open,
   (open) => {
+    clearPreviewTimer()
     if (open) {
       followProfile.value = props.hasSalaryProfile
         && (props.settings.useSalaryProfile
           || (props.settings.monthlyIncome === null
             && props.settings.monthlyProvidentDeposit === null
             && (props.settings.annualBonus ?? null) === null))
-      Object.assign(fields, toForm(props.settings))
+      assignFieldsSilently(toAssumptionsForm(props.settings))
       clearErrors()
       sessionKey.value++
-    } else if (previewTimer) {
-      clearTimeout(previewTimer)
-      previewTimer = null
     }
   },
   { immediate: true }
@@ -130,7 +135,7 @@ watch(
 watch(
   fields,
   () => {
-    if (!props.open) {
+    if (!props.open || skipNextPreviewSchedule) {
       return
     }
 
@@ -141,74 +146,12 @@ watch(
 )
 
 onBeforeUnmount(() => {
-  if (previewTimer) {
-    clearTimeout(previewTimer)
-  }
+  clearPreviewTimer()
 })
-
-function toForm(settings: CapitalGoalSettings): Record<FieldKey, string> {
-  const value = (number: number | null) => (number === null ? '' : String(number))
-
-  return {
-    targetAmount: formatWan(settings.targetAmount),
-    monthlyIncome: value(settings.monthlyIncome),
-    monthlyExpense: value(settings.monthlyExpense),
-    monthlyProvidentDeposit: value(settings.monthlyProvidentDeposit),
-    incomeGrowthPercent: value(settings.incomeGrowthPercent),
-    expenseGrowthPercent: value(settings.expenseGrowthPercent),
-    investmentAnnualReturnPercent: value(settings.investmentAnnualReturnPercent),
-    providentAnnualReturnPercent: value(settings.providentAnnualReturnPercent),
-    annualBonus: value(settings.annualBonus ?? null),
-    bonusPayoutMonth: settings.bonusPayoutMonth == null ? '1' : String(settings.bonusPayoutMonth)
-  }
-}
 
 function validateFields(): void {
   clearErrors()
-
-  const targetText = fields.targetAmount.trim()
-
-  if (targetText && parseTarget(targetText) === null) {
-    errors.targetAmount = '目标金额必须大于零，最多四位小数（万元）。'
-  }
-
-  const followedFields = followProfile.value
-    ? new Set<FieldKey>(['monthlyIncome', 'monthlyProvidentDeposit', 'annualBonus', 'bonusPayoutMonth'])
-    : new Set<FieldKey>()
-
-  for (const key of amountFields) {
-    if (followedFields.has(key)) {
-      continue
-    }
-
-    const text = fields[key].trim()
-
-    if (text && parseAmount(text) === null) {
-      errors[key] = '金额必须不小于零，最多两位小数。'
-    }
-  }
-
-  if (!followedFields.has('bonusPayoutMonth')) {
-    const month = Number(fields.bonusPayoutMonth)
-
-    if (!Number.isInteger(month) || month < 1 || month > 12) {
-      errors.bonusPayoutMonth = '发放月需在 1 到 12 之间。'
-    }
-  }
-
-  for (const key of percentFields) {
-    const text = fields[key].trim()
-
-    if (!text) {
-      continue
-    }
-
-    const value = parseSignedAmount(text)
-
-    if (value === null || value <= -100 || value > 100) {
-      errors[key] = '百分比必须在 -100 到 100 之间，最多两位小数。'
-    }
-  }
+  Object.assign(errors, validateAssumptionsFields(fields, followProfile.value))
 }
 
 function clearErrors(): void {
@@ -222,11 +165,10 @@ function hasErrors(): boolean {
 }
 
 function schedulePreview(): void {
-  if (previewTimer) {
-    clearTimeout(previewTimer)
-  }
+  clearPreviewTimer()
 
   previewTimer = setTimeout(() => {
+    previewTimer = null
     if (props.open && !hasErrors()) {
       emit('preview', toSettings())
     }
@@ -234,19 +176,7 @@ function schedulePreview(): void {
 }
 
 function toSettings(): CapitalGoalSettings {
-  return {
-    targetAmount: parseInput(fields.targetAmount, parseTarget),
-    monthlyIncome: parseInput(fields.monthlyIncome, parseAmount),
-    monthlyExpense: parseInput(fields.monthlyExpense, parseAmount),
-    monthlyProvidentDeposit: parseInput(fields.monthlyProvidentDeposit, parseAmount),
-    incomeGrowthPercent: parseInput(fields.incomeGrowthPercent, parseSignedAmount),
-    expenseGrowthPercent: parseInput(fields.expenseGrowthPercent, parseSignedAmount),
-    investmentAnnualReturnPercent: parseInput(fields.investmentAnnualReturnPercent, parseSignedAmount),
-    providentAnnualReturnPercent: parseInput(fields.providentAnnualReturnPercent, parseSignedAmount),
-    annualBonus: parseInput(fields.annualBonus, parseAmount),
-    bonusPayoutMonth: Number(fields.bonusPayoutMonth),
-    useSalaryProfile: followProfile.value
-  }
+  return toAssumptionsSettings(fields, followProfile.value)
 }
 
 function switchToManual(): void {
@@ -267,43 +197,12 @@ function switchToFollow(): void {
   schedulePreview()
 }
 
-function parseInput(value: string, parser: (input: string) => number | null): number | null {
-  const text = value.trim()
-
-  return text ? parser(text) : null
-}
-
-function parseTarget(value: string): number | null {
-  const text = value.trim()
-
-  if (!/^\d+(?:\.\d{1,4})?$/.test(text)) {
-    return null
-  }
-
-  const wan = Number(text)
-
-  if (!Number.isFinite(wan) || wan <= 0) {
-    return null
-  }
-
-  const yuan = Math.round(wan * 10_000 * 100) / 100
-
-  return yuan <= 1_000_000_000 ? yuan : null
-}
-
-function formatWan(value: number | null): string {
-  if (value === null) {
-    return ''
-  }
-
-  return String(Number((value / 10_000).toFixed(4)))
-}
-
 function save(): void {
   if (props.saving) {
     return
   }
 
+  clearPreviewTimer()
   validateFields()
 
   if (hasErrors()) {
@@ -314,15 +213,18 @@ function save(): void {
 }
 
 function resetAssumptions(): void {
-  fields.monthlyIncome = ''
-  fields.monthlyExpense = ''
-  fields.monthlyProvidentDeposit = ''
-  fields.annualBonus = ''
-  fields.bonusPayoutMonth = '1'
-  fields.incomeGrowthPercent = ''
-  fields.expenseGrowthPercent = ''
-  fields.investmentAnnualReturnPercent = ''
-  fields.providentAnnualReturnPercent = ''
+  clearPreviewTimer()
+  assignFieldsSilently({
+    monthlyIncome: '',
+    monthlyExpense: '',
+    monthlyProvidentDeposit: '',
+    annualBonus: '',
+    bonusPayoutMonth: '1',
+    incomeGrowthPercent: '',
+    expenseGrowthPercent: '',
+    investmentAnnualReturnPercent: '',
+    providentAnnualReturnPercent: ''
+  })
   validateFields()
 
   if (!hasErrors()) {
@@ -343,38 +245,6 @@ function applySuggestion(
 
 function applyPreset(value: number): void {
   fields.investmentAnnualReturnPercent = String(value)
-}
-
-function amountHint(value: CapitalEffectiveValue): string {
-  if (value.source === 'user') {
-    return '已设定'
-  }
-
-  if (value.source === 'salary') {
-    return '来自工资档案'
-  }
-
-  if (value.source === 'history') {
-    return `最近均值 ${formatMoney(value.value)}`
-  }
-
-  return '暂无历史，按 0'
-}
-
-function percentHint(value: CapitalEffectiveValue): string {
-  if (value.source === 'user') {
-    return '已设定'
-  }
-
-  return `默认 ${formatRate(value.value)}`
-}
-
-function formatRate(value: number | null): string {
-  return value === null ? '—' : `${value.toFixed(1)}%`
-}
-
-function formatNet(value: number | null): string {
-  return value === null ? '—' : formatSignedMoney(value)
 }
 </script>
 
