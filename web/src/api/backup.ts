@@ -10,6 +10,7 @@ export interface BackupSummary {
   fundPendingArrival: number
   goldValue: number | null
   goldPendingArrival: number
+  stockValue: number | null
   totalAssets: number | null
   isComplete: boolean
   entryCount: number

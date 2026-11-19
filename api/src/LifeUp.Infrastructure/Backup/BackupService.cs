@@ -1011,6 +1011,14 @@ public sealed class BackupService
         var goldValue = replay?.Gold?.Value
             ?? (parsed.GoldHolding is null ? null : decimal.Round(parsed.GoldHolding.Grams * parsed.GoldHolding.Quote, 2));
         var goldArrival = replay?.Gold?.PendingArrivalAmount ?? 0m;
+        decimal? stockValue = null;
+
+        if (parsed.StockPositions.Count > 0)
+        {
+            stockValue = replay is null
+                ? parsed.StockPositions.Sum(position => position.Value)
+                : replay.Stocks.Sum(stock => stock.Value ?? 0m);
+        }
         var total = replay?.TotalAssets;
 
         return new BackupSummaryDto(
@@ -1030,7 +1038,8 @@ public sealed class BackupService
             parsed.Plans.Count,
             parsed.PlanOccurrences.Count,
             parsed.MutationReceipts.Count,
-            parsed.PriceObservations.Count);
+            parsed.PriceObservations.Count,
+            stockValue is null ? null : decimal.Round(stockValue.Value, 2));
     }
 
     private async Task PersistAsync(ParsedBackup parsed, CancellationToken cancellationToken)
@@ -1166,7 +1175,8 @@ public sealed class BackupService
             0,
             0,
             0,
-            0);
+            0,
+            null);
     }
 
     private static void CheckDuplicateIds(

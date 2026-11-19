@@ -419,7 +419,7 @@ function formatNet(value: number | null): string {
       <div v-else-if="settings.useSalaryProfile" class="field full follow-banner warning">
         <div>
           <b>工资档案已停用</b>
-          <small>请改为手动，或到自动计划页重新建立工资档案。</small>
+          <small>请改为手动，或到「我的 → 个人信息」重新建立工资档案。</small>
         </div>
       </div>
 

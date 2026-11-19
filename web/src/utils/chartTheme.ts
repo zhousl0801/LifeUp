@@ -6,7 +6,7 @@ import { resolvedTheme } from './theme'
  */
 const light = {
   brand: '#4F46E5',
-  gain: '#D94A4A',
+  gain: '#C23838',
   loss: '#0F766E',
   text: '#525B6E',
   axis: '#E2E7F0',
