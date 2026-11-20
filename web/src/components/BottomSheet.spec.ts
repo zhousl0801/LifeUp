@@ -29,23 +29,45 @@ test('cancels a drag without closing, even after crossing the dismissal threshol
 })
 
 test('keeps the page locked until the final stacked sheet closes', async () => {
+  vi.stubGlobal('scrollY', 240)
+  const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
   document.body.style.overflow = 'auto'
+  document.body.style.position = 'relative'
+  document.body.style.top = '2px'
+  document.body.style.width = '95%'
   const trigger = document.createElement('button')
   document.body.append(trigger)
   trigger.focus()
   const lower = mount(BottomSheet, { props: { open: true, title: '编辑' } })
   await nextTick()
-  expect(document.activeElement?.getAttribute('role')).toBe('dialog')
+  const lowerFocusRole = document.activeElement?.getAttribute('role')
+  vi.stubGlobal('scrollY', 0)
   const upper = mount(BottomSheet, { props: { open: true, title: '放弃修改' } })
-  await nextTick()
+  try {
+    await nextTick()
+    expect(lowerFocusRole).toBe('dialog')
+    expect(document.activeElement?.getAttribute('role')).toBe('dialog')
+    expect(document.body.style.position).toBe('fixed')
+    expect(document.body.style.top).toBe('-240px')
 
-  await lower.setProps({ open: false })
-  expect(document.body.style.overflow).toBe('hidden')
-  await upper.setProps({ open: false })
-  expect(document.body.style.overflow).toBe('auto')
-  expect(document.activeElement).toBe(trigger)
-  trigger.remove()
-  upper.unmount()
-  lower.unmount()
-  document.body.style.removeProperty('overflow')
+    await lower.setProps({ open: false })
+    expect(document.body.style.overflow).toBe('hidden')
+    expect(document.body.style.position).toBe('fixed')
+    expect(scrollTo).not.toHaveBeenCalled()
+
+    await upper.setProps({ open: false })
+    expect(document.body.style.overflow).toBe('auto')
+    expect(document.body.style.position).toBe('relative')
+    expect(document.body.style.top).toBe('2px')
+    expect(document.body.style.width).toBe('95%')
+    expect(scrollTo).toHaveBeenCalledExactlyOnceWith({ left: 0, top: 240, behavior: 'instant' })
+    expect(document.activeElement).toBe(trigger)
+  } finally {
+    upper.unmount()
+    lower.unmount()
+    trigger.remove()
+    document.body.removeAttribute('style')
+    scrollTo.mockRestore()
+    vi.unstubAllGlobals()
+  }
 })

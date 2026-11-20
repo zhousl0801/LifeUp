@@ -539,7 +539,6 @@ onBeforeUnmount(() => {
         :change-scope="changeScope"
         cards
         :amounts-masked="amountsMasked"
-        hide-fund-count
       />
     </template>
 

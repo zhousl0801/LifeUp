@@ -135,7 +135,7 @@ public sealed class MonthChangeService
             reconciliationDifference,
             comparableChange is not null,
             notes.Distinct().ToList(),
-            BuildAssetChanges(beforeValues, nowValues),
+            BuildAssetChanges(beforeValues, nowValues, hasBaseline),
             comparableChange,
             comparableBase,
             addedRecords,
@@ -247,21 +247,22 @@ public sealed class MonthChangeService
         return new MonthChangeDto(
             today, today, comparableChange, cashIncome - cashExpense, providentDeposit, investmentProfit,
             reconciliationDifference, hasComparableData, notes.Distinct().ToList(),
-            BuildAssetChanges(beforeValues, nowValues), comparableChange, comparableBase, addedRecords,
+            BuildAssetChanges(beforeValues, nowValues, hasBaseline), comparableChange, comparableBase, addedRecords,
             investmentProfit, netDeposit, hasComparableData, breakdown);
     }
 
     private static IReadOnlyList<AssetChangeDto> BuildAssetChanges(
         Dictionary<string, AssetValue> before,
-        Dictionary<string, AssetValue> now)
+        Dictionary<string, AssetValue> now,
+        bool hasBaseline)
     {
         return
         [
-            BuildAssetChange("cash", before, now),
-            BuildAssetChange("providentFund", before, now),
-            BuildAssetChange("fund", before, now),
-            BuildAssetChange("gold", before, now),
-            BuildAssetChange("stock", before, now)
+            BuildAssetChange("cash", before["cash"], now["cash"], hasBaseline),
+            BuildAssetChange("providentFund", before["providentFund"], now["providentFund"], hasBaseline),
+            BuildAssetChange("fund", before["fund"], now["fund"], hasBaseline),
+            BuildAssetChange("gold", before["gold"], now["gold"], hasBaseline),
+            BuildAssetChange("stock", before["stock"], now["stock"], hasBaseline)
         ];
     }
 
@@ -336,23 +337,24 @@ public sealed class MonthChangeService
 
     private static AssetChangeDto BuildAssetChange(
         string assetType,
-        Dictionary<string, AssetValue> before,
-        Dictionary<string, AssetValue> now)
+        AssetValue before,
+        AssetValue now,
+        bool hasBaseline)
     {
-        var had = before[assetType].Present;
-        var has = now[assetType].Present;
-
-        if (!had && has)
+        if (!before.Present && now.Present)
         {
             return new AssetChangeDto(assetType, null, true);
         }
 
-        if (!had || !has || before[assetType].Value is null || now[assetType].Value is null)
+        if (!before.Present || !now.Present || before.Value is not decimal previousAmount || now.Value is not decimal currentAmount)
         {
             return new AssetChangeDto(assetType, null, false);
         }
 
-        return new AssetChangeDto(assetType, Round(now[assetType].Value!.Value - before[assetType].Value!.Value), false);
+        return new AssetChangeDto(assetType, Round(currentAmount - previousAmount), false)
+        {
+            BaselineAmount = hasBaseline ? previousAmount : null
+        };
     }
 
     private static HoldingCorrections CalculateCorrectionDifferences(

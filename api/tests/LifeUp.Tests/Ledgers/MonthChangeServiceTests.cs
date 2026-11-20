@@ -53,6 +53,9 @@ public sealed class MonthChangeServiceTests
         Assert.Equal(1000m, change.ProvidentDeposit);
         Assert.Equal(100m, change.ReconciliationDifference);
         Assert.Equal(700m, change.InvestmentProfit);
+        var cashChange = Assert.Single(change.AssetChanges, item => item.AssetType == "cash");
+        Assert.Equal(10000m, cashChange.BaselineAmount);
+        Assert.Equal(1600m, cashChange.Change);
         Assert.Equal(
             change.TotalChange,
             change.LivingSurplus + change.ProvidentDeposit + change.InvestmentProfit + change.ReconciliationDifference);
@@ -82,6 +85,9 @@ public sealed class MonthChangeServiceTests
         Assert.Equal(500m, change.LivingSurplus);
         Assert.Equal(500m, change.ComparableChange);
         Assert.Equal(0m, change.ReconciliationDifference);
+        var cashChange = Assert.Single(change.AssetChanges, item => item.AssetType == "cash");
+        Assert.Equal(10000m, cashChange.BaselineAmount);
+        Assert.Equal(500m, cashChange.Change);
     }
 
     [Fact]
@@ -173,6 +179,8 @@ public sealed class MonthChangeServiceTests
         Assert.Null(change.InvestmentProfit);
         Assert.Equal(100m, change.LivingSurplus);
         Assert.Equal(0m, change.AddedRecords);
+        var cashChange = Assert.Single(change.AssetChanges, item => item.AssetType == "cash");
+        Assert.Null(cashChange.BaselineAmount);
         Assert.Contains(change.Notes, note => note.Contains("暂无可比基线"));
     }
 

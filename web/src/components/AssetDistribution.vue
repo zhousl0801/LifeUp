@@ -3,7 +3,7 @@ import { computed, useId } from 'vue'
 import { RouterLink } from 'vue-router'
 import AppIcon from './AppIcon.vue'
 import LoadingButton from './LoadingButton.vue'
-import { amountTone, formatMoney, formatSignedMoney, MaskedMoney, sumAmounts } from '../utils/format'
+import { amountTone, calculatePercent, formatMoney, formatPercent, formatSignedMoney, MaskedMoney, sumAmounts } from '../utils/format'
 import type { AssetChange, AssetKey, LedgerOverview } from '../types/ledger'
 
 interface DistributionRow {
@@ -28,7 +28,6 @@ const props = defineProps<{
   cards?: boolean
   amountsMasked?: boolean
   editable?: boolean
-  hideFundCount?: boolean
   busyKey?: AssetKey | null
 }>()
 
@@ -65,7 +64,7 @@ const rows = computed<DistributionRow[]>(() => {
       amount: ledger.fund.amount,
       configured: ledger.fund.isConfigured,
       notHeld: ledger.fund.notHeld,
-      note: fundNote(ledger.fund.note ?? '尚未录入'),
+      note: ledger.fund.note ?? '尚未录入',
       change: changeByKey.get('fund') ?? null,
       percent: percentOf(ledger.fund.amount)
     },
@@ -113,6 +112,7 @@ const barSegments = computed(() => rows.value
   .map((row) => ({ key: row.key, width: row.percent ?? 0 })))
 
 const changePrefix = computed(() => props.changeScope === 'day' ? '较昨日' : '较上月')
+const wholeYuan = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 0 })
 
 const gradientId = useId()
 
@@ -123,16 +123,6 @@ const barLabel = computed(() => {
 
   return parts.length ? `资产占比：${parts.join('、')}` : '暂无可计算资产占比'
 })
-
-function fundNote(note: string): string {
-  if (!props.hideFundCount) {
-    return note
-  }
-
-  const withoutCount = note.replace(/^持有\s*\d+\s*只基金\s*(?:·\s*)?/, '').trim()
-
-  return withoutCount || '按最新净值估值'
-}
 
 function amountLabel(row: DistributionRow, masked = false): string {
   if (row.notHeld) {
@@ -148,7 +138,7 @@ function amountLabel(row: DistributionRow, masked = false): string {
   return masked ? MaskedMoney : `¥${formatMoney(row.amount)}`
 }
 
-function changeLabel(row: DistributionRow): string {
+function changeLabel(row: DistributionRow, showPeriod = true): string {
   if (row.notHeld) {
     return '不持有'
   }
@@ -161,11 +151,21 @@ function changeLabel(row: DistributionRow): string {
     return `${props.changeScope === 'day' ? '当日' : '本月'}新增`
   }
 
-  if (props.comparable === false || row.change?.change == null) {
-    return `${changePrefix.value} —`
-  }
+  const amount = props.comparable === false ? null : row.change?.change
+  const label = maskedValue(amount, formatSignedMoney)
+  return showPeriod ? `${changePrefix.value} ${label}` : label
+}
 
-  return `${changePrefix.value} ${props.amountsMasked ? '••••' : formatSignedMoney(row.change.change)}`
+function changePercentLabel(row: DistributionRow): string {
+  const percent = props.comparable === false
+    ? null
+    : calculatePercent(row.change?.change, row.change?.baselineAmount)
+  return maskedValue(percent, formatPercent)
+}
+
+function maskedValue(value: number | null | undefined, format: (amount: number) => string): string {
+  if (value == null) return '—'
+  return props.amountsMasked ? '••••' : format(value)
 }
 
 function changeTone(row: DistributionRow): string {
@@ -224,11 +224,20 @@ function changeTone(row: DistributionRow): string {
           </div>
           <strong class="card-balance">{{ amountLabel(row, amountsMasked) }}</strong>
           <div class="card-footer">
-            <div class="card-note">
-              <span v-if="row.configured && !row.notHeld && (!amountsMasked || row.key === 'cash')">
-                {{ row.note }}<template v-if="row.noteAmount != null"> {{ amountsMasked ? '••••' : formatSignedMoney(row.noteAmount) }}</template>
-              </span>
-              <span v-if="row.configured && !row.notHeld">{{ changeLabel(row) }}</span>
+            <div
+              v-if="row.configured && !row.notHeld"
+              class="card-note"
+              role="group"
+              :aria-label="row.key === 'providentFund' ? '本月公积金缴存和提取' : changePrefix"
+            >
+              <template v-if="row.key === 'providentFund'">
+                <span>缴存 {{ maskedValue(overview.month.providentDeposit, wholeYuan.format) }}</span>
+                <span>提取 {{ maskedValue(overview.month.providentWithdrawal, wholeYuan.format) }}</span>
+              </template>
+              <template v-else>
+                <span>{{ changeLabel(row, false) }}</span>
+                <span>{{ changePercentLabel(row) }}</span>
+              </template>
             </div>
             <RouterLink v-if="!row.notHeld" :to="row.to" class="card-link">
               {{ row.configured ? '详情' : '录入' }} <AppIcon name="chevron" />
@@ -529,6 +538,7 @@ function changeTone(row: DistributionRow): string {
   align-items: center;
   flex-shrink: 0;
   gap: 1px;
+  margin-inline-start: auto;
   min-height: 32px;
   color: var(--card-link);
   font-size: .75rem;

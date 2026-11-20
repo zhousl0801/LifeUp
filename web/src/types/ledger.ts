@@ -10,6 +10,8 @@ export interface MonthSummary {
   expense: number
   surplus: number
   hasRecords: boolean
+  providentDeposit?: number
+  providentWithdrawal?: number
 }
 
 export interface LedgerOverview {
@@ -39,6 +41,7 @@ export interface AssetChange {
   assetType: AssetKey
   change: number | null
   isNew: boolean
+  baselineAmount?: number | null
 }
 
 export interface MonthChange {

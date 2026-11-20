@@ -6,7 +6,13 @@ public enum ChangeScope
     Month
 }
 
-public sealed record AssetChangeDto(string AssetType, decimal? Change, bool IsNew);
+public sealed record AssetChangeDto(string AssetType, decimal? Change, bool IsNew)
+{
+    /// <summary>
+    /// 用于计算该资产变化比例的期初金额。暂无可比基线时为空。
+    /// </summary>
+    public decimal? BaselineAmount { get; init; }
+}
 
 /// <summary>当日资产变动明细。现金支出为正数，参与合计时扣减，盈亏和差额保留正负号。</summary>
 public sealed record DayChangeBreakdownDto(

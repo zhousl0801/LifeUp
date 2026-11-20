@@ -1,4 +1,5 @@
 using LifeUp.Application.Ledgers;
+using LifeUp.Application.Provident;
 using LifeUp.Domain.Cash;
 using LifeUp.Domain.Ledgers;
 
@@ -179,6 +180,36 @@ public sealed class LedgerServiceTests
         Assert.Equal(11964.40m, overview.Month.Surplus);
         Assert.True(overview.Month.HasRecords);
         Assert.Equal(12964.40m, overview.TotalAssets);
+    }
+
+    [Fact]
+    public async Task GetOverviewAsync_ReportsCurrentMonthProvidentDepositsAndWithdrawalsSeparately()
+    {
+        var repository = new FakeLedgerRepository();
+        var dates = new BusinessDateProvider(new FixedTimeProvider(Now));
+        var ledgerService = new LedgerService(repository, dates);
+        var providentService = new ProvidentFundService(repository, dates);
+        var startDate = new DateOnly(2026, 9, 1);
+
+        await ledgerService.InitializeAsync(new InitializeLedgerRequest(startDate, 1000m), CancellationToken.None);
+        await providentService.SetOpeningAsync(
+            new ProvidentOpeningRequest(5000m, startDate, null, Guid.NewGuid()),
+            CancellationToken.None);
+        await providentService.DepositAsync(
+            new ProvidentDepositRequest(300m, new DateOnly(2026, 9, 25), null, Guid.NewGuid()),
+            CancellationToken.None);
+        await providentService.DepositAsync(
+            new ProvidentDepositRequest(5440.68m, BusinessToday, null, Guid.NewGuid()),
+            CancellationToken.None);
+        await providentService.WithdrawAsync(
+            new ProvidentWithdrawalRequest(1200.20m, BusinessToday, null, Guid.NewGuid()),
+            CancellationToken.None);
+
+        var overview = await ledgerService.GetOverviewAsync(CancellationToken.None);
+
+        Assert.NotNull(overview);
+        Assert.Equal(5440.68m, overview.Month.ProvidentDeposit);
+        Assert.Equal(1200.20m, overview.Month.ProvidentWithdrawal);
     }
 
     private static LedgerService CreateService(FakeLedgerRepository repository)

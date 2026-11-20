@@ -452,28 +452,56 @@ test('does not add the fund profit twice when the NAV date matches the daily cha
 })
 
 
-test('the overview eye conceals income, expenses, surplus and amounts embedded in asset notes', async () => {
+test('shows asset changes by selected period and masks all card figures with the overview eye', async () => {
   const start = shift(today, -30)
   mocks.ledger.mockResolvedValue(overview(start, {
-    month: { income: 9800, expense: 3268.50, surplus: 6531.50, hasRecords: true },
-    fund: { isConfigured: true, amount: 278788.02, note: '持有 1 只基金 · 待确认 1,800.00', notHeld: false }
+    month: {
+      income: 9800, expense: 3268.50, surplus: 6531.50, hasRecords: true,
+      providentDeposit: 5440.68, providentWithdrawal: 1200.20
+    },
+    fund: { isConfigured: true, amount: 278788.02, note: '持有 1 只基金 · 待确认 1,800.00', notHeld: false },
+    stock: { isConfigured: true, amount: 1500, note: '持有 1 只股票', notHeld: false }
   }))
+  mocks.funds.mockResolvedValue({ funds: [] })
   mocks.trend.mockResolvedValue(trend(start))
   mocks.dayChange.mockResolvedValue({
     ...monthChange, hasComparableData: true, comparableChange: 319.54, comparableBase: 350000,
-    assetChanges: [{ assetType: 'cash', change: 319.54, isNew: false }]
+    assetChanges: [
+      { assetType: 'cash', change: 319.54, baselineAmount: 10000, isNew: false },
+      { assetType: 'fund', change: -400, baselineAmount: 10000, isNew: false },
+      { assetType: 'stock', change: 1500, baselineAmount: 0, isNew: false },
+      { assetType: 'gold', change: 0, baselineAmount: 10000, isNew: false }
+    ]
+  })
+  mocks.change.mockResolvedValue({
+    ...monthChange, hasComparableData: true,
+    assetChanges: [{ assetType: 'cash', change: -1000, baselineAmount: 20000, isNew: false }]
   })
   const view = mount(HomeView, { global: { plugins: [createPinia()] } })
   await flushPromises()
 
-  const hiddenValues = /9,800\.00|3,268\.50|6,531\.50|1,800\.00|319\.54/
+  const cardNotes = (key: string) =>
+    view.get(`.card-${key}`).findAll('.card-note > span').map(note => note.text())
+  const hiddenValues = /9,800\.00|3,268\.50|6,531\.50|1,800\.00|319\.54|3\.20%|5,441|1,200/
   expect(view.text()).not.toMatch(hiddenValues)
+  expect(cardNotes('cash')).toEqual(['••••', '••••'])
+  expect(cardNotes('providentFund')).toEqual(['缴存 ••••', '提取 ••••'])
   expect(view.find('.month-flow-segment').exists()).toBe(false)
   await view.get('.hero-amount button[aria-label="显示资产金额"]').trigger('click')
   expect(view.get('.month-flow').text()).toContain('¥9,800.00')
   expect(view.get('.month-flow').text()).toContain('¥3,268.50')
   expect(view.get('.month-surplus').text()).toContain('+6,531.50')
-  expect(view.get('.card-fund').text()).toContain('1,800.00')
+  expect(cardNotes('cash')).toEqual(['+319.54', '+3.20%'])
+  expect(cardNotes('fund')).toEqual(['−400.00', '−4.00%'])
+  expect(cardNotes('stock')).toEqual(['+1,500.00', '—'])
+  expect(cardNotes('gold')).toEqual(['0.00', '0.00%'])
+  expect(cardNotes('providentFund')).toEqual(['缴存 5,441', '提取 1,200'])
+  expect(view.get('.card-fund').text()).not.toContain('1,800.00')
+
+  await view.findAll('.change-scope button').find(button => button.text() === '本月')!.trigger('click')
+  expect(cardNotes('cash')).toEqual(['−1,000.00', '−5.00%'])
+  expect(cardNotes('fund')).toEqual(['—', '—'])
+  expect(cardNotes('providentFund')).toEqual(['缴存 5,441', '提取 1,200'])
   view.unmount()
 })
 
