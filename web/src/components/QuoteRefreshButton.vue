@@ -21,6 +21,10 @@ defineEmits<{ refresh: [] }>()
 
 <style scoped>
 .sync-button {
+  --glossy-light: 1;
+  --sync-stroke: var(--color-btn-soft-stroke);
+  --sync-glow: var(--color-btn-soft-glow);
+  position: relative;
   display: inline-flex;
   justify-content: center;
   align-items: center;
@@ -30,24 +34,64 @@ defineEmits<{ refresh: [] }>()
   padding: 0;
   border: 0;
   border-radius: 50%;
-  background: var(--sync-bg, var(--color-brand-soft));
-  color: var(--sync-text, var(--color-brand));
-  transition: background var(--motion-fast) ease, transform var(--motion-fast) ease;
+  background: var(--sync-bg, var(--color-btn-soft-bg));
+  color: var(--sync-text, var(--color-btn-soft-fg));
+  box-shadow:
+    0 2px 6px var(--sync-shadow, var(--color-btn-soft-shadow)),
+    0 0 0 1px var(--sync-ring, var(--color-btn-soft-ring));
+  transition:
+    background var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease,
+    transform 220ms cubic-bezier(0.22, 1.35, 0.36, 1);
+}
+
+.sync-button::before,
+.sync-button::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.sync-button::before {
+  padding: 1px;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, var(--sync-stroke)),
+    rgba(255, 255, 255, 0)
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+.sync-button::after {
+  box-shadow: inset 0 0 5px 1px rgba(255, 255, 255, var(--sync-glow));
+  opacity: var(--glossy-light);
+  transition: opacity 140ms ease;
 }
 
 .on-hero {
-  --sync-bg: var(--color-hero-surface);
+  --sync-bg: rgba(255, 255, 255, 0.14);
   --sync-text: var(--color-hero-text);
-  --sync-hover: var(--color-hero-surface-strong);
+  --sync-hover: rgba(255, 255, 255, 0.22);
   --sync-disabled: var(--color-hero-text-muted);
+  --sync-ring: rgba(255, 255, 255, 0.16);
+  --sync-shadow: rgba(15, 10, 46, 0.22);
+  --sync-stroke: 0.48;
+  --sync-glow: 0.18;
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
 }
 
 .sync-button:hover:not(:disabled) {
-  background: var(--sync-hover, var(--color-brand-soft-hover));
+  background: var(--sync-hover, var(--color-btn-soft-bg-hover));
 }
 
 .sync-button:active:not(:disabled) {
-  transform: scale(.94);
+  --glossy-light: 0.52;
+  transform: scale(0.94);
 }
 
 .sync-button:disabled {
@@ -55,6 +99,7 @@ defineEmits<{ refresh: [] }>()
 }
 
 .app-icon {
+  position: relative;
   width: 20px;
   height: 20px;
 }
@@ -62,6 +107,12 @@ defineEmits<{ refresh: [] }>()
 @media (prefers-reduced-motion: no-preference) {
   .spinning {
     animation: spin .9s linear infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sync-button:active:not(:disabled) {
+    transform: none;
   }
 }
 

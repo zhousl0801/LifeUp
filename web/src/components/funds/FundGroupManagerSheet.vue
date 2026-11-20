@@ -448,12 +448,7 @@ const groupAssetFunds = computed(() =>
 .confirm-button {
   min-height: 36px;
   padding: 0 14px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-brand);
-  color: var(--color-on-brand);
   font-size: var(--text-footnote);
-  font-weight: 600;
 }
 
 .summary-note {

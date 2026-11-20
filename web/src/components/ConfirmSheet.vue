@@ -58,29 +58,5 @@ defineEmits<{ confirm: []; cancel: [] }>()
 
 .confirm-button {
   min-height: 48px;
-  border: 0;
-  border-radius: var(--radius-card);
-  background: var(--color-brand);
-  color: var(--color-on-brand);
-  font-size: var(--text-body);
-  font-weight: 600;
-}
-
-.confirm-button.danger {
-  background: var(--color-danger);
-  color: var(--color-on-danger);
-}
-
-.confirm-button:hover:not(:disabled) {
-  background: var(--color-brand-hover);
-}
-
-.confirm-button.danger:hover:not(:disabled) {
-  background: var(--color-danger-hover);
-}
-
-.confirm-button:disabled {
-  background: var(--color-bg-disabled);
-  color: var(--color-text-disabled);
 }
 </style>

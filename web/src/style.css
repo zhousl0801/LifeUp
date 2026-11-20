@@ -179,45 +179,265 @@ summary:focus-visible {
   white-space: nowrap;
 }
 
-.secondary-button {
-  min-height: var(--touch-target);
-  padding: 0 18px;
+/* ========== 内透琉璃全胶囊按钮系统（Dissolve Glossy × Midnight Mint） ========== */
+:is(
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .confirm-button,
+  .action-primary,
+  .action-secondary,
+  .icon-button
+) {
+  --glossy-light: 1;
+  --glossy-glow-blur: 7px;
+  --glossy-glow-spread: 2px;
+  position: relative;
   border: 0;
   border-radius: var(--radius-pill);
-  background: var(--color-bg-subtle);
-  color: var(--color-text-primary);
+  user-select: none;
+  -webkit-user-select: none;
+  transition:
+    transform 220ms cubic-bezier(0.22, 1.35, 0.36, 1),
+    background-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease,
+    color var(--motion-fast) ease;
+}
+
+:is(
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .confirm-button,
+  .action-primary,
+  .action-secondary,
+  .icon-button
+) > * {
+  position: relative;
+}
+
+:is(
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .confirm-button,
+  .action-primary,
+  .action-secondary,
+  .icon-button
+)::before,
+:is(
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .confirm-button,
+  .action-primary,
+  .action-secondary,
+  .icon-button
+)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+:is(
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .confirm-button,
+  .action-primary,
+  .action-secondary,
+  .icon-button
+)::before {
+  padding: 1px;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, var(--glossy-stroke, 0.44)),
+    rgba(255, 255, 255, 0)
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+:is(
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .confirm-button,
+  .action-primary,
+  .action-secondary,
+  .icon-button
+)::after {
+  box-shadow: inset 0 0 var(--glossy-glow-blur) var(--glossy-glow-spread)
+    rgba(255, 255, 255, var(--glossy-glow, 0.24));
+  opacity: var(--glossy-light);
+  transition: opacity 140ms ease;
+}
+
+:is(
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .confirm-button,
+  .action-primary,
+  .action-secondary,
+  .icon-button
+):active:not(:disabled) {
+  --glossy-light: 0.52;
+  transform: scale(0.968);
+}
+
+:is(
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .confirm-button,
+  .action-primary,
+  .action-secondary,
+  .icon-button
+)[aria-busy='true'] {
+  --glossy-light: 0.72;
+}
+
+:is(
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .confirm-button,
+  .action-primary,
+  .action-secondary,
+  .icon-button
+):disabled:not([aria-busy='true']) {
+  background: var(--color-bg-disabled);
+  color: var(--color-text-disabled);
+  box-shadow: none;
+}
+
+:is(
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .confirm-button,
+  .action-primary,
+  .action-secondary,
+  .icon-button
+):disabled:not([aria-busy='true'])::before,
+:is(
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .confirm-button,
+  .action-primary,
+  .action-secondary,
+  .icon-button
+):disabled:not([aria-busy='true'])::after {
+  opacity: 0;
+}
+
+.secondary-button {
+  --glossy-stroke: var(--color-btn-secondary-stroke);
+  --glossy-glow: var(--color-btn-secondary-glow);
+  --glossy-glow-blur: 5px;
+  --glossy-glow-spread: 1px;
+  min-height: var(--touch-target);
+  padding: 0 18px;
+  background: var(--color-btn-secondary-bg);
+  color: var(--color-btn-secondary-fg);
+  box-shadow:
+    0 2px 6px var(--color-btn-secondary-shadow),
+    0 0 0 1px var(--color-btn-secondary-ring);
   font-size: 0.875rem;
   font-weight: 600;
 }
 
-.secondary-button:hover {
-  background: var(--color-bg-hover);
+.secondary-button:hover:not(:disabled) {
+  background: var(--color-btn-secondary-bg-hover);
   color: var(--color-brand);
+}
+
+.primary-button,
+.confirm-button,
+.action-primary {
+  --glossy-stroke: var(--color-btn-primary-stroke);
+  --glossy-glow: var(--color-btn-primary-glow);
+  background: var(--color-btn-primary-bg);
+  color: var(--color-btn-primary-fg);
+  box-shadow:
+    0 4px 10px var(--color-btn-primary-shadow),
+    0 0 0 1px var(--color-btn-primary-ring);
+  letter-spacing: -0.013em;
 }
 
 .primary-button {
   min-height: 52px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-brand);
-  color: var(--color-on-brand);
+  padding: 0 20px;
   font-size: var(--text-body);
   font-weight: 700;
-  letter-spacing: -0.01em;
 }
 
-.primary-button:hover:not(:disabled) {
-  background: var(--color-brand-hover);
+.confirm-button {
+  min-height: 48px;
+  padding: 0 18px;
+  font-size: var(--text-body);
+  font-weight: 600;
 }
 
-.primary-button:active:not(:disabled) {
-  background: var(--color-brand-active);
-  transform: scale(.99);
+:is(.primary-button, .confirm-button, .action-primary):hover:not(:disabled) {
+  background: var(--color-btn-primary-bg-hover);
+  box-shadow:
+    0 6px 14px var(--color-btn-primary-shadow),
+    0 0 0 1px var(--color-btn-primary-bg-hover);
 }
 
-.primary-button:disabled {
-  background: var(--color-bg-disabled);
-  color: var(--color-text-disabled);
+:is(.primary-button, .confirm-button, .action-primary):active:not(:disabled) {
+  background: var(--color-btn-primary-bg-active);
+}
+
+.action-secondary {
+  --glossy-stroke: var(--color-btn-soft-stroke);
+  --glossy-glow: var(--color-btn-soft-glow);
+  --glossy-glow-blur: 5px;
+  --glossy-glow-spread: 1px;
+  background: var(--color-btn-soft-bg);
+  color: var(--color-btn-soft-fg);
+  box-shadow:
+    0 2px 6px var(--color-btn-soft-shadow),
+    0 0 0 1px var(--color-btn-soft-ring);
+}
+
+.action-secondary:hover:not(:disabled) {
+  background: var(--color-btn-soft-bg-hover);
+}
+
+.danger-button,
+.confirm-button.danger {
+  --glossy-stroke: var(--color-btn-danger-stroke);
+  --glossy-glow: var(--color-btn-danger-glow);
+  background: var(--color-btn-danger-bg);
+  color: var(--color-btn-danger-fg);
+  box-shadow:
+    0 4px 10px var(--color-btn-danger-shadow),
+    0 0 0 1px var(--color-btn-danger-ring);
+}
+
+.danger-button {
+  min-height: 48px;
+  padding: 0 20px;
+  font-size: var(--text-subhead);
+  font-weight: 700;
+}
+
+:is(.danger-button, .confirm-button.danger):hover:not(:disabled) {
+  background: var(--color-btn-danger-bg-hover);
+  box-shadow:
+    0 6px 14px var(--color-btn-danger-shadow),
+    0 0 0 1px var(--color-btn-danger-bg-hover);
+}
+
+:is(.danger-button, .confirm-button.danger):active:not(:disabled) {
+  background: var(--color-btn-danger-bg-active);
 }
 
 .text-link {
@@ -250,6 +470,10 @@ summary:focus-visible {
 }
 
 .icon-button {
+  --glossy-stroke: var(--color-btn-secondary-stroke);
+  --glossy-glow: var(--color-btn-secondary-glow);
+  --glossy-glow-blur: 5px;
+  --glossy-glow-spread: 1px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -257,18 +481,20 @@ summary:focus-visible {
   width: var(--touch-target);
   height: var(--touch-target);
   padding: 0;
-  border: 0;
   border-radius: 50%;
-  background: var(--color-bg-subtle);
-  color: var(--color-text-primary);
+  background: var(--color-btn-secondary-bg);
+  color: var(--color-btn-secondary-fg);
+  box-shadow:
+    0 2px 6px var(--color-btn-secondary-shadow),
+    0 0 0 1px var(--color-btn-secondary-ring);
 }
 
-.icon-button:hover {
-  background: var(--color-brand-soft);
+.icon-button:hover:not(:disabled) {
+  background: var(--color-btn-soft-bg);
   color: var(--color-brand);
-}
-.icon-button:active {
-  background: var(--color-bg-selected);
+  box-shadow:
+    0 3px 8px var(--color-btn-soft-shadow),
+    0 0 0 1px var(--color-btn-soft-ring);
 }
 
 .ui-disclosure > summary {
@@ -856,18 +1082,55 @@ summary:focus-visible {
   .skeleton::after {
     animation: none;
   }
+
+  :is(
+    .primary-button,
+    .secondary-button,
+    .danger-button,
+    .confirm-button,
+    .action-primary,
+    .action-secondary,
+    .icon-button
+  ):active:not(:disabled) {
+    transform: none;
+  }
 }
 
 @media (forced-colors: active) {
   .primary-button,
   .secondary-button,
+  .danger-button,
   .confirm-button,
+  .action-primary,
+  .action-secondary,
   .back-button,
   .icon-button,
   .nav-add,
   .maintenance-action,
   .row-action {
     border: 1px solid ButtonText;
+    box-shadow: none;
+  }
+
+  :is(
+    .primary-button,
+    .secondary-button,
+    .danger-button,
+    .confirm-button,
+    .action-primary,
+    .action-secondary,
+    .icon-button
+  )::before,
+  :is(
+    .primary-button,
+    .secondary-button,
+    .danger-button,
+    .confirm-button,
+    .action-primary,
+    .action-secondary,
+    .icon-button
+  )::after {
+    display: none;
   }
 
   .nav-item.active,

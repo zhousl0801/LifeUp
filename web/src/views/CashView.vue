@@ -553,28 +553,8 @@ async function submitReconcile(): Promise<void> {
 .cash-actions button {
   flex: 1;
   min-height: 48px;
-  border: 0;
-  border-radius: var(--radius-pill);
   font-size: 0.9375rem;
   font-weight: 600;
-}
-
-.action-primary {
-  background: var(--color-brand);
-  color: var(--color-on-brand);
-}
-
-.action-primary:hover {
-  background: var(--color-brand-hover);
-}
-
-.action-secondary {
-  background: var(--color-bg-subtle);
-  color: var(--color-brand);
-}
-
-.action-secondary:hover {
-  background: var(--color-brand-soft);
 }
 
 .section-head {

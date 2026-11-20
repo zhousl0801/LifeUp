@@ -314,7 +314,7 @@ function summaryItems(summary: BackupSummary): { label: string; value: string }[
 
         <LoadingButton
           v-if="validation.isValid"
-          class="restore-button"
+          class="danger-button restore-button"
           :loading="isRestoring"
           :disabled="!canRestore"
           loading-label="正在恢复…"
@@ -403,27 +403,8 @@ function summaryItems(summary: BackupSummary): { label: string; value: string }[
 .backup-actions button {
   flex: 1;
   min-height: var(--touch-target);
-  border-radius: var(--radius-control);
   font-size: var(--text-footnote);
-}
-
-.action-primary {
-  border: 1px solid var(--color-brand);
-  background: var(--color-brand);
-  color: var(--color-on-brand);
-}
-
-.action-secondary {
-  border: 1px solid var(--color-border-control);
-  background: var(--color-bg-surface);
-  color: var(--color-brand);
-}
-
-.backup-actions button:disabled,
-.restore-button:disabled {
-  border-color: var(--color-border-disabled);
-  background: var(--color-bg-disabled);
-  color: var(--color-text-disabled);
+  font-weight: 600;
 }
 
 .helper-note,
@@ -562,12 +543,7 @@ function summaryItems(summary: BackupSummary): { label: string; value: string }[
   width: 100%;
   min-height: var(--touch-target);
   margin-top: 12px;
-  border: 1px solid var(--color-finance-loss);
-  border-radius: var(--radius-control);
-  background: var(--color-bg-surface);
-  color: var(--color-finance-loss);
   font-size: var(--text-footnote);
-  font-weight: 600;
 }
 
 .success-card .home-link {

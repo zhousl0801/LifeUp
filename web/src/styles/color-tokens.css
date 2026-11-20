@@ -78,6 +78,49 @@
   --color-border-disabled: var(--palette-lilac-300);
   --color-bg-readonly: var(--palette-lilac-50);
 
+  /* 内透琉璃全胶囊按钮（Dissolve Glossy × Daylight Prism）。 */
+  --color-btn-primary-bg: var(--palette-violet-500);
+  --color-btn-primary-bg-hover: var(--palette-violet-600);
+  --color-btn-primary-bg-active: var(--palette-violet-700);
+  --color-btn-primary-fg: var(--palette-white);
+  --color-btn-primary-ring: var(--palette-violet-500);
+  --color-btn-primary-shadow: rgba(55, 48, 163, 0.28);
+  --color-btn-primary-stroke: 0.44;
+  --color-btn-primary-glow: 0.26;
+
+  --color-btn-secondary-bg: #EEF1F8;
+  --color-btn-secondary-bg-hover: #E5EBF9;
+  --color-btn-secondary-fg: var(--palette-ink-800);
+  --color-btn-secondary-ring: rgba(15, 23, 42, 0.08);
+  --color-btn-secondary-shadow: rgba(15, 23, 42, 0.08);
+  --color-btn-secondary-stroke: 0.92;
+  --color-btn-secondary-glow: 0.72;
+
+  --color-btn-soft-bg: #E8EDFF;
+  --color-btn-soft-bg-hover: #DDE5FF;
+  --color-btn-soft-fg: var(--palette-violet-600);
+  --color-btn-soft-ring: rgba(79, 70, 229, 0.14);
+  --color-btn-soft-shadow: rgba(79, 70, 229, 0.11);
+  --color-btn-soft-stroke: 0.86;
+  --color-btn-soft-glow: 0.56;
+
+  --color-btn-danger-bg: var(--palette-red);
+  --color-btn-danger-bg-hover: var(--palette-red-hover);
+  --color-btn-danger-bg-active: var(--palette-red-active);
+  --color-btn-danger-fg: var(--palette-white);
+  --color-btn-danger-ring: var(--palette-red);
+  --color-btn-danger-shadow: rgba(185, 28, 28, 0.26);
+  --color-btn-danger-stroke: 0.42;
+  --color-btn-danger-glow: 0.24;
+
+  --color-btn-ink-bg: var(--palette-ink-900);
+  --color-btn-ink-bg-hover: var(--palette-ink-800);
+  --color-btn-ink-fg: var(--palette-white);
+  --color-btn-ink-ring: var(--palette-ink-900);
+  --color-btn-ink-shadow: rgba(15, 23, 42, 0.26);
+  --color-btn-ink-stroke: 0.34;
+  --color-btn-ink-glow: 0.18;
+
   /* 多色语义微彩（用于分类图标底色、分组标签等，打破单一淡紫）。 */
   --color-tint-amber-bg: #FFF3E0;
   --color-tint-amber-fg: #C2610C;
@@ -229,6 +272,49 @@
   --color-text-disabled: #646E85;
   --color-border-disabled: #2D3246;
   --color-bg-readonly: #1E212E;
+
+  /* 内透琉璃全胶囊按钮（Dissolve Glossy × Obsidian Mint）。 */
+  --color-btn-primary-bg: #5B54F0;
+  --color-btn-primary-bg-hover: #6760F5;
+  --color-btn-primary-bg-active: #4D46D9;
+  --color-btn-primary-fg: #FFFFFF;
+  --color-btn-primary-ring: #5B54F0;
+  --color-btn-primary-shadow: rgba(0, 0, 0, 0.52);
+  --color-btn-primary-stroke: 0.50;
+  --color-btn-primary-glow: 0.26;
+
+  --color-btn-secondary-bg: #242838;
+  --color-btn-secondary-bg-hover: #2C3146;
+  --color-btn-secondary-fg: #F1F5F9;
+  --color-btn-secondary-ring: rgba(255, 255, 255, 0.08);
+  --color-btn-secondary-shadow: rgba(0, 0, 0, 0.45);
+  --color-btn-secondary-stroke: 0.24;
+  --color-btn-secondary-glow: 0.12;
+
+  --color-btn-soft-bg: #272B4A;
+  --color-btn-soft-bg-hover: #31365C;
+  --color-btn-soft-fg: #C7D2FE;
+  --color-btn-soft-ring: rgba(129, 140, 248, 0.20);
+  --color-btn-soft-shadow: rgba(0, 0, 0, 0.40);
+  --color-btn-soft-stroke: 0.30;
+  --color-btn-soft-glow: 0.15;
+
+  --color-btn-danger-bg: #DC4C4C;
+  --color-btn-danger-bg-hover: #E75A5A;
+  --color-btn-danger-bg-active: #C63B3B;
+  --color-btn-danger-fg: #FFF5F5;
+  --color-btn-danger-ring: #DC4C4C;
+  --color-btn-danger-shadow: rgba(0, 0, 0, 0.50);
+  --color-btn-danger-stroke: 0.44;
+  --color-btn-danger-glow: 0.24;
+
+  --color-btn-ink-bg: #EEF2F8;
+  --color-btn-ink-bg-hover: #FFFFFF;
+  --color-btn-ink-fg: #0B0C10;
+  --color-btn-ink-ring: rgba(255, 255, 255, 0.82);
+  --color-btn-ink-shadow: rgba(0, 0, 0, 0.48);
+  --color-btn-ink-stroke: 0.96;
+  --color-btn-ink-glow: 0.65;
 
   --color-tint-amber-bg: rgba(245, 158, 11, 0.16);
   --color-tint-amber-fg: #FBBF24;

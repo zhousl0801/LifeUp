@@ -83,6 +83,16 @@
 - **左侧主胶囊**：依次为 **账单（`/ledger`）/ 总览（`/`）/ 目标（`/capital`, `/plans`）/ 我的（`/mine`, `/salary`）**。选中项使用 `--color-brand-soft` 胶囊底与品牌色图标文字，标签字号 `11px (0.6875rem)`。
 - **右侧独立主操作**：`58×58px` 圆形薄荷绿渐变 `+` 按钮，直达 `/entry` 记一笔；它不属于常规 tab。
 
+### 按钮体系（全胶囊内透琉璃 · Dissolve Glossy）
+
+- **形态与光学结构**：全局操作按钮（`.primary-button` / `.secondary-button` / `.danger-button` / `.confirm-button` / `.action-primary` / `.action-secondary` / `.icon-button`）统一为 `999px` 全胶囊，纯 CSS 四层光学叠加实现“内部透光琉璃”质感（无需大面积 `backdrop-filter`，保障 iOS PWA 滚动与弹层满帧）：
+  1. 实色/柔透本体配 `1px` 同色外环（`0 0 0 1px`）与柔和落地投影；
+  2. `::before` 用 `padding: 1px` + `mask-composite: exclude` 绘制顶部向底部衰减的 `1px` 镜面高光内描边；
+  3. `::after` 叠加四周柔和内发光（`inset 0 0 7px 2px`）；
+  4. `:active` 时弹性微缩 `scale(0.968)` 并同步将内发光亮度压低至 `0.52` 模拟按压光感收暗；`LoadingButton` 加载中保留主色并将内发光微降至 `0.72`；禁用态关闭光环与内光。
+- **双主题角色**：主按钮在浅色采用 `#4F46E5` 配白字、深色采用 `#5B54F0` 配白字；次按钮采用冷瓷雾面玻璃 / 曜石玻璃；行内辅助操作（`.action-secondary`、基金持仓行内按钮）采用淡紫柔彩琉璃；危险操作采用绯红琉璃；记一笔底部主保存钮（`.entry-save`）沿用亮色墨黑 / 暗色冷瓷白高对比反转琉璃。
+- **Hero 叠加按钮**：行情同步按钮（`QuoteRefreshButton.on-hero`）在同源顶光内描边与内发光的基础上叠加轻量 `backdrop-filter: blur(12px) saturate(150%)`，与 Hero 玻璃质感呼应。
+
 ### iOS Inset Grouped 表单与 BottomSheet
 
 - **表单分组（`.form-stack` / `.form-field`）**：统一为 iOS 设置风格的联排分组，采用 `16px` 圆角白底块（深色为 `--color-bg-surface`）、组内 `1px` 细分隔线、左侧字段标签 + 右侧透明无边框右对齐输入，聚焦态触发 `focus-within` 4% 品牌淡紫微高亮；只读或来源托管字段明确标注标签（如「工资档案」）。

@@ -1390,30 +1390,6 @@ function handleKeydown(event: KeyboardEvent): void {
   margin-top: 12px;
 }
 
-.danger-button {
-  min-height: 48px;
-  padding: 0 20px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-danger);
-  color: var(--color-on-danger);
-  font-size: var(--text-subhead);
-  font-weight: 700;
-}
-
-.danger-button:hover:not(:disabled) {
-  background: var(--color-danger-hover);
-}
-
-.danger-button:active:not(:disabled) {
-  background: var(--color-danger-active);
-}
-
-.danger-button:disabled {
-  background: var(--color-bg-disabled);
-  color: var(--color-text-disabled);
-}
-
 .form-error {
   margin: 14px 0 0;
   padding: 12px 14px;
@@ -1453,22 +1429,122 @@ function handleKeydown(event: KeyboardEvent): void {
 
 .entry-save,
 .entry-save-again {
+  --glossy-light: 1;
+  --glossy-glow-blur: 7px;
+  --glossy-glow-spread: 2px;
+  position: relative;
   min-height: var(--touch-target);
-  padding-inline: 6px;
+  padding-inline: 12px;
   border: 0;
-  border-radius: var(--radius-control);
-  background: var(--color-brand);
-  color: var(--color-on-brand);
+  border-radius: var(--radius-pill);
   font-weight: 700;
+  letter-spacing: -0.013em;
+  user-select: none;
+  -webkit-user-select: none;
+  transition:
+    transform 220ms cubic-bezier(0.22, 1.35, 0.36, 1),
+    background-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease,
+    color var(--motion-fast) ease;
 }
 
-.entry-save { background: var(--color-text-primary); color: var(--color-bg-surface); }
-.entry-save-again { background: var(--color-bg-surface); color: var(--color-text-primary); }
+.entry-save > *,
+.entry-save-again > * {
+  position: relative;
+}
+
+.entry-save::before,
+.entry-save::after,
+.entry-save-again::before,
+.entry-save-again::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.entry-save::before,
+.entry-save-again::before {
+  padding: 1px;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, var(--glossy-stroke)),
+    rgba(255, 255, 255, 0)
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+.entry-save::after,
+.entry-save-again::after {
+  box-shadow: inset 0 0 var(--glossy-glow-blur) var(--glossy-glow-spread)
+    rgba(255, 255, 255, var(--glossy-glow));
+  opacity: var(--glossy-light);
+  transition: opacity 140ms ease;
+}
+
+.entry-save {
+  --glossy-stroke: var(--color-btn-ink-stroke);
+  --glossy-glow: var(--color-btn-ink-glow);
+  background: var(--color-btn-ink-bg);
+  color: var(--color-btn-ink-fg);
+  box-shadow:
+    0 4px 10px var(--color-btn-ink-shadow),
+    0 0 0 1px var(--color-btn-ink-ring);
+}
+
+.entry-save:hover:not(:disabled) {
+  background: var(--color-btn-ink-bg-hover);
+}
+
+.entry-save-again {
+  --glossy-stroke: var(--color-btn-secondary-stroke);
+  --glossy-glow: var(--color-btn-secondary-glow);
+  --glossy-glow-blur: 5px;
+  --glossy-glow-spread: 1px;
+  background: var(--color-btn-secondary-bg);
+  color: var(--color-btn-secondary-fg);
+  box-shadow:
+    0 2px 6px var(--color-btn-secondary-shadow),
+    0 0 0 1px var(--color-btn-secondary-ring);
+}
+
+.entry-save-again:hover:not(:disabled) {
+  background: var(--color-btn-secondary-bg-hover);
+}
+
+.entry-save:active:not(:disabled),
+.entry-save-again:active:not(:disabled) {
+  --glossy-light: 0.52;
+  transform: scale(0.968);
+}
+
+.entry-save[aria-busy='true'],
+.entry-save-again[aria-busy='true'] {
+  --glossy-light: 0.72;
+}
 
 .entry-save:disabled:not([aria-busy]),
 .entry-save-again:disabled:not([aria-busy]) {
   background: var(--color-bg-disabled);
   color: var(--color-text-disabled);
+  box-shadow: none;
+}
+
+.entry-save:disabled:not([aria-busy])::before,
+.entry-save:disabled:not([aria-busy])::after,
+.entry-save-again:disabled:not([aria-busy])::before,
+.entry-save-again:disabled:not([aria-busy])::after {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .entry-save:active:not(:disabled),
+  .entry-save-again:active:not(:disabled) {
+    transform: none;
+  }
 }
 
 @media (max-height: 700px) {

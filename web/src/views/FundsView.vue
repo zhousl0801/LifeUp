@@ -2066,37 +2066,9 @@ function goBack(): void {
 .funds-actions button {
   min-height: 44px;
   padding: 0 14px;
-  border: 0;
-  border-radius: var(--radius-pill);
   font-size: 0.875rem;
   font-weight: 600;
   text-align: center;
-}
-.action-primary {
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-brand);
-  color: var(--color-on-brand);
-}
-
-.action-primary:hover:not(:disabled) {
-  background: var(--color-brand-hover);
-}
-
-.action-secondary {
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-brand-soft);
-  color: var(--color-brand);
-}
-
-.action-secondary:hover:not(:disabled) {
-  background: var(--color-brand-soft-hover);
-}
-
-.funds-actions button:disabled {
-  background: var(--color-bg-disabled);
-  color: var(--color-text-disabled);
 }
 
 .group-filter {
@@ -2470,19 +2442,60 @@ function goBack(): void {
 }
 
 .holding-action-row button {
+  --glossy-light: 1;
+  position: relative;
   min-height: 34px;
   padding: 0 12px;
   border: 0;
   border-radius: var(--radius-pill);
-  background: var(--color-brand-soft);
-  color: var(--color-brand);
+  background: var(--color-btn-soft-bg);
+  color: var(--color-btn-soft-fg);
+  box-shadow:
+    0 2px 5px var(--color-btn-soft-shadow),
+    0 0 0 1px var(--color-btn-soft-ring);
   font-size: var(--text-caption);
   font-weight: 600;
   white-space: nowrap;
+  transition:
+    transform 200ms cubic-bezier(0.22, 1.35, 0.36, 1),
+    background-color var(--motion-fast) ease;
 }
 
-.holding-action-row button:active {
-  background: var(--color-brand-soft-hover);
+.holding-action-row button::before,
+.holding-action-row button::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.holding-action-row button::before {
+  padding: 1px;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, var(--color-btn-soft-stroke)),
+    rgba(255, 255, 255, 0)
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+.holding-action-row button::after {
+  box-shadow: inset 0 0 4px 1px rgba(255, 255, 255, var(--color-btn-soft-glow));
+  opacity: var(--glossy-light);
+  transition: opacity 140ms ease;
+}
+
+.holding-action-row button:hover:not(:disabled) {
+  background: var(--color-btn-soft-bg-hover);
+}
+
+.holding-action-row button:active:not(:disabled) {
+  --glossy-light: 0.52;
+  background: var(--color-btn-soft-bg-hover);
+  transform: scale(0.96);
 }
 
 @media (max-width: 340px) {

@@ -895,36 +895,8 @@ function goBack(): void {
 .gold-actions button,
 .detail-actions button {
   min-height: 48px;
-  border-radius: var(--radius-pill);
   font-size: 0.875rem;
   font-weight: 600;
-}
-
-.action-primary {
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-brand);
-  color: var(--color-on-brand);
-}
-
-.action-primary:hover {
-  background: var(--color-brand-hover);
-}
-
-.action-secondary {
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-brand-soft);
-  color: var(--color-brand);
-}
-
-.action-secondary:hover:not(:disabled) {
-  background: var(--color-brand-soft-hover);
-}
-
-.action-secondary:disabled {
-  background: var(--color-bg-disabled);
-  color: var(--color-text-disabled);
 }
 
 .form-error {
@@ -1204,12 +1176,7 @@ function goBack(): void {
 .confirm-button {
   min-height: 36px;
   padding: 0 14px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-brand);
-  color: var(--color-on-brand);
   font-size: var(--text-footnote);
-  font-weight: 600;
 }
 
 .detail-metrics {
