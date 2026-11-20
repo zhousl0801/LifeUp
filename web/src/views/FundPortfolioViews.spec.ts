@@ -14,7 +14,8 @@ const mocks = vi.hoisted(() => ({
   createPosition: vi.fn(),
   confirmBuy: vi.fn(),
   correctShares: vi.fn(),
-  quoteStatus: vi.fn()
+  quoteStatus: vi.fn(),
+  refresh: vi.fn()
 }))
 
 vi.mock('vue-router', () => ({ onBeforeRouteLeave: vi.fn(), useRoute: () => ({ params: {}, path: '/funds' }), useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }))
@@ -36,7 +37,7 @@ vi.mock('../api/funds', () => ({
   assignFundGroup: mocks.assignGroup
 }))
 vi.mock('../api/plans', () => ({ fetchPlanOverview: mocks.plans }))
-vi.mock('../api/quotes', () => ({ fetchQuoteStatus: mocks.quoteStatus, refreshQuotes: vi.fn() }))
+vi.mock('../api/quotes', () => ({ fetchQuoteStatus: mocks.quoteStatus, refreshQuotes: mocks.refresh }))
 
 const positionA = {
   historyConfirmed: true,
@@ -399,18 +400,20 @@ test('pending activities sort above settled ones', async () => {
   view.unmount()
 })
 
-test('holding profit, holding rate and realized profit share one color convention', async () => {
+test('fund hero shows daily profit, total profit including realized gains, and total rate', async () => {
+  const data = structuredClone(overview)
+  data.funds[0]!.realizedProfit = 110
+  mocks.overview.mockResolvedValue(data)
   const view = mount(FundsView)
   await flushPromises()
 
-  const metrics = view.findAll('.funds-metrics .metric')
-  expect(metrics[0]!.find('.metric-value b').text()).toBe('+400.00')
-  expect(metrics[0]!.find('.metric-value b').classes()).toContain('amount-gain')
-  expect(metrics[0]!.find('.metric-rate').text()).toBe('+23.53%')
-  expect(metrics[0]!.find('.metric-rate').classes()).toContain('amount-gain')
-  expect(metrics[1]!.find('.metric-value b').text()).toBe('0.00')
-  expect(metrics[1]!.find('.metric-value b').classes()).not.toContain('amount-gain')
-  expect(view.find('.hero-today').text()).toContain('今日收益')
+  const metrics = view.findAll('.hero-metrics > div')
+  expect(metrics.map(metric => metric.get('span').text())).toEqual(['今日盈亏', '总收益', '总收益率'])
+  expect(metrics[0]!.get('b').text()).toBe('+19.00')
+  expect(metrics[0]!.get('small').text()).toBe('+0.91%')
+  expect(metrics[1]!.get('b').text()).toBe('+510.00')
+  expect(metrics[1]!.get('b').classes()).toContain('amount-gain')
+  expect(metrics[2]!.get('b').text()).toBe('+30.00%')
   view.unmount()
 })
 
@@ -563,7 +566,7 @@ test('shows a warning ring when the last quote refresh had failures', async () =
   view.unmount()
 })
 
-test.each([null, '["daily","cumulativeRate","cumulative"]'])('fund list uses the new default metric order with saved metrics %s', async (storedMetrics) => {
+test.each([null, '["cost","weight"]'])('fund list uses the fixed metric order with saved metrics %s', async (storedMetrics) => {
   if (storedMetrics !== null) {
     localStorage.setItem('lifeup.fund.metrics.v3', storedMetrics)
   }
@@ -611,22 +614,19 @@ test('switching group filters total, funds, pending items and activities consist
   view.unmount()
 })
 
-test('a collapsed search keeps its scope visible and can be cleared', async () => {
-  const view = mount(FundsView, { attachTo: document.body })
+test('fund header replaces search and metric settings with a fund-only quote refresh', async () => {
+  mocks.refresh.mockResolvedValue({ updated: 1, fundSucceeded: 1, fundFailed: 0 })
+  const view = mount(FundsView)
   await flushPromises()
 
-  await view.get('button[aria-label="搜索与指标"]').trigger('click')
+  const header = view.get('header.funds-header')
+  expect(header.get('h1').text()).toBe('基金')
+  expect(header.find('[aria-label="搜索与指标"]').exists()).toBe(false)
+  expect(header.find('[aria-label="记录投资"]').exists()).toBe(true)
+  await header.get('button[aria-label="同步行情"]').trigger('click')
   await flushPromises()
-  const input = document.querySelector<HTMLInputElement>('.portfolio-toolbar input')!
-  input.value = '纳指'
-  input.dispatchEvent(new Event('input', { bubbles: true }))
-  await flushPromises()
-
-  expect(view.get('.hero-balance').text()).toContain('1,800.00')
-  expect(view.get('.hero-label').text()).toContain('搜索「纳指」')
-  await view.get('.active-search button').trigger('click')
-  expect(view.get('.hero-balance').text()).toContain('2,400.00')
-  expect(view.find('.active-search').exists()).toBe(false)
+  expect(mocks.refresh).toHaveBeenCalledExactlyOnceWith('funds')
+  expect(mocks.overview).toHaveBeenCalledTimes(2)
   view.unmount()
 })
 
@@ -699,23 +699,6 @@ test('group management creates a new group from the sheet', async () => {
   await flushPromises()
 
   expect(mocks.createGroup).toHaveBeenCalledWith('美股科技')
-  view.unmount()
-})
-
-test('metric picker keeps at most three indicators', async () => {
-  const view = mount(FundsView, { attachTo: document.body })
-  await flushPromises()
-
-  await view.get('button[aria-label="搜索与指标"]').trigger('click')
-  await flushPromises()
-  const costButton = [...document.querySelectorAll<HTMLButtonElement>('.metric-picker button')]
-    .find((button) => button.textContent?.trim() === '持仓成本')!
-  costButton.click()
-  await flushPromises()
-
-  expect(document.body.textContent).toContain('最多同时显示 3 项指标')
-  expect(document.querySelectorAll('.metric-picker button.active')).toHaveLength(3)
-
   view.unmount()
 })
 

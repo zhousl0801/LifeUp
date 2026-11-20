@@ -18,7 +18,7 @@ import {
   sellFund
 } from '../api/funds'
 import { fetchPlanOverview } from '../api/plans'
-import { fetchQuoteStatus, type QuoteStatus } from '../api/quotes'
+import { fetchQuoteStatus, refreshQuotes, type QuoteStatus } from '../api/quotes'
 import { ApiError, getApiErrorMessage } from '../api/client'
 import { useFundSearch } from '../composables/useFundSearch'
 import { toast } from '../composables/useMessage'
@@ -28,6 +28,8 @@ import MoneyAmount from '../components/MoneyAmount.vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
 import BackButton from '../components/BackButton.vue'
+import QuoteRefreshButton from '../components/QuoteRefreshButton.vue'
+import InvestmentHeroMetrics from '../components/InvestmentHeroMetrics.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import { useUnsavedSheet } from '../composables/useUnsavedSheet'
@@ -35,7 +37,6 @@ import ConfirmSheet from '../components/ConfirmSheet.vue'
 import FundReturnsPanel from '../components/FundReturnsPanel.vue'
 import InvestmentActivityList, { type InvestmentActivityRow } from '../components/InvestmentActivityList.vue'
 import UpdateRing from '../components/UpdateRing.vue'
-import FundDisplaySettingsSheet, { type FundMetricKey } from '../components/funds/FundDisplaySettingsSheet.vue'
 import FundGroupManagerSheet from '../components/funds/FundGroupManagerSheet.vue'
 import {
   amountTone,
@@ -50,6 +51,7 @@ import {
   parseSignedAmount,
   parsePrice,
   parseQuantity,
+  subtractAmounts,
   sumAmounts,
   todayInBusinessTimeZone
 } from '../utils/format'
@@ -81,17 +83,6 @@ type SheetKind = 'opening' | 'buy' | 'buyConfirm' | 'shares' | 'sell' | 'sellCon
 type PortfolioView = 'positions' | 'returns' | 'activities' | 'plans'
 type GroupScope = 'all' | 'ungrouped' | string
 
-const metricStorageKey = 'lifeup.fund.metrics.v3'
-const defaultMetrics: FundMetricKey[] = ['daily', 'cumulative', 'cumulativeRate']
-const metricOptions: { key: FundMetricKey; label: string }[] = [
-  { key: 'daily', label: '日收益' },
-  { key: 'cumulative', label: '累计收益' },
-  { key: 'cumulativeRate', label: '累计收益率' },
-  { key: 'value', label: '持仓价值' },
-  { key: 'cost', label: '持仓成本' },
-  { key: 'weight', label: '占比' },
-  { key: 'pending', label: '待确认' }
-]
 const platformOptions = ['券商直销', '支付宝', '天天基金', '银行']
 
 const route = useRoute()
@@ -107,6 +98,7 @@ const today = todayInBusinessTimeZone()
 const overview = ref<FundOverview | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref('')
+const quoteRefreshing = ref(false)
 const quoteStatus = ref<QuoteStatus | null>(null)
 let quoteStatusTimer: ReturnType<typeof setInterval> | null = null
 let unmounted = false
@@ -121,11 +113,7 @@ const duplicatePrompt = ref<{ position: FundPosition; shares: number; cost: numb
 const activeGroup = ref<GroupScope>('all')
 const activeView = ref<PortfolioView>(normalizeView(route.params.view))
 const expandedFund = ref<string | null>(null)
-const searchText = ref('')
-const metricKeys = ref<FundMetricKey[]>(loadMetricKeys())
-const metricNotice = ref('')
 const groupSheetOpen = ref(false)
-const settingsOpen = ref(false)
 const pendingGroupRemoval = ref<{ id: string; name: string } | null>(null)
 const groupDraft = ref('')
 const groupError = ref('')
@@ -236,28 +224,12 @@ const managedGroup = computed(() =>
   groups.value.find((group) => group.id === groupDetailId.value) ?? null)
 
 const scopedFunds = computed(() => {
-  const search = searchText.value.trim().toLowerCase()
-
-  return allFunds.value.filter((fund) => {
-    if (activeGroup.value === 'ungrouped' && fund.groupId) {
-      return false
-    }
-
-    if (activeGroup.value !== 'all' && activeGroup.value !== 'ungrouped' && fund.groupId !== activeGroup.value) {
-      return false
-    }
-
-    if (!search) {
-      return true
-    }
-
-    return fund.name.toLowerCase().includes(search)
-      || fund.classes.some((fundClass) => fundClass.platforms.some((platform) =>
-        (platform.code ?? '').toLowerCase().includes(search)))
-  })
+  if (activeGroup.value === 'all') return allFunds.value
+  if (activeGroup.value === 'ungrouped') return allFunds.value.filter(fund => !fund.groupId)
+  return allFunds.value.filter(fund => fund.groupId === activeGroup.value)
 })
 
-const hasScopeFilter = computed(() => activeGroup.value !== 'all' || searchText.value.trim() !== '')
+const hasScopeFilter = computed(() => activeGroup.value !== 'all')
 const returnsGroupId = computed(() =>
   activeGroup.value !== 'all' && activeGroup.value !== 'ungrouped' ? activeGroup.value : null)
 const returnsUngrouped = computed(() => activeGroup.value === 'ungrouped')
@@ -352,14 +324,11 @@ const scope = computed(() => {
   const pendingArrivalAmount = sumAmounts(scopedPendingArrivals.value.map(item => item.amount))
 
   return {
-    confirmedValue,
     cost,
-    holdingProfit,
-    realizedProfit,
+    totalProfit: addAmounts(holdingProfit, realizedProfit),
     pendingBuyAmount,
     pendingArrivalAmount,
     assetValue: addAmounts(confirmedValue, pendingBuyAmount, pendingArrivalAmount),
-    rate: calculatePercent(holdingProfit, cost),
     hasEffectiveQuotes: scopedFunds.value.every((fund) => fund.hasEffectiveQuotes),
     historyConfirmed: scopedFunds.value.every((fund) => fund.historyConfirmed)
   }
@@ -377,7 +346,24 @@ function cumulativeProfit(fund: FundSummary): number {
 
 const todayProfit = computed(() => latestFundDailyProfit(scopedFunds.value, today))
 
-const isUpdating = computed(() => isLoading.value || (quoteStatus.value?.isRunning ?? false))
+const todayProfitRate = computed(() => {
+  const { latestDate, value } = todayProfit.value
+  if (!latestDate) return null
+
+  const disclosedValue = sumAmounts(scopedFunds.value
+    .filter(fund => fund.hasDailyProfit && fund.dailyProfitDate === latestDate)
+    .map(fund => fund.value))
+  return calculatePercent(value, subtractAmounts(disclosedValue, value))
+})
+const totalUnavailable = computed(() => {
+  if (!scope.value.hasEffectiveQuotes) return '行情待补'
+  if (!scope.value.historyConfirmed) return '待核对'
+  return undefined
+})
+const totalProfit = computed(() => totalUnavailable.value ? null : scope.value.totalProfit)
+const totalRate = computed(() => calculatePercent(totalProfit.value, scope.value.cost))
+
+const isUpdating = computed(() => isLoading.value || quoteRefreshing.value || (quoteStatus.value?.isRunning ?? false))
 const hasQuoteError = computed(() => {
   const run = quoteStatus.value?.lastRun
   return !isUpdating.value && !!run && run.fundAttempted > 0 && run.fundFailed > 0
@@ -572,17 +558,42 @@ async function loadOverview(): Promise<void> {
   }
 }
 
-async function loadQuoteStatus(): Promise<void> {
+async function loadQuoteStatus(reloadOnCompletion = true): Promise<void> {
   try {
     const wasUpdating = quoteStatus.value?.isRunning ?? false
     const status = await fetchQuoteStatus()
     quoteStatus.value = status
 
-    if (wasUpdating && !status.isRunning) {
+    if (reloadOnCompletion && wasUpdating && !status.isRunning) {
       await loadOverview()
     }
   } catch {
     // 行情状态只是辅助信息，读取失败不阻塞基金页。
+  }
+}
+
+async function syncQuotes(): Promise<void> {
+  if (isUpdating.value || !overview.value) return
+
+  quoteRefreshing.value = true
+  try {
+    const run = await refreshQuotes('funds')
+    await Promise.all([loadOverview(), loadQuoteStatus(false)])
+    if (!overview.value) return
+
+    if (run.fundFailed > 0) {
+      toast.info(`基金行情刷新结果：成功 ${run.fundSucceeded} 项，失败 ${run.fundFailed} 项。`)
+    } else if (run.fundSucceeded === 0) {
+      toast.info('暂无可刷新的基金行情。')
+    } else if (run.updated === 0) {
+      toast.info('基金行情已是最新。')
+    } else {
+      toast.success(`基金行情已更新：更新 ${run.updated} 项。`)
+    }
+  } catch (error) {
+    toast.error(getApiErrorMessage(error, '基金行情刷新失败，请稍后重试。'))
+  } finally {
+    quoteRefreshing.value = false
   }
 }
 
@@ -592,7 +603,7 @@ function startQuoteStatusPolling(): void {
   }
 
   quoteStatusTimer = setInterval(() => {
-    if (document.visibilityState === 'hidden') {
+    if (document.visibilityState === 'hidden' || quoteRefreshing.value) {
       return
     }
 
@@ -625,125 +636,36 @@ function ensureActiveGroup(): void {
   }
 }
 
-function loadMetricKeys(): FundMetricKey[] {
-  try {
-    const stored = localStorage.getItem(metricStorageKey)
-
-    if (stored) {
-      const keys = JSON.parse(stored) as unknown
-
-      if (Array.isArray(keys)) {
-        const valid = keys.filter((key): key is FundMetricKey =>
-          metricOptions.some((option) => option.key === key)).slice(0, 3)
-
-        if (valid[0] === 'daily' && valid[1] === 'cumulativeRate' && valid[2] === 'cumulative') {
-          return [...defaultMetrics]
-        }
-
-        if (valid.length) {
-          return valid
-        }
-      }
+function metricDisplay(fund: FundSummary) {
+  const cumulative = cumulativeProfit(fund)
+  const rate = calculatePercent(cumulative, fund.cost)
+  return [
+    {
+      key: 'daily',
+      label: '日收益',
+      value: fund.hasDailyProfit ? formatSignedMoney(fund.dailyProfit) : '—',
+      sub: fund.hasDailyProfit && fund.dailyProfitRate !== null
+        ? `${formatSignedMoney(fund.dailyProfitRate)}%`
+        : undefined,
+      tone: amountTone(fund.hasDailyProfit ? fund.dailyProfit : null)
+    },
+    {
+      key: 'cumulative',
+      label: '累计收益',
+      value: fund.historyConfirmed ? formatSignedMoney(cumulative) : '待核对',
+      tone: amountTone(fund.historyConfirmed ? cumulative : null)
+    },
+    {
+      key: 'cumulativeRate',
+      label: '累计收益率',
+      value: !fund.historyConfirmed
+        ? '待核对'
+        : !fund.hasEffectiveQuotes
+          ? '行情待补'
+          : rate === null ? '—' : `${formatSignedMoney(rate)}%`,
+      tone: amountTone(fund.historyConfirmed && fund.hasEffectiveQuotes ? rate : null)
     }
-  } catch {
-    // 浏览器存储不可用时使用默认三项指标。
-  }
-
-  return [...defaultMetrics]
-}
-
-function persistMetricKeys(): void {
-  try {
-    localStorage.setItem(metricStorageKey, JSON.stringify(metricKeys.value))
-  } catch {
-    // 指标只是展示设置，保存失败不影响账本。
-  }
-}
-
-function toggleMetric(key: FundMetricKey): void {
-  metricNotice.value = ''
-
-  if (metricKeys.value.includes(key)) {
-    if (metricKeys.value.length <= 1) {
-      metricNotice.value = '至少保留一项指标。'
-      return
-    }
-
-    metricKeys.value = metricKeys.value.filter((item) => item !== key)
-    persistMetricKeys()
-    return
-  }
-
-  if (metricKeys.value.length >= 3) {
-    metricNotice.value = '最多同时显示 3 项指标，请先取消一项。'
-    return
-  }
-
-  metricKeys.value = [...metricKeys.value, key]
-  persistMetricKeys()
-}
-
-function metricDisplay(fund: FundSummary): { key: FundMetricKey; label: string; value: string; sub?: string; tone: string }[] {
-  const total = scope.value.assetValue
-
-  return metricKeys.value.map((key) => {
-    switch (key) {
-      case 'daily':
-        return {
-          key,
-          label: '日收益',
-          value: fund.hasDailyProfit ? formatSignedMoney(fund.dailyProfit) : '—',
-          sub: fund.hasDailyProfit && fund.dailyProfitRate !== null
-            ? `${formatSignedMoney(fund.dailyProfitRate)}%`
-            : undefined,
-          tone: amountTone(fund.hasDailyProfit ? fund.dailyProfit : null)
-        }
-      case 'cumulative':
-        return {
-          key,
-          label: '累计收益',
-          value: fund.historyConfirmed ? formatSignedMoney(cumulativeProfit(fund)) : '待核对',
-          tone: amountTone(fund.historyConfirmed ? cumulativeProfit(fund) : null)
-        }
-      case 'cumulativeRate': {
-        const cumulative = cumulativeProfit(fund)
-        const rate = calculatePercent(cumulative, fund.cost)
-
-        return {
-          key,
-          label: '累计收益率',
-          value: !fund.historyConfirmed
-            ? '待核对'
-            : !fund.hasEffectiveQuotes
-              ? '行情待补'
-              : rate === null ? '—' : `${formatSignedMoney(rate)}%`,
-          tone: amountTone(fund.historyConfirmed && fund.hasEffectiveQuotes ? rate : null)
-        }
-      }
-      case 'cost':
-        return { key, label: '成本', value: `¥${formatMoney(fund.cost)}`, tone: '' }
-      case 'weight': {
-        const weight = calculatePercent(fund.assetValue, total)
-        return {
-          key,
-          label: '占比',
-          value: weight !== null ? `${formatMoney(weight)}%` : '—',
-          tone: ''
-        }
-      }
-      case 'pending': {
-        const pending = addAmounts(fund.pendingBuyAmount, fund.pendingArrivalAmount)
-        return {
-          key,
-          label: '在途',
-          value: pending > 0 ? `¥${formatMoney(pending)}` : '—',
-          tone: ''
-        }
-      }
-      default:
-        return { key, label: '持仓价值', value: `¥${formatMoney(fund.value)}`, tone: '' }
-    }
-  })
+  ]
 }
 
 function weightOf(fund: FundSummary): string {
@@ -799,7 +721,6 @@ async function loadPlans(): Promise<void> {
 }
 
 function openGroupSheet(): void {
-  settingsOpen.value = false
   groupSheetOpen.value = true
   groupDetailId.value = null
   groupDraft.value = ''
@@ -1427,19 +1348,10 @@ function goBack(): void {
 
 <template>
   <main class="page funds-page with-nav">
-    <header class="funds-header">
+    <header class="funds-header asset-page-header">
       <BackButton @back="goBack" />
-      <h1>投资</h1>
+      <h1>基金</h1>
       <div class="funds-header-actions">
-        <button
-          type="button"
-          class="icon-button"
-          aria-label="搜索与指标"
-          :class="{ active: searchText.trim() }"
-          @click="settingsOpen = true"
-        >
-          <AppIcon name="filter" />
-        </button>
         <details class="investment-actions">
           <summary class="icon-button" aria-label="记录投资"><AppIcon name="plus" /></summary>
           <div class="funds-actions" @click="($event.currentTarget as HTMLElement).closest('details')?.removeAttribute('open')">
@@ -1448,6 +1360,7 @@ function goBack(): void {
             <button type="button" class="action-secondary" :disabled="!overview?.positions.length" @click="openSheet('sell')">卖出</button>
           </div>
         </details>
+        <QuoteRefreshButton :refreshing="isUpdating" :disabled="!overview" @refresh="syncQuotes" />
       </div>
     </header>
 
@@ -1465,43 +1378,20 @@ function goBack(): void {
       <section class="funds-hero investment-hero">
         <p class="hero-label">
           总资产
-          <span v-if="searchText.trim()" class="hero-search" :title="searchText">· 搜索「{{ searchText.trim() }}」</span>
           <span class="hero-tag">{{ scope.historyConfirmed ? '已确认持仓' : '持仓日期待确认' }}</span>
         </p>
         <h2 class="hero-balance">
           <template v-if="scope.hasEffectiveQuotes"><span class="hero-currency">¥</span><MoneyAmount :value="scope.assetValue" prefix="" /></template>
           <template v-else>行情待补</template>
         </h2>
-        <div class="funds-metrics" role="group" aria-label="收益概览">
-          <div class="hero-metrics">
-            <div class="hero-today">
-              <span class="metric-label">今日收益</span>
-              <b :class="todayProfitTone">
-                {{ todayProfit.hasValue ? formatSignedMoney(todayProfit.value) : '—' }}
-              </b>
-            </div>
-            <div class="metric">
-              <span class="metric-label">持有收益</span>
-              <div class="metric-value">
-                <b :class="amountTone(scope.hasEffectiveQuotes ? scope.holdingProfit : null)">
-                  {{ scope.hasEffectiveQuotes ? formatSignedMoney(scope.holdingProfit) : '行情待补' }}
-                </b>
-                <small
-                  v-if="scope.hasEffectiveQuotes && scope.rate !== null"
-                  class="metric-rate"
-                  :class="amountTone(scope.rate)"
-                >{{ formatSignedMoney(scope.rate) }}%</small>
-              </div>
-            </div>
-            <div class="metric">
-              <span class="metric-label">已实现收益</span>
-              <div class="metric-value">
-                <b :class="amountTone(scope.historyConfirmed ? scope.realizedProfit : null)">
-                  {{ scope.historyConfirmed ? formatSignedMoney(scope.realizedProfit) : '待核对' }}
-                </b>
-              </div>
-            </div>
-          </div>
+        <div class="funds-metrics">
+          <InvestmentHeroMetrics
+            :daily-profit="todayProfit.hasValue ? todayProfit.value : null"
+            :daily-rate="todayProfitRate"
+            :total-profit="totalProfit"
+            :total-rate="totalRate"
+            :total-unavailable="totalUnavailable"
+          />
           <small v-if="isUpdating" class="hero-update is-updating">
             <UpdateRing :value="todayProfit.covered" :total="todayProfit.total" indeterminate />
             <span>
@@ -1562,11 +1452,6 @@ function goBack(): void {
           <AppIcon name="chevron" />
         </button>
       </div>
-      <div v-if="searchText.trim()" class="active-search">
-        <span>当前仅显示搜索结果</span>
-        <button type="button" class="back-link" @click="searchText = ''">清除搜索</button>
-      </div>
-
       <template v-if="activeView === 'returns'">
         <FundReturnsPanel
           :group-id="returnsGroupId"
@@ -1687,9 +1572,9 @@ function goBack(): void {
           v-else
           icon="chart"
           :title="allFunds.length ? '没有找到基金' : '从第一笔持仓开始'"
-          :description="allFunds.length ? '试试其他分组，或清除搜索条件。' : '录入已有基金，查看持仓价值与收益。'"
+          :description="allFunds.length ? '试试其他分组。' : '录入已有基金，查看持仓价值与收益。'"
           :action-label="allFunds.length ? '查看全部基金' : '录入已有持仓'"
-          @action="allFunds.length ? (selectGroup('all'), searchText = '') : openSheet('opening')"
+          @action="allFunds.length ? selectGroup('all') : openSheet('opening')"
         />
 
         <p v-if="!scope.historyConfirmed || !scope.hasEffectiveQuotes" class="summary-note">
@@ -1756,16 +1641,6 @@ function goBack(): void {
       </template>
 
     </template>
-
-    <FundDisplaySettingsSheet
-      v-model:search-text="searchText"
-      :open="settingsOpen"
-      :metric-keys="metricKeys"
-      :metric-options="metricOptions"
-      :metric-notice="metricNotice"
-      @close="settingsOpen = false"
-      @toggle-metric="toggleMetric"
-    />
 
     <FundGroupManagerSheet
       v-model:group-draft="groupDraft"
@@ -2140,19 +2015,6 @@ function goBack(): void {
   gap: 2px;
 }
 
-.funds-header-actions .icon-button.active {
-  background: var(--color-brand-soft);
-}
-
-.back-link {
-  min-height: var(--touch-target);
-  padding: 0 4px;
-  border: 0;
-  background: transparent;
-  color: var(--color-brand);
-  font-size: 0.75rem;
-}
-
 .funds-hero {
   margin-bottom: var(--space-4);
 }
@@ -2173,28 +2035,6 @@ function goBack(): void {
   --update-ring-color: var(--color-warning);
 }
 
-.metric-rate {
-  display: block;
-  margin-top: var(--space-1);
-  font-size: var(--text-caption);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-
-.hero-search {
-  overflow: hidden;
-  max-width: 170px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.active-search {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin: -8px 0 12px;
-  color: var(--color-text-secondary);
-  font-size: var(--text-footnote);
-}
 .funds-header .investment-actions {
   margin-left: 0;
 }

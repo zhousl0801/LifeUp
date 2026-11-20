@@ -158,7 +158,7 @@ function goHome(): void {
 
 <template>
   <main class="page with-nav">
-    <header class="page-head">
+    <header class="page-head asset-page-header">
       <div class="page-head-row">
         <BackButton @back="goHome" />
         <div class="page-head-title">

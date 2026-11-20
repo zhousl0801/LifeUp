@@ -5,11 +5,13 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { arriveGoldSell, buyGold, fetchGoldOverview, refreshGoldQuote, saveGoldHolding, sellGold } from '../api/gold'
 import { ApiError, getApiErrorMessage } from '../api/client'
-import { fetchLedger, updateAssetCoverage } from '../api/ledger'
+import { fetchDayChange, fetchLedger, updateAssetCoverage } from '../api/ledger'
 import { toast } from '../composables/useMessage'
 import AppNav from '../components/AppNav.vue'
 import MoneyAmount from '../components/MoneyAmount.vue'
 import BackButton from '../components/BackButton.vue'
+import QuoteRefreshButton from '../components/QuoteRefreshButton.vue'
+import InvestmentHeroMetrics from '../components/InvestmentHeroMetrics.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import LoadingState from '../components/LoadingState.vue'
 import InvestmentActivityList from '../components/InvestmentActivityList.vue'
@@ -36,12 +38,15 @@ import {
 import { toGoldActivityRow } from '../utils/goldActivities'
 import { createRequestId } from '../utils/request'
 import type { GoldOverview, PendingGoldArrival } from '../types/gold'
+import type { DayInvestmentChange } from '../types/ledger'
 
 type SheetKind = 'buy' | 'sell' | 'sellArrival' | 'holding' | 'detail'
 
 const router = useRouter()
 const today = todayInBusinessTimeZone()
 const overview = ref<GoldOverview | null>(null)
+const dailyChange = ref<DayInvestmentChange | null>(null)
+const dailyRate = computed(() => calculatePercent(dailyChange.value?.profit, dailyChange.value?.previousValue))
 const isLoading = ref(false)
 const isRefreshing = ref(false)
 const errorMessage = ref('')
@@ -71,9 +76,9 @@ const { discardOpen, requestClose, resolveDiscard } = useUnsavedSheet(
 
 const quoteLabel = computed(() => {
   switch (overview.value?.quoteSource) {
-    case 'sge_delayed': return '上金所延时参考价'
-    case 'eastmoney_sge': return 'Au99.99 现货参考价'
-    case 'icbc': return '工行积存金报价'
+    case 'sge_delayed':
+    case 'eastmoney_sge': return 'Au99.99'
+    case 'icbc': return '工行积存金'
     default: return '报价'
   }
 })
@@ -234,9 +239,15 @@ async function loadOverview(): Promise<void> {
   errorMessage.value = ''
 
   try {
-    overview.value = await fetchGoldOverview()
+    const data = await fetchGoldOverview()
+    const change = data.isConfigured && data.hasEffectiveQuote
+      ? await fetchDayChange().catch(() => null)
+      : null
+    overview.value = data
+    dailyChange.value = change?.to === today ? change.dayBreakdown?.gold ?? null : null
   } catch (error) {
     overview.value = null
+    dailyChange.value = null
 
     if (error instanceof ApiError && error.status === 404) {
       await router.replace({ name: 'setup' })
@@ -506,9 +517,10 @@ function goBack(): void {
 
 <template>
   <main class="page gold-page with-nav">
-    <header class="gold-header">
+    <header class="gold-header asset-page-header">
       <BackButton @back="goBack" />
       <h1>贵金属</h1>
+      <QuoteRefreshButton :refreshing="isRefreshing" :disabled="!overview" @refresh="refreshQuote" />
     </header>
 
     <LoadingState v-if="isLoading && !overview" variant="hero" label="正在读取贵金属" />
@@ -530,34 +542,23 @@ function goBack(): void {
           <template v-else>行情待补</template>
         </h2>
         <p class="hero-meta">
-          持有 {{ formatQuantity(overview.grams) }} 克 ·
-          {{ quoteLabel }} {{ overview.hasEffectiveQuote ? formatMoney(overview.quote) : '行情待补' }} 元/克
-          <template v-if="overview.hasEffectiveQuote && overview.quoteDate"> · 行情 {{ formatBusinessDate(overview.quoteDate) }}</template>
+          <template v-if="overview.hasEffectiveQuote">{{ quoteLabel }}: {{ formatMoney(overview.quote) }}¥/g</template>
+          <template v-else>行情待补</template>
           <template v-if="overview.pendingArrivalAmount > 0"> · 含待到账 ¥{{ formatMoney(overview.pendingArrivalAmount) }}</template>
         </p>
-        <div class="hero-metrics">
-          <div>
-            <span>总收益</span>
-            <b :class="amountTone(totalProfit)">{{ profitText(totalProfit) }}</b>
-          </div>
-          <div>
-            <span>总收益率</span>
-            <b :class="amountTone(totalRate)">{{ formatPercent(totalRate) }}</b>
-          </div>
-          <div>
-            <span>成本均价</span>
-            <b>{{ overview.averageCost === null ? '—' : `¥${formatMoney(overview.averageCost)} / 克` }}</b>
-          </div>
-        </div>
+        <InvestmentHeroMetrics
+          :daily-profit="dailyChange?.profit ?? null"
+          :daily-rate="dailyRate"
+          :total-profit="totalProfit"
+          :total-rate="totalRate"
+          :total-unavailable="overview.hasEffectiveQuote ? undefined : '行情待补'"
+        />
         <p class="hero-foot">可用现金 ¥{{ formatMoney(overview.cashBalance) }}</p>
       </section>
 
       <div v-if="overview.isConfigured" class="gold-actions">
         <button type="button" class="action-primary" @click="openSheet('buy')">买入</button>
         <button type="button" class="action-secondary" @click="openSheet('holding')">录入 / 核对</button>
-        <LoadingButton class="action-secondary" :loading="isRefreshing" loading-label="刷新中…" @click="refreshQuote">
-          刷新报价
-        </LoadingButton>
       </div>
 
       <p v-if="errorMessage" class="form-error" role="alert">{{ errorMessage }}</p>
@@ -872,6 +873,10 @@ function goBack(): void {
   letter-spacing: -0.4px;
 }
 
+.gold-header .sync-button {
+  margin-inline-start: auto;
+}
+
 .position-percent {
   margin-left: 4px;
   font-size: var(--text-caption);
@@ -882,7 +887,7 @@ function goBack(): void {
 
 .gold-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin-top: 14px;
 }

@@ -256,7 +256,7 @@ async function submitReconcile(): Promise<void> {
 
 <template>
   <main class="page cash-page with-nav">
-    <header class="cash-header">
+    <header class="cash-header asset-page-header">
       <BackButton @back="navigateBack(router)" />
       <h1>现金</h1>
       <button type="button" class="reconcile-link" @click="openReconcile">核对余额</button>

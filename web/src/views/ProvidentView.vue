@@ -358,7 +358,7 @@ function goBack(): void {
 
 <template>
   <main class="page provident-page with-nav">
-    <header class="provident-header">
+    <header class="provident-header asset-page-header">
       <BackButton @back="goBack" />
       <h1>公积金</h1>
     </header>

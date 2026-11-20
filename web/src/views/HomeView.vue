@@ -7,7 +7,7 @@ import { fetchFundOverview } from '../api/funds'
 import { refreshQuotes } from '../api/quotes'
 import { getApiErrorMessage } from '../api/client'
 import { toast } from '../composables/useMessage'
-import AppIcon from '../components/AppIcon.vue'
+import QuoteRefreshButton from '../components/QuoteRefreshButton.vue'
 import AppNav from '../components/AppNav.vue'
 import AmountVisibilityButton from '../components/AmountVisibilityButton.vue'
 import MoneyAmount from '../components/MoneyAmount.vue'
@@ -355,16 +355,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="hero-actions">
           <span class="hero-date">{{ formatBusinessDate(updateDate) }}</span>
-          <button
-            type="button"
-            class="sync-button"
-            :disabled="quoteRefreshing"
-            :aria-label="quoteRefreshing ? '正在同步行情' : '同步行情'"
-            :title="quoteRefreshing ? '正在同步行情' : '同步行情'"
-            @click="syncQuotes"
-          >
-            <AppIcon name="refresh" :class="{ spinning: quoteRefreshing }" />
-          </button>
+          <QuoteRefreshButton :refreshing="quoteRefreshing" on-hero @refresh="syncQuotes" />
         </div>
       </header>
 
@@ -671,47 +662,6 @@ onBeforeUnmount(() => {
   padding-top: 4px;
   color: var(--color-hero-text-secondary);
   font-size: var(--text-caption);
-}
-
-.sync-button {
-  display: inline-flex;
-  justify-content: center;
-  align-items: center;
-  width: var(--touch-target);
-  height: var(--touch-target);
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: var(--color-hero-surface);
-  color: var(--color-hero-text);
-  transition: background var(--motion-fast) ease, transform var(--motion-fast) ease;
-}
-
-.sync-button:hover:not(:disabled) {
-  background: var(--color-hero-surface-strong);
-}
-
-.sync-button:active:not(:disabled) {
-  transform: scale(.94);
-}
-
-.sync-button:disabled {
-  color: var(--color-hero-text-muted);
-}
-
-.sync-button :deep(.app-icon) {
-  width: 20px;
-  height: 20px;
-}
-
-.spinning {
-  animation: spin .9s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .sync-note {

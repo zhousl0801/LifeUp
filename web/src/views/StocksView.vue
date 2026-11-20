@@ -10,6 +10,8 @@ import { fetchLedger, updateAssetCoverage } from '../api/ledger'
 import AppNav from '../components/AppNav.vue'
 import MoneyAmount from '../components/MoneyAmount.vue'
 import BackButton from '../components/BackButton.vue'
+import QuoteRefreshButton from '../components/QuoteRefreshButton.vue'
+import InvestmentHeroMetrics from '../components/InvestmentHeroMetrics.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import LoadingState from '../components/LoadingState.vue'
 import InvestmentActivityList from '../components/InvestmentActivityList.vue'
@@ -147,16 +149,6 @@ const todayProfitLabel = computed(() => {
   return date && date !== today
     ? `最近交易日盈亏 · ${formatBusinessDate(date)}`
     : '今日盈亏'
-})
-
-const todayProfitText = computed(() => {
-  const data = overview.value
-
-  if (!data || data.todayProfit === null) {
-    return '—'
-  }
-
-  return `${formatSignedMoney(data.todayProfit)}${data.todayProfitComplete ? '' : '（估算）'}`
 })
 
 const totalTodayPercent = computed(() => {
@@ -744,11 +736,12 @@ function goBack(): void {
 
 <template>
   <main class="page stock-page with-nav">
-    <header class="stock-header">
+    <header class="stock-header asset-page-header">
       <BackButton @back="goBack" />
       <div class="stock-title">
         <h1>股票</h1>
       </div>
+      <QuoteRefreshButton :refreshing="isRefreshing" :disabled="!activePositions.length" @refresh="refreshQuotes" />
     </header>
 
     <LoadingState v-if="isLoading && !overview" variant="hero" label="正在读取股票持仓" />
@@ -769,35 +762,21 @@ function goBack(): void {
         <p class="hero-meta">
           持有 {{ activePositions.length }} 只
           <template v-if="overview.todayProfitDate"> · 行情 {{ formatBusinessDate(overview.todayProfitDate) }}</template>
-          <template v-if="!overview.todayProfitComplete"> · 今日盈亏为估算</template>
+          <template v-if="overview.todayProfit !== null && !overview.todayProfitComplete"> · 今日盈亏为估算</template>
           <template v-if="closedPositions.length"> · 已清仓 {{ closedPositions.length }} 只</template>
         </p>
-        <div class="hero-metrics">
-          <div>
-            <span>{{ todayProfitLabel }}</span>
-            <b :class="amountTone(overview.todayProfit)">
-              {{ todayProfitText }}
-              <em v-if="totalTodayPercent !== null" class="metric-percent">{{ formatPercent(totalTodayPercent) }}</em>
-            </b>
-          </div>
-          <div>
-            <span>总收益</span>
-            <b :class="amountTone(totalProfit)">{{ formatSignedMoney(totalProfit) }}</b>
-          </div>
-          <div>
-            <span>总收益率</span>
-            <b :class="amountTone(totalRate)">{{ totalRate === null ? '—' : formatPercent(totalRate) }}</b>
-          </div>
-        </div>
+        <InvestmentHeroMetrics
+          :daily-profit="overview.todayProfit"
+          :daily-rate="totalTodayPercent"
+          :total-profit="totalProfit"
+          :total-rate="totalRate"
+        />
         <p class="hero-foot">可用现金 ¥{{ formatMoney(overview.cashBalance) }}</p>
       </section>
 
       <div v-if="overview.positions.length > 0" class="stock-actions">
         <button type="button" class="action-primary" @click="openSheet('buy')">买入</button>
         <button type="button" class="action-secondary" @click="openSheet('holding')">录入 / 核对</button>
-        <LoadingButton class="action-secondary" :loading="isRefreshing" loading-label="刷新中…" @click="refreshQuotes">
-          刷新行情
-        </LoadingButton>
       </div>
 
       <p v-if="errorMessage" class="form-error" role="alert">{{ errorMessage }}</p>
@@ -1155,17 +1134,13 @@ function goBack(): void {
 }
 
 
-.metric-percent {
-  margin-left: 4px;
-  font-size: var(--text-caption);
-  font-style: normal;
-  font-weight: 500;
-  opacity: 0.85;
+.stock-header .sync-button {
+  margin-inline-start: auto;
 }
 
 .stock-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin-top: 14px;
 }
