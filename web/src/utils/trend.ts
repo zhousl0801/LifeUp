@@ -1,4 +1,4 @@
-import { formatMoney, formatMaskedMoney } from './format'
+import { formatMoney, MaskedMoney } from './format'
 import { chartFontSize, chartTheme, type ChartThemeVariant } from './chartTheme'
 import type { AssetTrend, AssetTrendPoint, TrendRange } from '../types/trend'
 
@@ -32,7 +32,7 @@ export function buildAssetTrend(trend: AssetTrend) {
 export function trendAmountLabel(point: DailyAssetPoint | null | undefined, amountsMasked = false): string {
   if (point?.value == null) return '依据不足'
 
-  if (amountsMasked) return formatMaskedMoney(point.value)
+  if (amountsMasked) return MaskedMoney
   return `¥${formatMoney(point.value)}`
 }
 
@@ -64,9 +64,9 @@ export function buildTrendOption(
     tooltip: {
       trigger: 'axis',
       confine: true,
-      backgroundColor: isHero ? 'rgba(46, 43, 70, 0.96)' : undefined,
+      backgroundColor: theme.tooltipBg,
       borderWidth: 0,
-      textStyle: isHero ? { color: '#F7F5FF', fontSize: chartFontSize(12) } : undefined,
+      textStyle: { color: theme.tooltipText, fontSize: chartFontSize(12) },
       axisPointer: { type: 'line', lineStyle: { color: theme.pointer, type: 'dashed' } },
       formatter: (params: { dataIndex?: number }[]) => {
         const index = params[0]?.dataIndex

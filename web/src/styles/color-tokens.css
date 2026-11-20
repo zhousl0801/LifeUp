@@ -1,0 +1,420 @@
+/* LifeUp · Midnight Mint 午夜薄荷金融风 · v2.1 · 2026-11-17
+ * 亮色采用 Daylight Prism（冷瓷白底 + 晴空极光 Hero + 多色语义微彩），
+ * 暗色采用 Obsidian Mint（冷曜石黑降饱和底 + 锐利冷灰白字 + 顶缘微光描边）。
+ * 应用在 html 根节点设置 data-theme="midnight-mint" 后生效，通过 data-color-scheme="light|dark" 切换深色。
+ */
+[data-theme="midnight-mint"] {
+  color-scheme: light;
+
+  /* 原始色板：业务组件优先引用下方语义变量。 */
+  --palette-white: #FFFFFF;
+  --palette-ink-950: #0B0C10;
+  --palette-ink-900: #111827;
+  --palette-ink-800: #1E293B;
+  --palette-ink-700: #334155;
+
+  --palette-page: #F4F6FA;
+  --palette-lilac-50: #EEF1F7;
+  --palette-lilac-100: #E5E9F2;
+  --palette-lilac-200: #E2E7F0;
+  --palette-lilac-300: #CBD5E1;
+  --palette-lilac-400: #94A3B8;
+  --palette-lilac-500: #646E82;
+  --palette-lilac-600: #525B6E;
+  --palette-ink-text: #111827;
+
+  --palette-violet-50: #F2F4FF;
+  --palette-violet-100: #EEF2FF;
+  --palette-violet-200: #E0E7FF;
+  --palette-violet-400: #818CF8;
+  --palette-violet-500: #4F46E5;
+  --palette-violet-600: #4338CA;
+  --palette-violet-700: #3730A3;
+
+  --palette-mint: #7CE7B1;
+  --palette-mint-strong: #10B981;
+  --palette-mint-soft: #E6F8F1;
+  --palette-cyan: #06B6D4;
+  --palette-orange: #F59E0B;
+
+  --palette-red: #D94A4A;
+  --palette-red-hover: #C13C3C;
+  --palette-red-active: #A83232;
+  --palette-red-soft: #FDECEC;
+  --palette-green: #0D9488;
+  --palette-green-soft: #E6F8F1;
+  --palette-amber: #946200;
+  --palette-amber-soft: #FFF5DF;
+
+  /* 品牌与基础界面。 */
+  --color-brand: var(--palette-violet-500);
+  --color-brand-hover: var(--palette-violet-600);
+  --color-brand-active: var(--palette-violet-700);
+  --color-brand-soft: var(--palette-violet-100);
+  --color-brand-soft-hover: var(--palette-violet-200);
+  --color-on-brand: var(--palette-white);
+  --color-bg-page: var(--palette-page);
+  --color-bg-canvas: #E8ECF4;
+  --color-bg-surface: var(--palette-white);
+  --color-bg-subtle: var(--palette-lilac-50);
+  --color-bg-hover: var(--palette-violet-50);
+  --color-bg-selected: var(--palette-violet-100);
+  --color-surface-border: rgba(15, 23, 42, 0.04);
+  --color-text-primary: var(--palette-ink-text);
+  --color-text-secondary: var(--palette-lilac-600);
+  --color-text-placeholder: var(--palette-lilac-500);
+  --color-text-link: var(--palette-violet-600);
+  --color-text-inverse: var(--palette-white);
+  --color-icon-default: var(--palette-lilac-600);
+  --color-border-subtle: var(--palette-lilac-200);
+  --color-border-default: var(--palette-lilac-300);
+  --color-border-control: #8B96A9;
+  --color-border-hover: var(--palette-lilac-600);
+  --color-border-focus: var(--palette-violet-500);
+  --color-focus-ring: var(--palette-violet-500);
+  --color-focus-gap: var(--palette-white);
+  --color-bg-disabled: var(--palette-lilac-100);
+  --color-text-disabled: #94A3B8;
+  --color-border-disabled: var(--palette-lilac-300);
+  --color-bg-readonly: var(--palette-lilac-50);
+
+  /* 内透琉璃全胶囊按钮（Dissolve Glossy × Daylight Prism）。 */
+  --color-btn-primary-bg: var(--palette-violet-500);
+  --color-btn-primary-bg-hover: var(--palette-violet-600);
+  --color-btn-primary-bg-active: var(--palette-violet-700);
+  --color-btn-primary-fg: var(--palette-white);
+  --color-btn-primary-ring: var(--palette-violet-500);
+  --color-btn-primary-shadow: rgba(55, 48, 163, 0.28);
+  --color-btn-primary-stroke: 0.44;
+  --color-btn-primary-glow: 0.26;
+
+  --color-btn-secondary-bg: #EEF1F8;
+  --color-btn-secondary-bg-hover: #E5EBF9;
+  --color-btn-secondary-fg: var(--palette-ink-800);
+  --color-btn-secondary-ring: rgba(15, 23, 42, 0.08);
+  --color-btn-secondary-shadow: rgba(15, 23, 42, 0.08);
+  --color-btn-secondary-stroke: 0.92;
+  --color-btn-secondary-glow: 0.72;
+
+  --color-btn-soft-bg: #E8EDFF;
+  --color-btn-soft-bg-hover: #DDE5FF;
+  --color-btn-soft-fg: var(--palette-violet-600);
+  --color-btn-soft-ring: rgba(79, 70, 229, 0.14);
+  --color-btn-soft-shadow: rgba(79, 70, 229, 0.11);
+  --color-btn-soft-stroke: 0.86;
+  --color-btn-soft-glow: 0.56;
+
+  --color-btn-danger-bg: var(--palette-red);
+  --color-btn-danger-bg-hover: var(--palette-red-hover);
+  --color-btn-danger-bg-active: var(--palette-red-active);
+  --color-btn-danger-fg: var(--palette-white);
+  --color-btn-danger-ring: var(--palette-red);
+  --color-btn-danger-shadow: rgba(185, 28, 28, 0.26);
+  --color-btn-danger-stroke: 0.42;
+  --color-btn-danger-glow: 0.24;
+
+  --color-btn-ink-bg: var(--palette-ink-900);
+  --color-btn-ink-bg-hover: var(--palette-ink-800);
+  --color-btn-ink-fg: var(--palette-white);
+  --color-btn-ink-ring: var(--palette-ink-900);
+  --color-btn-ink-shadow: rgba(15, 23, 42, 0.26);
+  --color-btn-ink-stroke: 0.34;
+  --color-btn-ink-glow: 0.18;
+
+  /* 多色语义微彩（用于分类图标底色、分组标签等，打破单一淡紫）。 */
+  --color-tint-amber-bg: #FFF3E0;
+  --color-tint-amber-fg: #C2610C;
+  --color-tint-sky-bg: #E0F2FE;
+  --color-tint-sky-fg: #0277BD;
+  --color-tint-emerald-bg: #E6F8F1;
+  --color-tint-emerald-fg: #0D8A6A;
+  --color-tint-rose-bg: #FCE7F3;
+  --color-tint-rose-fg: #C2255C;
+  --color-tint-violet-bg: #EEF2FF;
+  --color-tint-violet-fg: #4F46E5;
+
+  /* Hero 与薄荷强调，首页及各页头部共用。
+   * 浅色主题使用“晴空极光紫”：电光靛紫渐变 + 右上角薄荷漫射光，深色主题用深邃星夜靛紫。 */
+  --color-hero-bg: #3B38B8;
+  --color-hero-bg-end: #5246E5;
+  --color-hero-glow: radial-gradient(115% 110% at 96% -8%, rgba(124, 231, 177, 0.34) 0%, rgba(6, 182, 212, 0.14) 38%, transparent 66%);
+  --color-hero-surface: rgba(255, 255, 255, 0.15);
+  --color-hero-surface-strong: rgba(255, 255, 255, 0.25);
+  --color-hero-track: rgba(255, 255, 255, 0.20);
+  --color-hero-chip: rgba(14, 10, 44, 0.20);
+  --color-hero-text: var(--palette-white);
+  --color-hero-text-secondary: #EEF2FF;
+  --color-hero-text-muted: #D6DEFF;
+  --color-hero-border: rgba(255, 255, 255, 0.22);
+  --color-hero-active: var(--palette-white);
+  --color-hero-active-text: #2A2270;
+  --color-hero-line: var(--palette-mint);
+  --color-hero-line-area: rgba(124, 231, 177, 0.24);
+  --color-hero-note-bg: rgba(124, 231, 177, 0.18);
+  --color-hero-note-text: #E9FFF4;
+  --color-hero-note-error-bg: rgba(255, 214, 214, 0.18);
+  --color-hero-note-error-text: #FFE3E3;
+  --color-accent-mint: var(--palette-mint);
+  --color-accent-mint-strong: var(--palette-mint-strong);
+  --color-accent-mint-soft: rgba(124, 231, 177, 0.16);
+  --color-on-accent-mint: #06392A;
+  --color-accent-cyan: var(--palette-cyan);
+  --color-accent-orange: var(--palette-orange);
+
+  /* 状态：文字、图标、实线边界用主色，背景用 soft。 */
+  --color-info: var(--palette-violet-600);
+  --color-info-bg: var(--palette-violet-100);
+  --color-success: #0F766E;
+  --color-success-bg: var(--palette-green-soft);
+  --color-warning: var(--palette-amber);
+  --color-warning-bg: var(--palette-amber-soft);
+  --color-error: var(--palette-red);
+  --color-error-bg: var(--palette-red-soft);
+  --color-danger: var(--palette-red);
+  --color-danger-hover: var(--palette-red-hover);
+  --color-danger-active: var(--palette-red-active);
+  --color-on-danger: var(--palette-white);
+
+  /* 财务：保留红盈绿亏，薄荷绿只承担品牌和图表强调。 */
+  --color-finance-gain: #C23838;
+  --color-finance-gain-on-hero: #FFD6D6;
+  --color-finance-loss-on-hero: #B5FFD9;
+  --color-finance-loss: #0F766E;
+  --color-finance-gain-bg: var(--palette-red-soft);
+  --color-finance-loss-bg: var(--palette-green-soft);
+  --color-finance-flat: var(--palette-lilac-600);
+  --color-finance-income: #0F766E;
+  --color-finance-expense: var(--palette-ink-text);
+  --color-month-flow-income: #0D9488;
+  --color-month-flow-expense: var(--palette-violet-500);
+  --color-finance-transfer: var(--palette-violet-500);
+  --color-finance-net-change: var(--palette-ink-text);
+  --color-finance-liability: var(--palette-ink-text);
+
+  /* 图表分类：映射固定；文字标签统一使用 text-primary/secondary。 */
+  --color-chart-cash: #10B981;
+  --color-chart-investment: var(--palette-violet-500);
+  --color-chart-property: #0EA5E9;
+  --color-chart-receivable: #F59E0B;
+  --color-chart-stock: #F43F5E;
+  --color-chart-other: var(--palette-lilac-500);
+  --color-chart-liability: #C05A8A;
+  --color-chart-net-assets: var(--palette-violet-500);
+  --color-chart-total-assets: #0EA5E9;
+  --color-chart-total-liabilities: #C05A8A;
+  --color-chart-grid: var(--palette-lilac-200);
+  --color-chart-track: var(--palette-lilac-100);
+  --color-chart-separator: var(--palette-white);
+  --color-chart-reference: var(--palette-lilac-600);
+
+  /* 首页资产卡（扑克卡）：浅色用白卡分层，分类色只出现在图标、占比、链接与右侧流光。 */
+  --color-asset-card-bg: var(--palette-white);
+  --color-asset-card-bg-end: var(--palette-white);
+  --color-asset-card-border: rgba(15, 23, 42, 0.04);
+  --color-asset-card-text: var(--color-text-primary);
+  --color-asset-card-note: var(--color-text-secondary);
+  --color-asset-card-shadow: var(--shadow-card), 0 1px 0 rgba(15, 23, 42, 0.03);
+  --color-asset-card-veil: linear-gradient(90deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.42) 55%, rgba(255, 255, 255, 0));
+  --color-asset-glow-soft: 0.16;
+  --color-asset-glow-strong: 0.38;
+  --color-asset-accent-cash: #0D8A6A;
+  --color-asset-accent-fund: #4F46E5;
+  --color-asset-accent-stock: #C93553;
+  --color-asset-accent-provident: #0277BD;
+  --color-asset-accent-gold: #B45309;
+
+  /* 浮层与临时状态。 */
+  --color-bg-popover: var(--palette-white);
+  --color-bg-tooltip: var(--palette-ink-900);
+  --color-text-tooltip: var(--palette-white);
+  --color-overlay: rgba(15, 23, 42, 0.46);
+  --color-shadow: rgba(15, 23, 42, 0.05);
+  --color-shadow-strong: rgba(15, 23, 42, 0.12);
+  --color-shadow-hero: rgba(67, 56, 202, 0.24);
+  --color-skeleton-base: var(--palette-lilac-100);
+  --color-skeleton-highlight: var(--palette-lilac-50);
+  --color-text-selection-bg: var(--palette-violet-200);
+  --color-text-selection-fg: var(--palette-ink-text);
+}
+
+
+[data-theme="midnight-mint"][data-color-scheme="dark"] {
+  color-scheme: dark;
+
+  --color-brand: #818CF8;
+  --color-brand-hover: #969DFF;
+  --color-brand-active: #6366F1;
+  --color-brand-soft: #22253E;
+  --color-brand-soft-hover: #2C3052;
+  --color-on-brand: #0B0C10;
+
+  --color-bg-page: #0B0C10;
+  --color-bg-canvas: #06070A;
+  --color-bg-surface: #151720;
+  --color-bg-subtle: #1E212E;
+  --color-bg-hover: #232738;
+  --color-bg-selected: #282C42;
+  --color-surface-border: rgba(255, 255, 255, 0.07);
+  --color-text-primary: #F8FAFC;
+  --color-text-secondary: #B4BCD0;
+  --color-text-placeholder: #8E98B0;
+  --color-text-link: #A5B4FC;
+  --color-text-inverse: #0B0C10;
+  --color-icon-default: #B4BCD0;
+  --color-border-subtle: rgba(226, 232, 240, 0.11);
+  --color-border-default: rgba(226, 232, 240, 0.18);
+  --color-border-control: #646E85;
+  --color-border-hover: #8E98B0;
+  --color-border-focus: #818CF8;
+  --color-focus-ring: #818CF8;
+  --color-focus-gap: #0B0C10;
+  --color-bg-disabled: #1E212E;
+  --color-text-disabled: #646E85;
+  --color-border-disabled: #2D3246;
+  --color-bg-readonly: #1E212E;
+
+  /* 内透琉璃全胶囊按钮（Dissolve Glossy × Obsidian Mint）。 */
+  --color-btn-primary-bg: #5B54F0;
+  --color-btn-primary-bg-hover: #6760F5;
+  --color-btn-primary-bg-active: #4D46D9;
+  --color-btn-primary-fg: #FFFFFF;
+  --color-btn-primary-ring: #5B54F0;
+  --color-btn-primary-shadow: rgba(0, 0, 0, 0.52);
+  --color-btn-primary-stroke: 0.50;
+  --color-btn-primary-glow: 0.26;
+
+  --color-btn-secondary-bg: #242838;
+  --color-btn-secondary-bg-hover: #2C3146;
+  --color-btn-secondary-fg: #F1F5F9;
+  --color-btn-secondary-ring: rgba(255, 255, 255, 0.08);
+  --color-btn-secondary-shadow: rgba(0, 0, 0, 0.45);
+  --color-btn-secondary-stroke: 0.24;
+  --color-btn-secondary-glow: 0.12;
+
+  --color-btn-soft-bg: #272B4A;
+  --color-btn-soft-bg-hover: #31365C;
+  --color-btn-soft-fg: #C7D2FE;
+  --color-btn-soft-ring: rgba(129, 140, 248, 0.20);
+  --color-btn-soft-shadow: rgba(0, 0, 0, 0.40);
+  --color-btn-soft-stroke: 0.30;
+  --color-btn-soft-glow: 0.15;
+
+  --color-btn-danger-bg: #DC4C4C;
+  --color-btn-danger-bg-hover: #E75A5A;
+  --color-btn-danger-bg-active: #C63B3B;
+  --color-btn-danger-fg: #FFF5F5;
+  --color-btn-danger-ring: #DC4C4C;
+  --color-btn-danger-shadow: rgba(0, 0, 0, 0.50);
+  --color-btn-danger-stroke: 0.44;
+  --color-btn-danger-glow: 0.24;
+
+  --color-btn-ink-bg: #EEF2F8;
+  --color-btn-ink-bg-hover: #FFFFFF;
+  --color-btn-ink-fg: #0B0C10;
+  --color-btn-ink-ring: rgba(255, 255, 255, 0.82);
+  --color-btn-ink-shadow: rgba(0, 0, 0, 0.48);
+  --color-btn-ink-stroke: 0.96;
+  --color-btn-ink-glow: 0.65;
+
+  --color-tint-amber-bg: rgba(245, 158, 11, 0.16);
+  --color-tint-amber-fg: #FBBF24;
+  --color-tint-sky-bg: rgba(56, 189, 248, 0.16);
+  --color-tint-sky-fg: #38BDF8;
+  --color-tint-emerald-bg: rgba(52, 211, 153, 0.16);
+  --color-tint-emerald-fg: #34D399;
+  --color-tint-rose-bg: rgba(244, 114, 182, 0.16);
+  --color-tint-rose-fg: #F472B6;
+  --color-tint-violet-bg: rgba(129, 140, 248, 0.18);
+  --color-tint-violet-fg: #818CF8;
+
+  --color-hero-bg: #191838;
+  --color-hero-bg-end: #262154;
+  --color-hero-glow: radial-gradient(115% 110% at 96% -8%, rgba(124, 231, 177, 0.20) 0%, rgba(129, 140, 248, 0.14) 40%, transparent 68%);
+  --color-hero-surface: rgba(255, 255, 255, 0.09);
+  --color-hero-surface-strong: rgba(255, 255, 255, 0.16);
+  --color-hero-track: rgba(255, 255, 255, 0.12);
+  --color-hero-chip: rgba(255, 255, 255, 0.09);
+  --color-hero-text: #F8FAFC;
+  --color-hero-text-secondary: #CBD5E1;
+  --color-hero-text-muted: #94A3B8;
+  --color-hero-border: rgba(226, 232, 240, 0.16);
+  --color-hero-active: #F8FAFC;
+  --color-hero-active-text: #151720;
+  --color-hero-line: #7CE7B1;
+  --color-hero-line-area: rgba(124, 231, 177, 0.20);
+  --color-hero-note-bg: rgba(124, 231, 177, 0.15);
+  --color-hero-note-text: #7CE7B1;
+  --color-hero-note-error-bg: rgba(255, 122, 122, 0.14);
+  --color-hero-note-error-text: #FFA4A4;
+
+  --color-info: #A5B4FC;
+  --color-info-bg: #22253E;
+  --color-success: #34D399;
+  --color-success-bg: #112E25;
+  --color-warning: #FBBF24;
+  --color-warning-bg: #2B2110;
+  --color-error: #FF7A7A;
+  --color-error-bg: #2E1414;
+  --color-danger: #FF7A7A;
+  --color-danger-hover: #FF9494;
+  --color-danger-active: #E86565;
+  --color-on-danger: #0B0C10;
+
+  --color-finance-gain: #FF7A7A;
+  --color-finance-gain-on-hero: #FF9898;
+  --color-finance-loss-on-hero: #7CE7B1;
+  --color-finance-loss: #34D399;
+  --color-finance-gain-bg: #2E1414;
+  --color-finance-loss-bg: #112E25;
+  --color-finance-flat: #B4BCD0;
+  --color-finance-income: #34D399;
+  --color-finance-expense: #F8FAFC;
+  --color-month-flow-income: #34D399;
+  --color-month-flow-expense: #818CF8;
+  --color-finance-transfer: #A5B4FC;
+  --color-finance-net-change: #F8FAFC;
+  --color-finance-liability: #F8FAFC;
+
+  --color-chart-cash: #34D399;
+  --color-chart-investment: #818CF8;
+  --color-chart-property: #38BDF8;
+  --color-chart-receivable: #FBBF24;
+  --color-chart-stock: #FB7185;
+  --color-chart-other: #94A3B8;
+  --color-chart-liability: #E58BB4;
+  --color-chart-net-assets: #818CF8;
+  --color-chart-total-assets: #38BDF8;
+  --color-chart-total-liabilities: #E58BB4;
+  --color-chart-grid: rgba(226, 232, 240, 0.08);
+  --color-chart-track: rgba(226, 232, 240, 0.12);
+  --color-chart-separator: #151720;
+  --color-chart-reference: #8E98B0;
+
+  /* 深色资产卡：比 surface 抬高一层，加大文字底层遮罩浓度，避免荧光流光冲淡白字。 */
+  --color-asset-card-bg: #1C1F2E;
+  --color-asset-card-bg-end: #161824;
+  --color-asset-card-border: rgba(255, 255, 255, 0.09);
+  --color-asset-card-text: #F8FAFC;
+  --color-asset-card-note: #CBD5E1;
+  --color-asset-card-shadow: 0 10px 22px -10px rgba(0, 0, 0, 0.72), inset 0 1px rgba(255, 255, 255, 0.10);
+  --color-asset-card-veil: linear-gradient(90deg, rgba(16, 18, 28, 0.86), rgba(16, 18, 28, 0.42) 55%, rgba(16, 18, 28, 0.56));
+  --color-asset-glow-soft: 0.20;
+  --color-asset-glow-strong: 0.58;
+  --color-asset-accent-cash: #B5FFDF;
+  --color-asset-accent-fund: #E0D4FF;
+  --color-asset-accent-stock: #FFB4A2;
+  --color-asset-accent-provident: #BAE6FD;
+  --color-asset-accent-gold: #FDE68A;
+
+  --color-bg-popover: #1C1F2E;
+  --color-bg-tooltip: #F8FAFC;
+  --color-text-tooltip: #0B0C10;
+  --color-overlay: rgba(0, 0, 0, 0.65);
+  --color-shadow: rgba(0, 0, 0, 0.42);
+  --color-shadow-strong: rgba(0, 0, 0, 0.60);
+  --color-shadow-hero: rgba(0, 0, 0, 0.55);
+  --color-skeleton-base: #1E212E;
+  --color-skeleton-highlight: #282C3E;
+  --color-text-selection-bg: #2C3052;
+  --color-text-selection-fg: #F8FAFC;
+}

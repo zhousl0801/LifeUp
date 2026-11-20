@@ -1,16 +1,20 @@
+using LifeUp.Application.Ledgers;
 using LifeUp.Application.Plans;
 using LifeUp.Domain.Plans;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace LifeUp.Infrastructure.Persistence;
 
 public sealed class PlanRepository : IPlanRepository
 {
     private readonly AppDbContext _dbContext;
+    private readonly ReplayDataCache _replayCache;
 
-    public PlanRepository(AppDbContext dbContext)
+    public PlanRepository(AppDbContext dbContext, ReplayDataCache? replayCache = null)
     {
         _dbContext = dbContext;
+        _replayCache = replayCache ?? new ReplayDataCache();
     }
 
     public async Task<IReadOnlyList<AutoPlan>> GetPlansAsync(Guid ledgerId, CancellationToken cancellationToken)
@@ -183,6 +187,19 @@ public sealed class PlanRepository : IPlanRepository
 
     public async Task SaveChangesAsync(CancellationToken cancellationToken)
     {
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            _replayCache.InvalidateAll();
+        }
+        catch (DbUpdateConcurrencyException exception)
+        {
+            throw new ConcurrencyConflictException(exception);
+        }
+        catch (DbUpdateException exception)
+            when (exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            throw new ConcurrencyConflictException(exception);
+        }
     }
 }

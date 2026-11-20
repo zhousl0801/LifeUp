@@ -5,11 +5,13 @@ using LifeUp.Infrastructure.Backup;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 
+using Microsoft.Extensions.Logging.Abstractions;
+
 namespace LifeUp.Api.Controllers;
 
 [ApiController]
 [Route("api/ledger")]
-public sealed class BackupController : ControllerBase
+public sealed class BackupController : AssetOperationsControllerBase
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -18,11 +20,16 @@ public sealed class BackupController : ControllerBase
 
     private readonly BackupService _backupService;
     private readonly BusinessDateProvider _dates;
+    private readonly ILogger<BackupController> _logger;
 
-    public BackupController(BackupService backupService, BusinessDateProvider dates)
+    public BackupController(
+        BackupService backupService,
+        BusinessDateProvider dates,
+        ILogger<BackupController>? logger = null)
     {
         _backupService = backupService;
         _dates = dates;
+        _logger = logger ?? NullLogger<BackupController>.Instance;
     }
 
     [HttpGet("backup")]
@@ -115,8 +122,10 @@ public sealed class BackupController : ControllerBase
                 Status = StatusCodes.Status409Conflict
             });
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            _logger.LogError(exception, "备份恢复发生未预期错误。");
+
             return StatusCode(StatusCodes.Status500InternalServerError, new ProblemDetails
             {
                 Title = "恢复失败",
@@ -124,27 +133,5 @@ public sealed class BackupController : ControllerBase
                 Status = StatusCodes.Status500InternalServerError
             });
         }
-    }
-
-    private IActionResult LedgerNotFound()
-    {
-        return NotFound(new ProblemDetails
-        {
-            Title = "账本尚未初始化",
-            Detail = "请先设置账本起始日期和现金余额。",
-            Status = StatusCodes.Status404NotFound
-        });
-    }
-
-    private IActionResult ValidationProblemResponse(IReadOnlyList<string> errors)
-    {
-        var modelState = new ModelStateDictionary();
-
-        foreach (var error in errors)
-        {
-            modelState.AddModelError(string.Empty, error);
-        }
-
-        return ValidationProblem(modelState);
     }
 }

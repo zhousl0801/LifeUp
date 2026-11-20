@@ -46,6 +46,11 @@ public abstract class AssetOperationsControllerBase : ControllerBase
         });
     }
 
+    protected IActionResult ValidationProblemResponse(IReadOnlyList<string> errors)
+    {
+        return ValidationProblem(BuildModelState(errors));
+    }
+
     private static ModelStateDictionary BuildModelState(IReadOnlyList<string> errors)
     {
         var modelState = new ModelStateDictionary();

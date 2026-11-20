@@ -5,6 +5,8 @@ public sealed class EntryCategory
     public const int MaximumNameLength = 20;
     public const int MaximumSystemKeyLength = 32;
 
+    public const int MaximumIconKeyLength = 5;
+
     private EntryCategory()
     {
     }
@@ -20,6 +22,8 @@ public sealed class EntryCategory
     public bool IsGroup { get; private set; }
 
     public string Name { get; private set; } = string.Empty;
+
+    public string? IconKey { get; private set; }
 
     public int SortOrder { get; private set; }
 
@@ -60,6 +64,18 @@ public sealed class EntryCategory
         Version++;
     }
 
+    public void SetIcon(string iconKey, DateTimeOffset now)
+    {
+        if (IconKey == iconKey)
+        {
+            return;
+        }
+
+        IconKey = iconKey;
+        UpdatedAt = now;
+        Version++;
+    }
+
     public void SetSortOrder(int sortOrder, DateTimeOffset now)
     {
         if (sortOrder < 0)
@@ -67,8 +83,14 @@ public sealed class EntryCategory
             throw new ArgumentException("分类顺序不能为负数。", nameof(sortOrder));
         }
 
+        if (SortOrder == sortOrder)
+        {
+            return;
+        }
+
         SortOrder = sortOrder;
         UpdatedAt = now;
+        Version++;
     }
 
     public static EntryCategory Create(

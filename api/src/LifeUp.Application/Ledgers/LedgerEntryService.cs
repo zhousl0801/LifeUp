@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using LifeUp.Application.Mutations;
 using LifeUp.Application.History;
 using LifeUp.Domain.Cash;
@@ -51,11 +54,121 @@ public sealed class LedgerEntryService
         return entry is null ? null : Map(entry);
     }
 
+    public Task<HistoricalExpenseImportResult> ImportHistoricalExpensesAsync(
+        HistoricalExpenseImportRequest request,
+        CancellationToken cancellationToken)
+    {
+        return new MutationExecutor(_ledgerRepository, _businessDateProvider).ExecuteAsync(
+            "entry.import-monthly-expenses",
+            request.RequestId,
+            request,
+            () => ImportHistoricalExpensesCoreAsync(request.Rows, cancellationToken),
+            result => result.Status == EntryOperationStatus.Success,
+            result => result with { Skipped = result.Skipped + result.Added, Added = 0, AddedAmount = 0m },
+            message => HistoricalExpenseImportResult.Failure(EntryOperationStatus.Conflict, message),
+            message => HistoricalExpenseImportResult.Failure(EntryOperationStatus.Invalid, message),
+            cancellationToken);
+    }
+
+    private async Task<HistoricalExpenseImportResult> ImportHistoricalExpensesCoreAsync(
+        IReadOnlyList<HistoricalExpenseRow> rows,
+        CancellationToken cancellationToken)
+    {
+        var ledger = await _ledgerRepository.GetForUpdateAsync(cancellationToken);
+
+        if (ledger is null)
+        {
+            return HistoricalExpenseImportResult.Failure(EntryOperationStatus.NotFound, "账本尚未初始化。");
+        }
+
+        if (rows is null || rows.Count is < 1 or > 1000)
+        {
+            return HistoricalExpenseImportResult.Failure(EntryOperationStatus.Invalid, "每批须包含 1 至 1000 条月度汇总。");
+        }
+
+        var today = _businessDateProvider.Today;
+        var now = _businessDateProvider.UtcNow;
+        var firstExcludedMonth = new DateOnly(2026, 11, 1);
+        var seen = new HashSet<Guid>();
+        var pending = new List<LedgerEntry>();
+        var skipped = 0;
+        var data = await _ledgerRepository.GetReplayDataAsync(ledger.Id, cancellationToken);
+        var existingByRequest = data.Entries.ToDictionary(entry => entry.RequestId);
+        var existingExpenseMonths = data.Entries
+            .Where(entry => entry.Status == LedgerEntryStatus.Active && entry.Kind == LedgerEntryKind.Expense)
+            .ToLookup(entry => (entry.BusinessDate.Year, entry.BusinessDate.Month, entry.Category));
+
+        foreach (var row in rows)
+        {
+            if (row is null || row.Month.Day != 1 || row.Month >= firstExcludedMonth)
+            {
+                return HistoricalExpenseImportResult.Failure(
+                    EntryOperationStatus.Invalid, "历史汇总须使用月初日期，且月份须早于 2026 年 11 月。");
+            }
+
+            const string note = "鲨鱼记账 · 历史月度汇总";
+            var errors = LedgerEntry.Validate(LedgerEntryKind.Expense, row.Category, row.Amount, row.Month, today, note);
+
+            if (errors.Count > 0)
+            {
+                return HistoricalExpenseImportResult.Failure(EntryOperationStatus.Invalid, string.Join(" ", errors));
+            }
+
+            var category = row.Category.Trim();
+            var month = row.Month.ToString("yyyy-MM", CultureInfo.InvariantCulture);
+            var key = SHA256.HashData(Encoding.UTF8.GetBytes($"shark-monthly-expense/{month}/{category}"));
+            var rowId = new Guid(key.AsSpan(0, 16));
+
+            if (!seen.Add(rowId))
+            {
+                return HistoricalExpenseImportResult.Failure(EntryOperationStatus.Invalid, $"{month}「{category}」在本批次中重复。");
+            }
+
+            if (existingByRequest.TryGetValue(rowId, out var existing))
+            {
+                if (existing.Source != LedgerEntrySource.MonthlyImport || existing.Amount != row.Amount
+                    || existing.BusinessDate != row.Month || existing.Category != category || existing.Kind != LedgerEntryKind.Expense)
+                {
+                    return HistoricalExpenseImportResult.Failure(EntryOperationStatus.Conflict, $"{month}「{category}」已导入且内容有变动。");
+                }
+
+                skipped++;
+                continue;
+            }
+
+            if (existingExpenseMonths.Contains((row.Month.Year, row.Month.Month, category)))
+            {
+                return HistoricalExpenseImportResult.Failure(
+                    EntryOperationStatus.Conflict, $"{month}「{category}」已有支出，请先核对是否重叠。");
+            }
+
+            pending.Add(LedgerEntry.Create(ledger.Id, LedgerEntryKind.Expense, category, row.Amount, row.Month,
+                today, note, LedgerEntrySource.MonthlyImport, rowId, now));
+        }
+
+        foreach (var entry in pending)
+        {
+            entry.SetHistoryMetadata(ledger.AllocateFactSequence(), null);
+            await _ledgerRepository.AddEntryAsync(entry, cancellationToken);
+        }
+
+        return new(EntryOperationStatus.Success, pending.Count, skipped, pending.Sum(entry => entry.Amount),
+            ledger.CashAccount.Balance, []);
+    }
+
     public Task<EntryOperationResult> CreateAsync(CreateLedgerEntryRequest request, CancellationToken cancellationToken)
+    {
+        return CreateAsync(request, LedgerEntrySource.Manual, cancellationToken);
+    }
+
+    public Task<EntryOperationResult> CreateAsync(
+        CreateLedgerEntryRequest request,
+        LedgerEntrySource source,
+        CancellationToken cancellationToken)
     {
         return new MutationExecutor(_ledgerRepository, _businessDateProvider).ExecuteAsync(
             "entry.create", request.RequestId, request,
-            () => CreateCoreAsync(request, cancellationToken),
+            () => CreateCoreAsync(request, source, cancellationToken),
             result => result.Status is EntryOperationStatus.Success or EntryOperationStatus.Created,
             result => result with { Status = EntryOperationStatus.Success },
             EntryOperationResult.Conflict,
@@ -65,6 +178,7 @@ public sealed class LedgerEntryService
 
     private async Task<EntryOperationResult> CreateCoreAsync(
         CreateLedgerEntryRequest request,
+        LedgerEntrySource source,
         CancellationToken cancellationToken)
     {
         var ledger = await _ledgerRepository.GetForUpdateAsync(cancellationToken);
@@ -121,7 +235,7 @@ public sealed class LedgerEntryService
             request.BusinessDate,
             businessToday,
             request.Note,
-            LedgerEntrySource.Manual,
+            source,
             request.RequestId,
             now);
 
@@ -204,7 +318,17 @@ public sealed class LedgerEntryService
             return EntryOperationResult.Invalid([categoryError]);
         }
 
-        EnsureCashCovers(ledger.CashAccount, request.BusinessDate);
+        if (entry.Source == LedgerEntrySource.MonthlyImport)
+        {
+            if (request.RelatedCashAdjustmentId is not null)
+            {
+                return EntryOperationResult.Invalid(["历史月度汇总不能关联现金核对记录。"]);
+            }
+        }
+        else
+        {
+            EnsureCashCovers(ledger.CashAccount, request.BusinessDate);
+        }
 
         var now = _businessDateProvider.UtcNow;
 

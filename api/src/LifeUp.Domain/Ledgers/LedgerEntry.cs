@@ -52,7 +52,17 @@ public sealed class LedgerEntry
 
     public Ledger Ledger { get; private set; } = null!;
 
-    public decimal CashEffect => Kind == LedgerEntryKind.Income ? Amount : -Amount;
+    public decimal CashEffect => CalculateCashEffect(Kind, Amount);
+
+    public decimal CalculateCashEffect(LedgerEntryKind kind, decimal amount)
+    {
+        if (Source == LedgerEntrySource.MonthlyImport)
+        {
+            return 0m;
+        }
+
+        return kind == LedgerEntryKind.Income ? amount : -amount;
+    }
 
     public static LedgerEntry Create(
         Guid ledgerId,

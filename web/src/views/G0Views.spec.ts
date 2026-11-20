@@ -5,6 +5,8 @@ import LedgerView from './LedgerView.vue'
 import CashView from './CashView.vue'
 import { ApiError } from '../api/client'
 import { useMessages } from '../composables/useMessage'
+import { returnToLedger } from '../utils/ledgerReturn'
+import type { LedgerEntry } from '../types/entry'
 
 const mocks = vi.hoisted(() => ({ provident: vi.fn(), deposit: vi.fn(), withdraw: vi.fn(), opening: vi.fn(), plans: vi.fn(), savePlan: vi.fn(), pausePlan: vi.fn(), resumePlan: vi.fn(), entries: vi.fn(), stats: vi.fn(), push: vi.fn(), cash: vi.fn(), reconcile: vi.fn() }))
 vi.mock('vue-router', () => ({
@@ -223,4 +225,73 @@ test('stock cash activity opens stocks rather than gold', async () => {
   await view.find('.activity-row').trigger('click')
   expect(mocks.push).toHaveBeenCalledWith({ name: 'stocks' })
   view.unmount()
+})
+
+
+test('saving outside the current ledger filters keeps the list and opens the saved record separately', async () => {
+  const previous = window.history.state
+  const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+  const entry: LedgerEntry = {
+    id: 'new-expense', kind: 'expense', category: '交通', amount: 8,
+    businessDate: '2026-11-18', note: '地铁', source: 'manual', status: 'active',
+    createdAt: '2026-11-18T00:00:00Z', updatedAt: '2026-11-18T00:00:00Z',
+    reversedAt: null, reversalReason: null
+  }
+  window.history.replaceState({
+    ...previous,
+    ledgerContext: {
+      period: 'month', anchor: '2026-10-01', view: 'list', selectedDate: '2026-10-01',
+      kind: 'expense', category: '餐饮', search: '午餐', statsKind: 'expense', page: 1, scrollTop: 126
+    }
+  }, '')
+  returnToLedger({ action: 'create', entry })
+  mocks.entries.mockResolvedValue({ page: 1, totalCount: 0, entries: [] })
+  mocks.stats.mockResolvedValue({ expense: 300, points: [] })
+  const view = mount(LedgerView)
+  try {
+    await flushPromises()
+    expect(view.get('.period-nav strong').text()).toContain('10月')
+    expect(view.get('[aria-label="账单列表"]').attributes('aria-pressed')).toBe('true')
+    expect(view.get<HTMLInputElement>('input[type="search"]').element.value).toBe('午餐')
+    expect(scrollTo).toHaveBeenCalledWith({ top: 126 })
+    const message = messages.value.find(item => item.action?.label === '查看账单')
+    expect(message?.action).toBeDefined()
+
+    message!.action!.run()
+    expect(mocks.push).toHaveBeenCalledWith({ name: 'entry', query: { id: 'new-expense' } })
+    expect(view.get<HTMLInputElement>('input[type="search"]').element.value).toBe('午餐')
+  } finally {
+    view.unmount()
+    window.history.replaceState(previous, '')
+    scrollTo.mockRestore()
+  }
+})
+
+test('restores a scrolled chart after the chart data has rendered', async () => {
+  const previous = window.history.state
+  const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+  let resolveStats!: (value: unknown) => void
+  mocks.entries.mockResolvedValue({ page: 1, totalCount: 0, entries: [] })
+  mocks.stats.mockReturnValueOnce(new Promise(resolve => { resolveStats = resolve }))
+  window.history.replaceState({
+    ...previous,
+    ledgerContext: {
+      period: 'month', anchor: '2026-10-01', view: 'chart', selectedDate: '2026-10-01',
+      kind: 'all', category: '', search: '', statsKind: 'expense', statsByGroup: true, page: 1, scrollTop: 600
+    }
+  }, '')
+  const view = mount(LedgerView)
+  try {
+    await flushPromises()
+    expect(scrollTo).not.toHaveBeenCalled()
+    resolveStats({ points: [], incomeCategories: [], expenseCategories: [], coveredDays: 1, income: 0, expense: 202, expenseDailyAverage: 202 })
+    await flushPromises()
+    expect(view.get('.stats-panel').text()).toContain('¥202.00')
+    expect(view.findAll('.stats-direction button.active').map(button => button.text())).toContain('一级分类')
+    expect(scrollTo).toHaveBeenCalledWith({ top: 600 })
+  } finally {
+    view.unmount()
+    window.history.replaceState(previous, '')
+    scrollTo.mockRestore()
+  }
 })

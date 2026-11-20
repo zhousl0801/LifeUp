@@ -48,6 +48,9 @@ public sealed class BackupServiceTests
         Assert.NotNull(validation.ValidationToken);
         Assert.True(validation.Summary.EntryCount > 0);
         Assert.Equal(export.CashAccount.Balance, validation.Summary.CashBalance);
+        Assert.Equal(
+            decimal.Round(export.StockPositions.Sum(position => position.Shares * position.Price), 2),
+            validation.Summary.StockValue);
 
         var restored = await target.RestoreAsync(
             new RestoreBackupRequest(export, validation.ValidationToken!, false),

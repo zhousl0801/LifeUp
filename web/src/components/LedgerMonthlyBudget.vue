@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import Decimal from 'decimal.js'
 import { fetchMonthlyBudget, updateMonthlyBudget } from '../api/ledger'
 import { getApiErrorMessage } from '../api/client'
@@ -36,16 +36,25 @@ const compactMoney = new Intl.NumberFormat('zh-CN', { notation: 'compact', maxim
 const ringAmount = computed(() => budget.value !== null && budget.value >= 100000
   ? '¥' + compactMoney.format(budget.value)
   : budgetAmount.value)
+let loadSequence = 0
 
 async function load(): Promise<void> {
+  const sequence = ++loadSequence
   loading.value = true
   loadError.value = ''
   try {
-    budget.value = (await fetchMonthlyBudget(props.month)).amount
+    const result = await fetchMonthlyBudget(props.month)
+    if (sequence === loadSequence) {
+      budget.value = result.amount
+    }
   } catch (error) {
-    loadError.value = getApiErrorMessage(error, '预算暂时无法读取。')
+    if (sequence === loadSequence) {
+      loadError.value = getApiErrorMessage(error, '预算暂时无法读取。')
+    }
   } finally {
-    loading.value = false
+    if (sequence === loadSequence) {
+      loading.value = false
+    }
   }
 }
 
@@ -79,7 +88,17 @@ function submit(): void {
   void save(parsed.value)
 }
 
-onMounted(load)
+watch(
+  () => props.month,
+  () => {
+    void load()
+  },
+  { immediate: true }
+)
+
+onBeforeUnmount(() => {
+  loadSequence++
+})
 </script>
 
 <template>
@@ -156,12 +175,21 @@ onMounted(load)
   min-height: var(--touch-target); padding: 0 6px; border: 0; border-radius: var(--radius-control);
   color: var(--color-brand); background: transparent; font-size: var(--text-footnote);
 }
-.budget-form { display: grid; gap: 8px; }
-.budget-form input {
-  box-sizing: border-box; width: 100%; min-height: var(--touch-target); padding: 0 12px;
-  border: 0; border-radius: var(--radius-control); background: var(--color-bg-subtle); color: var(--color-text-primary);
+.budget-form {
+  display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); align-items: center; gap: 10px 12px;
 }
-.budget-form p { margin: 0; color: var(--color-danger); }
-.budget-form-actions { display: grid; gap: 8px; }
+.budget-form label {
+  padding: 12px 0 12px 14px; border-radius: 16px 0 0 16px; background: var(--color-bg-surface);
+  color: var(--color-text-primary); font-size: 0.875rem; font-weight: 500;
+}
+.budget-form input {
+  appearance: none; -webkit-appearance: none; box-sizing: border-box; width: 100%; min-height: 46px;
+  margin-left: -12px; padding: 0 14px 0 12px; border: 0; border-radius: 0 16px 16px 0;
+  background: var(--color-bg-surface); color: var(--color-text-primary);
+  font-size: 0.9375rem; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right;
+}
+.budget-form input:focus-visible { outline: none; box-shadow: none; }
+.budget-form p { grid-column: 1 / -1; margin: 0; color: var(--color-danger); font-size: var(--text-footnote); }
+.budget-form-actions { grid-column: 1 / -1; display: grid; gap: 8px; }
 .budget-form-actions.can-clear { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 </style>

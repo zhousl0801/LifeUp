@@ -40,10 +40,10 @@
   --radius-tag: 10px;
   --radius-pill: 999px;
 
-  /* 阴影：卡片轻、浮层中、Hero 重。 */
-  --shadow-card: 0 12px 32px var(--color-shadow);
-  --shadow-float: 0 18px 40px var(--color-shadow-strong);
-  --shadow-hero: 0 24px 48px var(--color-shadow-hero);
+  /* 阴影：卡片轻（带 1px 表面微光描边）、浮层中、Hero 重（带顶缘高光）。 */
+  --shadow-card: 0 0 0 1px var(--color-surface-border), 0 12px 32px var(--color-shadow);
+  --shadow-float: 0 0 0 1px var(--color-surface-border), 0 18px 40px var(--color-shadow-strong);
+  --shadow-hero: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 24px 48px var(--color-shadow-hero);
 
   /* 动效：快、准、少。 */
   --motion-fast: 150ms;

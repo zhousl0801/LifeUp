@@ -5,6 +5,8 @@ using LifeUp.Application.Funds;
 using LifeUp.Application.Gold;
 using LifeUp.Application.Ledgers;
 using LifeUp.Application.Provident;
+using LifeUp.Application.Stocks;
+using LifeUp.Domain.Assets;
 using LifeUp.Domain.Ledgers;
 using LifeUp.Infrastructure.Persistence;
 using LifeUp.Tests.Ledgers;
@@ -51,6 +53,9 @@ public sealed class MonthChangeServiceTests
         Assert.Equal(1000m, change.ProvidentDeposit);
         Assert.Equal(100m, change.ReconciliationDifference);
         Assert.Equal(700m, change.InvestmentProfit);
+        var cashChange = Assert.Single(change.AssetChanges, item => item.AssetType == "cash");
+        Assert.Equal(10000m, cashChange.BaselineAmount);
+        Assert.Equal(1600m, cashChange.Change);
         Assert.Equal(
             change.TotalChange,
             change.LivingSurplus + change.ProvidentDeposit + change.InvestmentProfit + change.ReconciliationDifference);
@@ -80,6 +85,79 @@ public sealed class MonthChangeServiceTests
         Assert.Equal(500m, change.LivingSurplus);
         Assert.Equal(500m, change.ComparableChange);
         Assert.Equal(0m, change.ReconciliationDifference);
+        var cashChange = Assert.Single(change.AssetChanges, item => item.AssetType == "cash");
+        Assert.Equal(10000m, cashChange.BaselineAmount);
+        Assert.Equal(500m, cashChange.Change);
+    }
+
+    [Fact]
+    public async Task GetAsync_DayScope_SeparatesInvestmentProfitAndCashFlowsWithoutCountingTransfers()
+    {
+        await using var context = await CreateAsync(Today.AddDays(-31));
+        var repository = new LedgerRepository(context.Db);
+        var dates = new BusinessDateProvider(new FixedTimeProvider(Now));
+        var stocks = new StockService(repository, dates);
+
+        var importedExpense = LedgerEntry.Create(
+            (await repository.GetAsync(CancellationToken.None))!.Id,
+            LedgerEntryKind.Expense, "历史汇总", 999m, Today, Today,
+            null, LedgerEntrySource.MonthlyImport, Guid.NewGuid(), Now);
+        context.Db.LedgerEntries.Add(importedExpense);
+        await context.Db.SaveChangesAsync();
+
+        await context.Entries.CreateAsync(
+            new CreateLedgerEntryRequest(LedgerEntryKind.Income, "工资", 500m, Today, null, Guid.NewGuid()),
+            CancellationToken.None);
+        await context.Entries.CreateAsync(
+            new CreateLedgerEntryRequest(LedgerEntryKind.Expense, "餐饮", 120m, Today, null, Guid.NewGuid()),
+            CancellationToken.None);
+        await context.Provident.DepositAsync(
+            new ProvidentDepositRequest(1000m, Today, null, Guid.NewGuid()),
+            CancellationToken.None);
+        await context.Provident.WithdrawAsync(
+            new ProvidentWithdrawalRequest(200m, Today, null, Guid.NewGuid()),
+            CancellationToken.None);
+        await TestFundQuotes.RefreshAsync(repository, dates, context.FundPositionId, 12m, Today);
+        await context.Gold.UpdateQuoteAsync(
+            new UpdateGoldQuoteRequest(850m, Today, Guid.NewGuid()),
+            CancellationToken.None);
+        var firstBuy = await stocks.BuyAsync(
+            new BuyStockRequest(StockMarket.Shanghai, "600000", "测试股票", 100m, 10m, 5m, Today, null, Guid.NewGuid()),
+            CancellationToken.None);
+        Assert.Equal(AssetOperationStatus.Created, firstBuy.Status);
+        var recorded = await stocks.SaveHoldingAsync(
+            new SaveStockHoldingRequest(StockMarket.Shanghai, "600001", "已持股票",
+                100m, 1750m, 20m, Today, Today, null, Guid.NewGuid()),
+            CancellationToken.None);
+        Assert.Equal(AssetOperationStatus.Success, recorded.Status);
+        var cash = await context.Cash.GetOverviewAsync(CancellationToken.None);
+        Assert.NotNull(cash);
+        await context.Cash.ReconcileAsync(
+            new ReconcileCashRequest(cash.Balance + 25m, "余额核对", Guid.NewGuid(), cash.Version),
+            CancellationToken.None);
+
+        var change = await context.MonthChange.GetAsync(ChangeScope.Day, CancellationToken.None);
+
+        Assert.NotNull(change);
+        Assert.True(change.HasComparableData);
+        Assert.Equal(1100m, change.ComparableChange);
+        Assert.Equal(2000m, change.AddedRecords);
+        Assert.Equal(380m, change.LivingSurplus);
+        Assert.Equal(-305m, change.InvestmentProfit);
+        var details = Assert.IsType<DayChangeBreakdownDto>(change.DayBreakdown);
+        Assert.Equal(500m, details.CashIncome);
+        Assert.Equal(120m, details.CashExpense);
+        Assert.Equal(1000m, details.ProvidentDeposit);
+        Assert.Equal(200m, details.Fund?.Profit);
+        var stock = Assert.IsType<DayInvestmentChangeDto>(details.Stock);
+        Assert.Equal(-5m, stock.Profit);
+        Assert.Equal(0m, stock.PreviousValue);
+        Assert.Equal(3000m, stock.CurrentValue);
+        Assert.Equal(-1005m, stock.CashTransfer);
+        Assert.Equal(2000m, stock.OpeningValue);
+        Assert.Equal(-500m, details.Gold?.Profit);
+        Assert.Equal(25m, details.CashAdjustment);
+        Assert.Equal(0m, details.OtherDifference);
     }
 
     [Fact]
@@ -101,6 +179,8 @@ public sealed class MonthChangeServiceTests
         Assert.Null(change.InvestmentProfit);
         Assert.Equal(100m, change.LivingSurplus);
         Assert.Equal(0m, change.AddedRecords);
+        var cashChange = Assert.Single(change.AssetChanges, item => item.AssetType == "cash");
+        Assert.Null(cashChange.BaselineAmount);
         Assert.Contains(change.Notes, note => note.Contains("暂无可比基线"));
     }
 

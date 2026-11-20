@@ -93,6 +93,7 @@ public sealed class CategoriesController : ControllerBase
 
     [HttpPut("order")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Reorder(
@@ -104,6 +105,7 @@ public sealed class CategoriesController : ControllerBase
         return result.Status switch
         {
             CategoryOperationStatus.Success => NoContent(),
+            CategoryOperationStatus.Conflict => ConflictProblem(result.Errors),
             CategoryOperationStatus.NotFound => LedgerNotFound(),
             _ => ValidationProblem(result.Errors)
         };

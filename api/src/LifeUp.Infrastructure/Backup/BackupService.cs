@@ -43,21 +43,33 @@ public sealed class BackupService
         BackupDocument? backup,
         CancellationToken cancellationToken)
     {
+        var outcome = await ValidateCoreAsync(backup, cancellationToken);
+        return outcome.Validation;
+    }
+
+    private async Task<ValidationOutcome> ValidateCoreAsync(
+        BackupDocument? backup,
+        CancellationToken cancellationToken)
+    {
         var errors = new List<string>();
         var warnings = new List<string>();
         var duplicateRisks = new List<string>();
 
         if (backup is null)
         {
-            return new BackupValidationDto(
-                false,
-                false,
+            return new ValidationOutcome(
+                new BackupValidationDto(
+                    false,
+                    false,
+                    null,
+                    EmptySummary(),
+                    null,
+                    ["备份内容为空。"],
+                    [],
+                    []),
                 null,
-                EmptySummary(),
                 null,
-                ["备份内容为空。"],
-                [],
-                []);
+                null);
         }
 
         if (!string.Equals(backup.Format, BackupDocument.CurrentFormat, StringComparison.Ordinal))
@@ -106,28 +118,36 @@ public sealed class BackupService
                 ? ComputeToken(backup, currentSummary, currentDocument)
                 : null;
 
-            return new BackupValidationDto(
-                errors.Count == 0,
-                currentDocument is not null,
-                token,
-                summary,
-                currentSummary,
-                errors.Distinct().ToList(),
-                warnings.Distinct().ToList(),
-                duplicateRisks.Distinct().ToList());
+            return new ValidationOutcome(
+                new BackupValidationDto(
+                    errors.Count == 0,
+                    currentDocument is not null,
+                    token,
+                    summary,
+                    currentSummary,
+                    errors.Distinct().ToList(),
+                    warnings.Distinct().ToList(),
+                    duplicateRisks.Distinct().ToList()),
+                errors.Count == 0 ? parsed : null,
+                currentDocument?.Ledger.Id,
+                currentDocument?.Ledger.Version);
         }
 
         var fallbackSummary = Summarize(parsed, null);
 
-        return new BackupValidationDto(
-            false,
-            currentDocument is not null,
+        return new ValidationOutcome(
+            new BackupValidationDto(
+                false,
+                currentDocument is not null,
+                null,
+                fallbackSummary,
+                currentSummary,
+                errors.Distinct().ToList(),
+                warnings.Distinct().ToList(),
+                duplicateRisks.Distinct().ToList()),
             null,
-            fallbackSummary,
-            currentSummary,
-            errors.Distinct().ToList(),
-            warnings.Distinct().ToList(),
-            duplicateRisks.Distinct().ToList());
+            currentDocument?.Ledger.Id,
+            currentDocument?.Ledger.Version);
     }
 
     public async Task<RestoreBackupResultDto> RestoreAsync(
@@ -139,9 +159,10 @@ public sealed class BackupService
             throw new BackupValidationException(["备份内容为空。"]);
         }
 
-        var validation = await ValidateAsync(request.Backup, cancellationToken);
+        var outcome = await ValidateCoreAsync(request.Backup, cancellationToken);
+        var validation = outcome.Validation;
 
-        if (!validation.IsValid)
+        if (!validation.IsValid || outcome.Parsed is null)
         {
             throw new BackupValidationException(validation.Errors);
         }
@@ -156,15 +177,7 @@ public sealed class BackupService
             throw new BackupConflictException("账本已存在，请确认替换当前账本后再恢复。");
         }
 
-        var errors = new List<string>();
-        var parsed = Parse(request.Backup, errors);
-
-        if (errors.Count > 0)
-        {
-            throw new BackupValidationException(errors);
-        }
-
-        await PersistAsync(parsed, cancellationToken);
+        await PersistAsync(outcome.Parsed, outcome.CurrentLedgerId, outcome.CurrentLedgerVersion, cancellationToken);
         _replayCache.InvalidateAll();
 
         return new RestoreBackupResultDto(
@@ -248,7 +261,7 @@ public sealed class BackupService
             entry.Kind == LedgerEntryKind.Income ? "日常收入" : "日常支出",
             entry.Kind == LedgerEntryKind.Income ? "收入" : "支出",
             entry.Amount,
-            entry.Kind == LedgerEntryKind.Income ? entry.Amount : -entry.Amount,
+            entry.CashEffect,
             null,
             null,
             null,
@@ -310,37 +323,41 @@ public sealed class BackupService
             .ThenBy(row => row.Type, StringComparer.Ordinal)
             .ThenBy(row => row.Subject, StringComparer.Ordinal)
             .ToList();
-        var builder = new StringBuilder();
-        builder.AppendLine("日期,业务类型,方向,金额,现金影响,数量,净值或单价,费用,分类或标的,状态,来源,关联标识");
-
-        foreach (var row in ordered)
+        using var stream = new MemoryStream();
+        using (var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true), leaveOpen: true))
         {
-            builder.AppendJoin(',', new[]
+            writer.WriteLine("日期,业务类型,方向,金额,现金影响,数量,净值或单价,费用,分类或标的,状态,来源,关联标识");
+
+            foreach (var row in ordered)
             {
-                Csv(row.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
-                Csv(row.Type),
-                Csv(row.Direction),
-                Csv(FormatAmount(row.Amount)),
-                Csv(row.CashEffect is null ? string.Empty : FormatAmount(row.CashEffect.Value)),
-                Csv(row.Quantity?.ToString("0.####", CultureInfo.InvariantCulture) ?? string.Empty),
-                Csv(row.Price?.ToString("0.####", CultureInfo.InvariantCulture) ?? string.Empty),
-                Csv(row.Fee?.ToString("0.00", CultureInfo.InvariantCulture) ?? string.Empty),
-                Csv(row.Subject),
-                Csv(row.Status),
-                Csv(row.Source),
-                Csv(row.Links)
-            });
-            builder.AppendLine();
+                writer.Write(Csv(row.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
+                writer.Write(',');
+                writer.Write(Csv(row.Type));
+                writer.Write(',');
+                writer.Write(Csv(row.Direction));
+                writer.Write(',');
+                writer.Write(Csv(FormatAmount(row.Amount)));
+                writer.Write(',');
+                writer.Write(Csv(row.CashEffect is null ? string.Empty : FormatAmount(row.CashEffect.Value)));
+                writer.Write(',');
+                writer.Write(Csv(row.Quantity?.ToString("0.####", CultureInfo.InvariantCulture) ?? string.Empty));
+                writer.Write(',');
+                writer.Write(Csv(row.Price?.ToString("0.####", CultureInfo.InvariantCulture) ?? string.Empty));
+                writer.Write(',');
+                writer.Write(Csv(row.Fee?.ToString("0.00", CultureInfo.InvariantCulture) ?? string.Empty));
+                writer.Write(',');
+                writer.Write(Csv(row.Subject));
+                writer.Write(',');
+                writer.Write(Csv(row.Status));
+                writer.Write(',');
+                writer.Write(Csv(row.Source));
+                writer.Write(',');
+                writer.WriteLine(Csv(row.Links));
+            }
         }
 
-        var preamble = Encoding.UTF8.GetPreamble();
-        var content = Encoding.UTF8.GetBytes(builder.ToString());
-        var bytes = new byte[preamble.Length + content.Length];
-        Buffer.BlockCopy(preamble, 0, bytes, 0, preamble.Length);
-        Buffer.BlockCopy(content, 0, bytes, preamble.Length, content.Length);
-
         return new CsvExportResult(
-            bytes,
+            stream.ToArray(),
             $"lifeup-details-{fromDate:yyyyMMdd}-{toDate:yyyyMMdd}.csv",
             ordered.Count);
     }
@@ -1011,6 +1028,14 @@ public sealed class BackupService
         var goldValue = replay?.Gold?.Value
             ?? (parsed.GoldHolding is null ? null : decimal.Round(parsed.GoldHolding.Grams * parsed.GoldHolding.Quote, 2));
         var goldArrival = replay?.Gold?.PendingArrivalAmount ?? 0m;
+        decimal? stockValue = null;
+
+        if (parsed.StockPositions.Count > 0)
+        {
+            stockValue = replay is null
+                ? parsed.StockPositions.Sum(position => position.Value)
+                : replay.Stocks.Sum(stock => stock.Value ?? 0m);
+        }
         var total = replay?.TotalAssets;
 
         return new BackupSummaryDto(
@@ -1030,12 +1055,18 @@ public sealed class BackupService
             parsed.Plans.Count,
             parsed.PlanOccurrences.Count,
             parsed.MutationReceipts.Count,
-            parsed.PriceObservations.Count);
+            parsed.PriceObservations.Count,
+            stockValue is null ? null : decimal.Round(stockValue.Value, 2));
     }
 
-    private async Task PersistAsync(ParsedBackup parsed, CancellationToken cancellationToken)
+    private async Task PersistAsync(
+        ParsedBackup parsed,
+        Guid? expectedLedgerId,
+        int? expectedLedgerVersion,
+        CancellationToken cancellationToken)
     {
-        IDbContextTransaction? transaction = _db.Database.IsRelational()
+        var isRelational = _db.Database.IsRelational();
+        IDbContextTransaction? transaction = isRelational
             ? await _db.Database.BeginTransactionAsync(cancellationToken)
             : null;
 
@@ -1043,22 +1074,28 @@ public sealed class BackupService
         {
             var current = await _db.Ledgers.SingleOrDefaultAsync(cancellationToken);
 
+            // 在事务内复核账本标识与版本，防止校验到落库之间被并发修改（TOCTOU）。
+            if (current?.Id != expectedLedgerId || current?.Version != expectedLedgerVersion)
+            {
+                throw new BackupValidationException(["备份或当前账本已变化，请重新校验后再恢复。"]);
+            }
+
             if (current is not null)
             {
-                await RemoveAsync(_db.PriceObservations, item => item.LedgerId == current.Id, cancellationToken);
-                await RemoveAsync(_db.AssetTransactions, item => item.LedgerId == current.Id, cancellationToken);
-                await RemoveAsync(_db.PlanOccurrences, item => item.LedgerId == current.Id, cancellationToken);
-                await RemoveAsync(_db.AutoPlans, item => item.LedgerId == current.Id, cancellationToken);
-                await RemoveAsync(_db.StockPositions, item => item.LedgerId == current.Id, cancellationToken);
-                await RemoveAsync(_db.FundPositions, item => item.LedgerId == current.Id, cancellationToken);
-                await RemoveAsync(_db.FundGroups, item => item.LedgerId == current.Id, cancellationToken);
-                await RemoveAsync(_db.GoldHoldings, item => item.LedgerId == current.Id, cancellationToken);
-                await RemoveAsync(_db.ProvidentFundAccounts, item => item.LedgerId == current.Id, cancellationToken);
-                await RemoveAsync(_db.CashAdjustments, item => item.LedgerId == current.Id, cancellationToken);
-                await RemoveAsync(_db.LedgerEntries, item => item.LedgerId == current.Id, cancellationToken);
-                await RemoveAsync(_db.EntryCategories, item => item.LedgerId == current.Id, cancellationToken);
-                await RemoveAsync(_db.MutationReceipts, item => item.LedgerId == current.Id, cancellationToken);
-                await RemoveAsync(_db.CashAccounts, item => item.LedgerId == current.Id, cancellationToken);
+                await RemoveAsync(_db.PriceObservations, item => item.LedgerId == current.Id, isRelational, cancellationToken);
+                await RemoveAsync(_db.AssetTransactions, item => item.LedgerId == current.Id, isRelational, cancellationToken);
+                await RemoveAsync(_db.PlanOccurrences, item => item.LedgerId == current.Id, isRelational, cancellationToken);
+                await RemoveAsync(_db.AutoPlans, item => item.LedgerId == current.Id, isRelational, cancellationToken);
+                await RemoveAsync(_db.StockPositions, item => item.LedgerId == current.Id, isRelational, cancellationToken);
+                await RemoveAsync(_db.FundPositions, item => item.LedgerId == current.Id, isRelational, cancellationToken);
+                await RemoveAsync(_db.FundGroups, item => item.LedgerId == current.Id, isRelational, cancellationToken);
+                await RemoveAsync(_db.GoldHoldings, item => item.LedgerId == current.Id, isRelational, cancellationToken);
+                await RemoveAsync(_db.ProvidentFundAccounts, item => item.LedgerId == current.Id, isRelational, cancellationToken);
+                await RemoveAsync(_db.CashAdjustments, item => item.LedgerId == current.Id, isRelational, cancellationToken);
+                await RemoveAsync(_db.LedgerEntries, item => item.LedgerId == current.Id, isRelational, cancellationToken);
+                await RemoveAsync(_db.EntryCategories, item => item.LedgerId == current.Id, isRelational, cancellationToken);
+                await RemoveAsync(_db.MutationReceipts, item => item.LedgerId == current.Id, isRelational, cancellationToken);
+                await RemoveAsync(_db.CashAccounts, item => item.LedgerId == current.Id, isRelational, cancellationToken);
                 _db.Ledgers.Remove(current);
                 await _db.SaveChangesAsync(cancellationToken);
                 _db.ChangeTracker.Clear();
@@ -1124,9 +1161,16 @@ public sealed class BackupService
     private static async Task RemoveAsync<T>(
         DbSet<T> set,
         System.Linq.Expressions.Expression<Func<T, bool>> predicate,
+        bool isRelational,
         CancellationToken cancellationToken)
         where T : class
     {
+        if (isRelational)
+        {
+            await set.Where(predicate).ExecuteDeleteAsync(cancellationToken);
+            return;
+        }
+
         var items = await set.Where(predicate).ToListAsync(cancellationToken);
         set.RemoveRange(items);
     }
@@ -1166,7 +1210,8 @@ public sealed class BackupService
             0,
             0,
             0,
-            0);
+            0,
+            null);
     }
 
     private static void CheckDuplicateIds(
@@ -1296,6 +1341,7 @@ public sealed class BackupService
         {
             LedgerEntrySource.Automatic => "自动",
             LedgerEntrySource.Import => "导入",
+            LedgerEntrySource.MonthlyImport => "历史月度汇总",
             _ => "手动"
         };
     }
@@ -1393,22 +1439,11 @@ public sealed class BackupService
         return type switch
         {
             AutoPlanType.SalaryIncome => "工资到账",
+            AutoPlanType.BonusIncome => "年终奖",
             AutoPlanType.ProvidentDeposit => "公积金缴存",
             AutoPlanType.ProvidentWithdrawal => "公积金提取",
             AutoPlanType.FundSip => "基金定投",
             _ => type.ToString()
-        };
-    }
-
-    private static string PlanStatusLabel(PlanOccurrenceStatus status)
-    {
-        return status switch
-        {
-            PlanOccurrenceStatus.Completed => "已完成",
-            PlanOccurrenceStatus.Waiting => "待处理",
-            PlanOccurrenceStatus.Failed => "失败",
-            PlanOccurrenceStatus.Skipped => "已跳过",
-            _ => "待执行"
         };
     }
 
@@ -1417,10 +1452,26 @@ public sealed class BackupService
         return value.ToString("0.00", CultureInfo.InvariantCulture);
     }
 
-    private static string Csv(string value)
+    private static string Csv(string? value)
     {
-        return $"\"{value.Replace("\"", "\"\"")}\"";
+        var safe = value ?? string.Empty;
+
+        // 防止电子表格将用户备注/分类中以公式前导符开头的文本当作公式执行；保留合法负数/正数金额。
+        if (safe.Length > 0
+            && safe[0] is '=' or '+' or '-' or '@' or '\t' or '\r'
+            && !decimal.TryParse(safe, NumberStyles.Number, CultureInfo.InvariantCulture, out _))
+        {
+            safe = "'" + safe;
+        }
+
+        return $"\"{safe.Replace("\"", "\"\"")}\"";
     }
+
+    private sealed record ValidationOutcome(
+        BackupValidationDto Validation,
+        ParsedBackup? Parsed,
+        Guid? CurrentLedgerId,
+        int? CurrentLedgerVersion);
 
     private sealed class ParsedBackup
     {

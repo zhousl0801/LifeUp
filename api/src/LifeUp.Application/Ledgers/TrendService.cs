@@ -1,22 +1,21 @@
-using System.Collections.Concurrent;
 using LifeUp.Application.History;
 
 namespace LifeUp.Application.Ledgers;
 
 public sealed class TrendService
 {
-    private static readonly ConcurrentDictionary<string, CacheEntry> Cache = new();
-    private static readonly TimeSpan CacheLifetime = TimeSpan.FromSeconds(20);
-
     private readonly ILedgerRepository _ledgerRepository;
     private readonly BusinessDateProvider _dates;
+    private readonly DerivedReadCache _cache;
 
     public TrendService(
         ILedgerRepository ledgerRepository,
-        BusinessDateProvider dates)
+        BusinessDateProvider dates,
+        DerivedReadCache? cache = null)
     {
         _ledgerRepository = ledgerRepository;
         _dates = dates;
+        _cache = cache ?? new DerivedReadCache();
     }
 
     public async Task<AssetTrendDto?> GetAsync(TrendRange range, CancellationToken cancellationToken)
@@ -29,9 +28,9 @@ public sealed class TrendService
         }
 
         var today = _dates.Today;
-        var cacheKey = $"{ledger.Id:N}:{ledger.Version}:{range}:{today:yyyyMMdd}";
+        var cacheKey = $"trend:{ledger.Id:N}:{ledger.Version}:{_ledgerRepository.CacheVersion}:{range}:{today:yyyyMMdd}";
 
-        if (TryGetCached(cacheKey, out var cached))
+        if (_cache.TryGet<AssetTrendDto>(cacheKey, out var cached))
         {
             return cached;
         }
@@ -53,12 +52,13 @@ public sealed class TrendService
             from = ledger.StartDate;
         }
 
-        var points = new List<AssetTrendPointDto>();
+        var series = calculator.CalculateSeries(data, facts, from, today, currentDate: today);
+        var points = new List<AssetTrendPointDto>(series.Count);
         var anyIncomplete = false;
 
         for (var date = from; date <= today; date = date.AddDays(1))
         {
-            var result = calculator.Calculate(data, facts, date, currentDate: today);
+            var result = series[date];
             var recordedFunds = result.Funds
                 .Where(item => item.CoverageFrom is not null && item.CoverageFrom <= date)
                 .ToList();
@@ -107,37 +107,7 @@ public sealed class TrendService
         }
 
         var trend = new AssetTrendDto(range, from, today, points, notes);
-        Store(cacheKey, trend);
+        _cache.Set(cacheKey, trend);
         return trend;
     }
-
-    private static bool TryGetCached(string key, out AssetTrendDto value)
-    {
-        if (Cache.TryGetValue(key, out var entry) && entry.ExpiresAt > DateTimeOffset.UtcNow)
-        {
-            value = entry.Data;
-            return true;
-        }
-
-        Cache.TryRemove(key, out _);
-        value = null!;
-        return false;
-    }
-
-    private static void Store(string key, AssetTrendDto value)
-    {
-        if (Cache.Count >= 64)
-        {
-            var now = DateTimeOffset.UtcNow;
-
-            foreach (var pair in Cache.Where(pair => pair.Value.ExpiresAt <= now).ToList())
-            {
-                Cache.TryRemove(pair.Key, out _);
-            }
-        }
-
-        Cache[key] = new CacheEntry(DateTimeOffset.UtcNow.Add(CacheLifetime), value);
-    }
-
-    private sealed record CacheEntry(DateTimeOffset ExpiresAt, AssetTrendDto Data);
 }

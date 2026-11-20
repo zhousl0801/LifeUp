@@ -1,11 +1,9 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { ECharts } from 'echarts/core'
+import { ref } from 'vue'
 import type { EChartsOption } from 'echarts'
-import { loadChartRuntime } from '../utils/chartRuntime'
+import { useEChart } from '../composables/useEChart'
 import { formatMoney } from '../utils/format'
 import { chartFontSize, chartTheme } from '../utils/chartTheme'
-import { resolvedTheme } from '../utils/theme'
 import type { EntryKind, EntryPeriod, EntryStatsPoint } from '../types/entry'
 
 const props = defineProps<{
@@ -16,8 +14,6 @@ const props = defineProps<{
 }>()
 
 const container = ref<HTMLElement | null>(null)
-let chart: ECharts | null = null
-let disposed = false
 
 function buildOption(): EChartsOption {
   const theme = chartTheme()
@@ -30,6 +26,9 @@ function buildOption(): EChartsOption {
     tooltip: {
       trigger: 'axis',
       confine: true,
+      backgroundColor: theme.tooltipBg,
+      borderWidth: 0,
+      textStyle: { color: theme.tooltipText, fontSize: chartFontSize(12) },
       axisPointer: { type: 'shadow', shadowStyle: { color: theme.pointerShadow } },
       formatter: (params: unknown) => {
         const first = Array.isArray(params) ? params[0] as { dataIndex?: number } | undefined : undefined
@@ -83,35 +82,8 @@ function buildOption(): EChartsOption {
   }
 }
 
-function render(): void {
-  chart?.setOption(buildOption(), { notMerge: true })
-}
-
-function resize(): void {
-  chart?.resize()
-}
-
-onMounted(() => {
-  window.addEventListener('resize', resize)
-
-  void loadChartRuntime().then((echarts) => {
-    if (disposed || !container.value) {
-      return
-    }
-
-    chart = echarts.init(container.value, undefined, { renderer: 'canvas' })
-    render()
-  })
-})
-
-watch(() => [props.points, props.direction, props.period], render, { deep: true })
-watch(resolvedTheme, render)
-
-onBeforeUnmount(() => {
-  disposed = true
-  window.removeEventListener('resize', resize)
-  chart?.dispose()
-  chart = null
+useEChart(container, buildOption, {
+  watchSources: () => [props.points, props.points.length, props.direction, props.period]
 })
 </script>
 

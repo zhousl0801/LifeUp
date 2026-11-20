@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { fetchFundReturnDay, fetchFundReturns } from '../api/funds'
 import { getApiErrorMessage } from '../api/client'
 import BottomSheet from './BottomSheet.vue'
-import AnimatedMoney from './AnimatedMoney.vue'
+import MoneyAmount from './MoneyAmount.vue'
 import FundReturnChart from './FundReturnChart.vue'
 import LoadingState from './LoadingState.vue'
 import LoadingButton from './LoadingButton.vue'
@@ -33,6 +33,8 @@ const selectedDate = ref('')
 const day = ref<FundReturnDay | null>(null)
 const dayLoading = ref(false)
 const dayError = ref('')
+let loadSequence = 0
+let daySequence = 0
 
 const minMonth = computed(() => data.value?.from.slice(0, 7) ?? calendarMonth.value)
 const maxMonth = computed(() => data.value?.to.slice(0, 7) ?? calendarMonth.value)
@@ -58,21 +60,37 @@ watch(range, () => {
   void load()
 })
 
+onBeforeUnmount(() => {
+  loadSequence++
+  daySequence++
+})
+
 async function load(): Promise<void> {
+  const sequence = ++loadSequence
   isLoading.value = true
   errorMessage.value = ''
 
   try {
-    data.value = await fetchFundReturns(range.value, props.groupId, props.ungrouped)
+    const result = await fetchFundReturns(range.value, props.groupId, props.ungrouped)
+    if (sequence !== loadSequence) {
+      return
+    }
+
+    data.value = result
 
     if (!data.value.points.some((point) => point.date.startsWith(calendarMonth.value))) {
       calendarMonth.value = data.value.to.slice(0, 7)
     }
   } catch (error) {
+    if (sequence !== loadSequence) {
+      return
+    }
     data.value = null
     errorMessage.value = getApiErrorMessage(error, '投资收益走势暂时无法读取。')
   } finally {
-    isLoading.value = false
+    if (sequence === loadSequence) {
+      isLoading.value = false
+    }
   }
 }
 
@@ -149,6 +167,7 @@ async function openDay(date: string): Promise<void> {
     return
   }
 
+  const sequence = ++daySequence
   selectedDate.value = date
   daySheetOpen.value = true
   day.value = null
@@ -156,11 +175,18 @@ async function openDay(date: string): Promise<void> {
   dayLoading.value = true
 
   try {
-    day.value = await fetchFundReturnDay(date, props.groupId, props.ungrouped)
+    const result = await fetchFundReturnDay(date, props.groupId, props.ungrouped)
+    if (sequence === daySequence) {
+      day.value = result
+    }
   } catch (error) {
-    dayError.value = getApiErrorMessage(error, '当日收益暂时无法读取。')
+    if (sequence === daySequence) {
+      dayError.value = getApiErrorMessage(error, '当日收益暂时无法读取。')
+    }
   } finally {
-    dayLoading.value = false
+    if (sequence === daySequence) {
+      dayLoading.value = false
+    }
   }
 }
 
@@ -215,7 +241,7 @@ function rowTitle(shareClass: string | null, platform: string | null): string {
         <div>
           <span>区间盈亏</span>
           <b :class="amountTone(data.intervalProfit)">
-            <AnimatedMoney v-if="data.intervalProfit !== null" :value="data.intervalProfit" signed />
+            <MoneyAmount v-if="data.intervalProfit !== null" :value="data.intervalProfit" signed />
             <template v-else>—</template>
           </b>
           <small>自 {{ formatBusinessDate(data.intervalFrom) }} 起，含在途</small>
@@ -223,7 +249,7 @@ function rowTitle(shareClass: string | null, platform: string | null): string {
         <div>
           <span>持有收益</span>
           <b :class="amountTone(data.holdingProfit)">
-            <AnimatedMoney v-if="data.holdingProfit !== null" :value="data.holdingProfit" signed />
+            <MoneyAmount v-if="data.holdingProfit !== null" :value="data.holdingProfit" signed />
             <template v-else>—</template>
           </b>
           <small>当前已确认持仓估值 − 成本</small>
@@ -505,7 +531,8 @@ function rowTitle(shareClass: string | null, platform: string | null): string {
 .calendar-day small {
   max-width: 100%;
   overflow: hidden;
-  font-size: 0.65625rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
   line-height: 1.2;
   letter-spacing: -0.2px;
   font-variant-numeric: tabular-nums;

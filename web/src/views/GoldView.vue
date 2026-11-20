@@ -1,29 +1,33 @@
 <script setup lang="ts">
 import { navigateBack } from '../utils/navigation'
 import Decimal from 'decimal.js'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { arriveGoldSell, buyGold, fetchGoldOverview, refreshGoldQuote, saveGoldHolding, sellGold } from '../api/gold'
 import { ApiError, getApiErrorMessage } from '../api/client'
-import { fetchLedger, updateAssetCoverage } from '../api/ledger'
+import { fetchDayChange, fetchLedger, updateAssetCoverage } from '../api/ledger'
 import { toast } from '../composables/useMessage'
 import AppNav from '../components/AppNav.vue'
-import AnimatedMoney from '../components/AnimatedMoney.vue'
+import MoneyAmount from '../components/MoneyAmount.vue'
 import BackButton from '../components/BackButton.vue'
+import QuoteRefreshButton from '../components/QuoteRefreshButton.vue'
+import InvestmentHeroMetrics from '../components/InvestmentHeroMetrics.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import LoadingState from '../components/LoadingState.vue'
-import InvestmentActivityList, { type InvestmentActivityRow } from '../components/InvestmentActivityList.vue'
+import InvestmentActivityList from '../components/InvestmentActivityList.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import { useUnsavedSheet } from '../composables/useUnsavedSheet'
 import ConfirmSheet from '../components/ConfirmSheet.vue'
 import {
+  addAmounts,
   amountTone,
+  calculatePercent,
+  divideUnitPrice,
   formatBusinessDate,
-  formatBusinessTime,
   formatMoney,
+  formatPercent as formatPercentValue,
   formatQuantity,
   formatSignedMoney,
-  formatUnitPrice,
   parseAmount,
   parseNonNegativeQuantity,
   parsePrice,
@@ -31,14 +35,18 @@ import {
   parseUnitPrice,
   todayInBusinessTimeZone
 } from '../utils/format'
+import { toGoldActivityRow } from '../utils/goldActivities'
 import { createRequestId } from '../utils/request'
-import type { GoldActivity, GoldOverview, PendingGoldArrival } from '../types/gold'
+import type { GoldOverview, PendingGoldArrival } from '../types/gold'
+import type { DayInvestmentChange } from '../types/ledger'
 
 type SheetKind = 'buy' | 'sell' | 'sellArrival' | 'holding' | 'detail'
 
 const router = useRouter()
 const today = todayInBusinessTimeZone()
 const overview = ref<GoldOverview | null>(null)
+const dailyChange = ref<DayInvestmentChange | null>(null)
+const dailyRate = computed(() => calculatePercent(dailyChange.value?.profit, dailyChange.value?.previousValue))
 const isLoading = ref(false)
 const isRefreshing = ref(false)
 const errorMessage = ref('')
@@ -68,9 +76,9 @@ const { discardOpen, requestClose, resolveDiscard } = useUnsavedSheet(
 
 const quoteLabel = computed(() => {
   switch (overview.value?.quoteSource) {
-    case 'sge_delayed': return '上金所延时参考价'
-    case 'eastmoney_sge': return 'Au99.99 现货参考价'
-    case 'icbc': return '工行积存金报价'
+    case 'sge_delayed':
+    case 'eastmoney_sge': return 'Au99.99'
+    case 'icbc': return '工行积存金'
     default: return '报价'
   }
 })
@@ -85,17 +93,17 @@ const totalProfit = computed<number | null>(() => {
     return null
   }
 
-  return data.holdingProfit + data.realizedProfit
+  return addAmounts(data.holdingProfit, data.realizedProfit)
 })
 
 const totalRate = computed<number | null>(() => {
   const data = overview.value
 
-  if (!data || !data.hasEffectiveQuote || data.cost <= 0) {
+  if (!data || !data.hasEffectiveQuote) {
     return null
   }
 
-  return (data.holdingProfit + data.realizedProfit) / data.cost * 100
+  return calculatePercent(addAmounts(data.holdingProfit, data.realizedProfit), data.cost)
 })
 
 const selectedPendingArrival = computed<PendingGoldArrival | null>(() =>
@@ -189,9 +197,16 @@ const holdingCostTotal = computed<number | null>(() => {
 })
 const parseGramInput = computed<number>(() => parseNonNegativeQuantity(form.grams) ?? 0)
 
+let unmounted = false
+
 onMounted(async () => {
   await loadOverview()
+  if (unmounted) return
   await refreshQuoteOnEnter()
+})
+
+onBeforeUnmount(() => {
+  unmounted = true
 })
 
 async function refreshQuoteOnEnter(): Promise<void> {
@@ -209,7 +224,11 @@ async function refreshQuoteOnEnter(): Promise<void> {
     } catch {
       // 失败原因由服务端记录在持仓状态中，下面重新读取以显示失败提示。
     }
+    if (unmounted) return
     await loadOverview()
+    if (sheet.value !== null && !isSaving.value && overview.value) {
+      expectedVersion.value = overview.value.version
+    }
   } finally {
     isRefreshing.value = false
   }
@@ -220,9 +239,15 @@ async function loadOverview(): Promise<void> {
   errorMessage.value = ''
 
   try {
-    overview.value = await fetchGoldOverview()
+    const data = await fetchGoldOverview()
+    const change = data.isConfigured && data.hasEffectiveQuote
+      ? await fetchDayChange().catch(() => null)
+      : null
+    overview.value = data
+    dailyChange.value = change?.to === today ? change.dayBreakdown?.gold ?? null : null
   } catch (error) {
     overview.value = null
+    dailyChange.value = null
 
     if (error instanceof ApiError && error.status === 404) {
       await router.replace({ name: 'setup' })
@@ -283,9 +308,7 @@ function openSheet(kind: SheetKind): void {
   if (kind === 'holding' && overview.value?.isConfigured) {
     form.grams = String(overview.value.grams)
     // 成本按元/克编辑；用总额除以克数还原单价，避免四舍五入后再乘回去产生总额漂移。
-    form.costPrice = overview.value.grams > 0
-      ? String(Number((overview.value.cost / overview.value.grams).toFixed(4)))
-      : ''
+    form.costPrice = divideUnitPrice(overview.value.cost, overview.value.grams)
   }
 }
 
@@ -478,131 +501,14 @@ async function markNotHeld(): Promise<void> {
 }
 
 function formatPercent(value: number | null): string {
-  if (value === null) {
-    return '—'
-  }
-
-  const sign = value > 0 ? '+' : value < 0 ? '−' : ''
-
-  return `${sign}${Math.abs(value).toFixed(2)}%`
+  return formatPercentValue(value, '—')
 }
 
 function profitText(value: number | null): string {
   return value === null ? '行情待补' : formatSignedMoney(value)
 }
 
-function activityLabel(activity: GoldActivity): string {
-  switch (activity.type) {
-    case 'buy':
-      return '买入'
-    case 'sell':
-      return '卖出'
-    case 'sellPending':
-      return '待到账'
-    case 'sellArrival':
-      return '到账'
-    case 'correction':
-      return '核对'
-    default:
-      return '行情'
-  }
-}
-
-function activityStatus(activity: GoldActivity): string {
-  switch (activity.type) {
-    case 'sellPending':
-      return '待到账'
-    case 'sellArrival':
-      return '已到账'
-    case 'correction':
-      return '已核对'
-    case 'quote':
-      return '仅更新估值'
-    default:
-      return '已成交'
-  }
-}
-
-function activityTime(activity: GoldActivity): string {
-  return [formatBusinessDate(activity.businessDate), formatBusinessTime(activity.createdAt)]
-    .filter(Boolean)
-    .join(' ')
-}
-
-function activityCostPerGram(activity: GoldActivity): number | null {
-  if (activity.grams === null || activity.grams <= 0) {
-    return null
-  }
-
-  return new Decimal(activity.amount)
-    .div(activity.grams)
-    .toDecimalPlaces(3, Decimal.ROUND_HALF_UP)
-    .toNumber()
-}
-
-function activityMeta(activity: GoldActivity): string {
-  if (activity.type === 'sellArrival') {
-    return `到账 ${formatMoney(activity.amount)}`
-  }
-
-  if (activity.type === 'buy' || activity.type === 'sell') {
-    const price = activity.quote === null
-      ? ''
-      : `${activity.type === 'buy' ? '成本' : '成交价'} ${formatUnitPrice(activity.quote)}/克`
-    return [`${formatQuantity(activity.grams)} 克`, price].filter(Boolean).join(' · ')
-  }
-
-  if (activity.type === 'sellPending') {
-    return `${formatQuantity(activity.grams)} 克 · 待到账 ${formatMoney(activity.amount)}`
-  }
-
-  if (activity.type === 'quote') {
-    return `报价 ${formatUnitPrice(activity.quote)}/克`
-  }
-
-  const cost = activityCostPerGram(activity)
-  return [
-    `${formatQuantity(activity.grams)} 克`,
-    cost === null ? `成本 ${formatMoney(activity.amount)}` : `成本 ${formatUnitPrice(cost)}/克`
-  ].filter(Boolean).join(' · ')
-}
-
-function activityAmount(activity: GoldActivity): string {
-  if (activity.type === 'buy' || activity.type === 'sell' || activity.type === 'sellArrival') {
-    return `${formatSignedMoney(activity.cashEffect)}元`
-  }
-
-  if (activity.type === 'quote') {
-    return `${formatUnitPrice(activity.quote)}元/克`
-  }
-
-  return `${formatMoney(activity.amount)}元`
-}
-
-function activityAmountTone(activity: GoldActivity): string {
-  if (activity.cashEffect > 0) {
-    return 'income'
-  }
-
-  return activity.cashEffect < 0 ? 'transfer' : ''
-}
-
-function toActivityRow(activity: GoldActivity): InvestmentActivityRow {
-  return {
-    key: activity.id,
-    label: activityLabel(activity),
-    labelTone: activity.type === 'buy' ? 'buy' : 'neutral',
-    title: '积存金',
-    meta: activityMeta(activity),
-    time: activityTime(activity),
-    amount: activityAmount(activity),
-    amountTone: activityAmountTone(activity),
-    status: activityStatus(activity),
-    statusTone: activity.type === 'sellPending' ? 'pending' : 'done'
-  }
-}
-
-const activityRows = computed(() => (overview.value?.activities ?? []).map(toActivityRow))
+const activityRows = computed(() => (overview.value?.activities ?? []).map(toGoldActivityRow))
 
 function goBack(): void {
   navigateBack(router)
@@ -611,9 +517,10 @@ function goBack(): void {
 
 <template>
   <main class="page gold-page with-nav">
-    <header class="gold-header">
+    <header class="gold-header asset-page-header">
       <BackButton @back="goBack" />
       <h1>贵金属</h1>
+      <QuoteRefreshButton :refreshing="isRefreshing" :disabled="!overview" @refresh="refreshQuote" />
     </header>
 
     <LoadingState v-if="isLoading && !overview" variant="hero" label="正在读取贵金属" />
@@ -631,38 +538,27 @@ function goBack(): void {
           <span class="hero-tag">积存金 · 人民币</span>
         </p>
         <h2 class="hero-balance">
-          <template v-if="overview.hasEffectiveQuote"><span class="hero-currency">¥</span><AnimatedMoney :value="overview.value" prefix="" /></template>
+          <template v-if="overview.hasEffectiveQuote"><span class="hero-currency">¥</span><MoneyAmount :value="overview.value" prefix="" /></template>
           <template v-else>行情待补</template>
         </h2>
         <p class="hero-meta">
-          持有 {{ formatQuantity(overview.grams) }} 克 ·
-          {{ quoteLabel }} {{ overview.hasEffectiveQuote ? formatMoney(overview.quote) : '行情待补' }} 元/克
-          <template v-if="overview.hasEffectiveQuote && overview.quoteDate"> · 行情 {{ formatBusinessDate(overview.quoteDate) }}</template>
+          <template v-if="overview.hasEffectiveQuote">{{ quoteLabel }}: {{ formatMoney(overview.quote) }}¥/g</template>
+          <template v-else>行情待补</template>
           <template v-if="overview.pendingArrivalAmount > 0"> · 含待到账 ¥{{ formatMoney(overview.pendingArrivalAmount) }}</template>
         </p>
-        <div class="hero-metrics">
-          <div>
-            <span>总收益</span>
-            <b :class="amountTone(totalProfit)">{{ profitText(totalProfit) }}</b>
-          </div>
-          <div>
-            <span>总收益率</span>
-            <b :class="amountTone(totalRate)">{{ formatPercent(totalRate) }}</b>
-          </div>
-          <div>
-            <span>成本均价</span>
-            <b>{{ overview.averageCost === null ? '—' : `¥${formatMoney(overview.averageCost)} / 克` }}</b>
-          </div>
-        </div>
+        <InvestmentHeroMetrics
+          :daily-profit="dailyChange?.profit ?? null"
+          :daily-rate="dailyRate"
+          :total-profit="totalProfit"
+          :total-rate="totalRate"
+          :total-unavailable="overview.hasEffectiveQuote ? undefined : '行情待补'"
+        />
         <p class="hero-foot">可用现金 ¥{{ formatMoney(overview.cashBalance) }}</p>
       </section>
 
       <div v-if="overview.isConfigured" class="gold-actions">
         <button type="button" class="action-primary" @click="openSheet('buy')">买入</button>
         <button type="button" class="action-secondary" @click="openSheet('holding')">录入 / 核对</button>
-        <LoadingButton class="action-secondary" :loading="isRefreshing" loading-label="刷新中…" @click="refreshQuote">
-          刷新报价
-        </LoadingButton>
       </div>
 
       <p v-if="errorMessage" class="form-error" role="alert">{{ errorMessage }}</p>
@@ -977,6 +873,10 @@ function goBack(): void {
   letter-spacing: -0.4px;
 }
 
+.gold-header .sync-button {
+  margin-inline-start: auto;
+}
+
 .position-percent {
   margin-left: 4px;
   font-size: var(--text-caption);
@@ -987,7 +887,7 @@ function goBack(): void {
 
 .gold-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin-top: 14px;
 }
@@ -995,36 +895,8 @@ function goBack(): void {
 .gold-actions button,
 .detail-actions button {
   min-height: 48px;
-  border-radius: var(--radius-pill);
   font-size: 0.875rem;
   font-weight: 600;
-}
-
-.action-primary {
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-brand);
-  color: var(--color-on-brand);
-}
-
-.action-primary:hover {
-  background: var(--color-brand-hover);
-}
-
-.action-secondary {
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-brand-soft);
-  color: var(--color-brand);
-}
-
-.action-secondary:hover:not(:disabled) {
-  background: var(--color-brand-soft-hover);
-}
-
-.action-secondary:disabled {
-  background: var(--color-bg-disabled);
-  color: var(--color-text-disabled);
 }
 
 .form-error {
@@ -1304,12 +1176,7 @@ function goBack(): void {
 .confirm-button {
   min-height: 36px;
   padding: 0 14px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-brand);
-  color: var(--color-on-brand);
   font-size: var(--text-footnote);
-  font-weight: 600;
 }
 
 .detail-metrics {
@@ -1371,37 +1238,12 @@ function goBack(): void {
   margin-top: 16px;
 }
 
-.sheet-summary {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.summary-line {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  padding: 11px 14px;
-  border-radius: var(--radius-control);
-  background: var(--color-bg-subtle);
-  color: var(--color-text-secondary);
-  font-size: var(--text-footnote);
-}
-
-.summary-line b {
-  color: var(--color-text-primary);
-  font-size: var(--text-footnote);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
 .sell-preview {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: 8px;
-  padding: 0;
+  padding: 6px 6px 2px;
   background: transparent;
 }
 

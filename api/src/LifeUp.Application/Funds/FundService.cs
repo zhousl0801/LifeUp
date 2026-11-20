@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using LifeUp.Application.Mutations;
 using LifeUp.Application.History;
 using LifeUp.Application.Assets;
@@ -1263,16 +1265,23 @@ public sealed class FundService
         catch (Exception exception) when (exception is QuoteUnavailableException or HttpRequestException or TaskCanceledException
             or ArgumentException or InvalidOperationException or HistoryValidationException)
         {
-            position.RecordQuoteSyncAttempt(now, null, Shorten(exception.Message));
+            // 先丢弃本次可能已暂存的行情交易与观察记录，避免失败状态下误提交脏数据。
+            _ledgerRepository.DiscardChanges();
+            var trackedPosition = await _ledgerRepository.GetFundPositionForUpdateAsync(ledger.Id, positionId, cancellationToken);
 
-            try
+            if (trackedPosition is not null)
             {
-                await _ledgerRepository.SaveChangesAsync(cancellationToken);
-            }
-            catch (ConcurrencyConflictException)
-            {
-                _ledgerRepository.DiscardChanges();
-                return AssetOperationResult<FundQuoteRefreshDto>.Conflict("数据已被其他操作修改，请刷新后重试。");
+                trackedPosition.RecordQuoteSyncAttempt(now, null, Shorten(exception.Message));
+
+                try
+                {
+                    await _ledgerRepository.SaveChangesAsync(cancellationToken);
+                }
+                catch (ConcurrencyConflictException)
+                {
+                    _ledgerRepository.DiscardChanges();
+                    return AssetOperationResult<FundQuoteRefreshDto>.Conflict("数据已被其他操作修改，请刷新后重试。");
+                }
             }
 
             return AssetOperationResult<FundQuoteRefreshDto>.Unavailable(exception.Message);
@@ -1297,7 +1306,7 @@ public sealed class FundService
             return 0;
         }
 
-        var replayData = await _ledgerRepository.GetReplayDataAsync(ledger.Id, cancellationToken);
+        var replayData = await _ledgerRepository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
         var confirmedIds = replayData.Transactions
             .Where(transaction => !transaction.IsReversed
                 && transaction.Kind == AssetTransactionKind.FundBuyConfirm
@@ -1350,7 +1359,7 @@ public sealed class FundService
                     transaction.Fee,
                     confirmationDate,
                     "行情自动确认",
-                    Guid.NewGuid()), cancellationToken);
+                    AutoConfirmRequestId(transaction.Id)), cancellationToken);
                 if (result.Status is AssetOperationStatus.Created or AssetOperationStatus.Success)
                 {
                     confirmedCount++;
@@ -1545,8 +1554,6 @@ public sealed class FundService
         try
         {
             position.SetPriorRealizedProfit(request.Amount, _businessDateProvider.UtcNow);
-            ledger.Touch(_businessDateProvider.UtcNow);
-            await _ledgerRepository.SaveChangesAsync(cancellationToken);
         }
         catch (ArgumentException exception)
         {
@@ -1607,13 +1614,18 @@ public sealed class FundService
             : today;
     }
 
+    private static Guid AutoConfirmRequestId(Guid pendingTransactionId)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"fund.buy.auto-confirm:{pendingTransactionId:N}"));
+        return new Guid(hash.AsSpan(0, 16));
+    }
+
     private bool CanCancel(AssetTransaction transaction)
     {
         var now = _businessDateProvider.UtcNow;
         var today = _businessDateProvider.Today;
-        var timezone = TimeZoneInfo.FindSystemTimeZoneById(Ledger.DefaultTimeZone);
-        var createdDate = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, timezone).DateTime);
-        var transactionDate = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(transaction.CreatedAt, timezone).DateTime);
+        var createdDate = _businessDateProvider.ToBusinessDate(now);
+        var transactionDate = _businessDateProvider.ToBusinessDate(transaction.CreatedAt);
         return createdDate == today
             && transactionDate == today
             && now < _businessDateProvider.ToBusinessInstant(today, new TimeOnly(15, 0));

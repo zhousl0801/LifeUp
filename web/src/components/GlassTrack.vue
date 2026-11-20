@@ -420,7 +420,7 @@ onBeforeUnmount(() => {
   position: absolute;
   top: 38px;
   transform: translateX(-50%);
-  color: #F1EDFF;
+  color: var(--color-hero-text-secondary);
   font-size: 11px;
   white-space: nowrap;
 }
@@ -450,7 +450,7 @@ onBeforeUnmount(() => {
   left: 0;
   display: grid;
   height: 16px;
-  color: #F1EDFF;
+  color: var(--color-hero-text-secondary);
   font-size: 11px;
   place-items: center;
 }
@@ -461,9 +461,10 @@ onBeforeUnmount(() => {
   z-index: 6;
   padding: 8px 10px;
   transform: translateX(-50%);
+  border: 1px solid var(--color-surface-border);
   border-radius: 12px;
-  background: #FFFFFF;
-  box-shadow: 0 8px 24px rgba(20, 14, 50, 0.18);
+  background: var(--color-bg-popover);
+  box-shadow: var(--shadow-float);
   color: var(--color-text-primary);
   font-size: 12px;
   white-space: nowrap;

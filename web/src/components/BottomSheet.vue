@@ -6,7 +6,28 @@ type OpenSheet = {
 }
 
 const openSheets: OpenSheet[] = []
-let previousOverflow = ''
+let releasePageScroll: (() => void) | undefined
+
+function lockPageScroll(): () => void {
+  const { style } = document.body
+  const { scrollX, scrollY } = window
+  const { overflow, position, top, width } = style
+
+  // iOS 主屏幕应用仍可能滚动设置了 overflow: hidden 的 body。
+  Object.assign(style, {
+    overflow: 'hidden',
+    position: 'fixed',
+    top: `${-scrollY}px`,
+    width: '100%'
+  })
+
+  return () => {
+    Object.assign(style, { overflow, position, top, width })
+    if (window.scrollX !== scrollX || window.scrollY !== scrollY) {
+      window.scrollTo({ left: scrollX, top: scrollY, behavior: 'instant' })
+    }
+  }
+}
 </script>
 
 <script setup lang="ts">
@@ -40,15 +61,14 @@ watch(
       wasOpen = true
 
       if (openSheets.length === 0) {
-        previousOverflow = document.body.style.overflow
-        document.body.style.overflow = 'hidden'
+        releasePageScroll = lockPageScroll()
       }
       openSheets.push(registration)
       registration.previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
       resetDrag()
       await nextTick()
       // 不自动聚焦输入框，避免打开 sheet 就弹出键盘；先把焦点放在对话框本身。
-      if (openSheets.at(-1) === registration) sheet.value?.focus()
+      if (openSheets.at(-1) === registration) sheet.value?.focus({ preventScroll: true })
     } else if (wasOpen) {
       wasOpen = false
       unregisterSheet()
@@ -80,14 +100,17 @@ function unregisterSheet(): void {
     if (closingElement?.contains(upper.previousFocus)) upper.previousFocus = previousFocus
   }
 
-  if (openSheets.length === 0) document.body.style.overflow = previousOverflow
+  if (openSheets.length === 0) {
+    releasePageScroll?.()
+    releasePageScroll = undefined
+  }
   if (!wasTop) return
 
   const nextSheet = openSheets.at(-1)?.element()
   if (previousFocus?.isConnected && (!nextSheet || nextSheet.contains(previousFocus))) {
-    previousFocus.focus()
+    previousFocus.focus({ preventScroll: true })
   } else {
-    nextSheet?.focus()
+    nextSheet?.focus({ preventScroll: true })
   }
 }
 
@@ -259,9 +282,10 @@ async function endDrag(event: PointerEvent): Promise<void> {
   width: min(100%, 430px);
   max-height: 88dvh;
   overflow-y: auto;
-  padding: 0 var(--page-gutter) calc(24px + env(safe-area-inset-bottom));
+  overscroll-behavior-y: contain;
+  padding: 0 var(--page-gutter) calc(20px + env(safe-area-inset-bottom));
   border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
-  background: var(--color-bg-surface);
+  background: var(--color-bg-page);
   box-shadow: 0 -8px 30px var(--color-shadow);
   outline: none;
   transform: translateY(var(--sheet-drag-y, 0px));
@@ -313,50 +337,52 @@ async function endDrag(event: PointerEvent): Promise<void> {
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 
 .sheet-head h2 {
   margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
+  font-size: 1.125rem;
+  font-weight: 700;
   letter-spacing: -0.3px;
 }
 
 .sheet-head p {
-  margin: 5px 0 0;
+  margin: 3px 0 0;
   color: var(--color-text-secondary);
-  font-size: var(--text-footnote);
-  line-height: 1.5;
+  font-size: var(--text-caption);
+  line-height: 1.45;
 }
 
 .sheet-close {
-  min-width: var(--touch-target);
-  min-height: var(--touch-target);
-  margin: -8px -4px 0 0;
-  padding: 0 8px;
+  min-width: 32px;
+  min-height: 32px;
+  margin: -2px 0 0;
+  padding: 0 10px;
   border: 0;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--color-brand);
-  font-size: 0.875rem;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+  font-weight: 600;
 }
 
 .sheet-close-icon {
   display: block;
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   margin: auto;
 }
 
 .sheet-close:hover:not(:disabled) {
   background: var(--color-brand-soft);
+  color: var(--color-brand);
 }
 
 .sheet-body {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 10px;
 }
 
 @media (min-width: 600px) {

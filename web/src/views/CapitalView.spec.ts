@@ -320,19 +320,16 @@ test('does not show the provident or bonus explanation', async () => {
   view.unmount()
 })
 
-test('toggles amount masking from the header eye', async () => {
+test('toggles full amount masking from the current capital card', async () => {
   const view = await mountView(overview())
+  const card = view.get('.hero')
+  expect(card.get('.hero-amount').text()).not.toContain('••••')
 
-  expect(view.find('.hero-amount').text()).not.toContain('••••')
-  expect(view.find('button[aria-label="隐藏资产金额"]').exists()).toBe(true)
+  await card.get('button[aria-label="隐藏资产金额"]').trigger('click')
+  expect(card.get('.hero-amount').text()).toBe('¥••••')
 
-  await view.find('button[aria-label="隐藏资产金额"]').trigger('click')
-  expect(view.find('.hero-amount').text()).toContain('••••')
-  expect(view.find('button[aria-label="显示资产金额"]').exists()).toBe(true)
-
-  await view.find('button[aria-label="显示资产金额"]').trigger('click')
-  expect(view.find('.hero-amount').text()).not.toContain('••••')
-  expect(view.find('button[aria-label="隐藏资产金额"]').exists()).toBe(true)
+  await card.get('button[aria-label="显示资产金额"]').trigger('click')
+  expect(card.get('.hero-amount').text()).not.toContain('••••')
   view.unmount()
 })
 

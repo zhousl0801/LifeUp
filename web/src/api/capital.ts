@@ -15,6 +15,7 @@ export function saveCapital(input: CapitalGoalSettings): Promise<CapitalOverview
 export function previewCapital(input: CapitalGoalSettings): Promise<CapitalOverview> {
   return apiRequest<CapitalOverview>('/api/ledger/capital/preview', {
     method: 'POST',
-    body: JSON.stringify(input)
+    body: JSON.stringify(input),
+    skipCacheInvalidation: true
   })
 }

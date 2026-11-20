@@ -298,6 +298,10 @@ test('shows broker style price, cost and today change percent', async () => {
   expect(row).toContain('成本 ¥10.00')
   expect(row).toContain('+5.00%')
   expect(view.text()).toContain('可用现金 ¥9,000.00')
+  const metrics = view.findAll('.hero-metrics > div')
+  expect(metrics.map(metric => metric.get('span').text())).toEqual(['今日盈亏', '总收益', '总收益率'])
+  expect(metrics[0]!.get('b').text()).toBe('+50.00')
+  expect(metrics[0]!.get('small').text()).toBe('+5.00%')
   view.unmount()
 })
 
@@ -305,10 +309,12 @@ test('offers a single refresh quote entry', async () => {
   const view = mount(StocksView, { attachTo: document.body })
   await flushPromises()
 
-  const refreshButtons = view.findAll('button').filter((button) => button.text().includes('刷新行情'))
-
+  const refreshButtons = view.findAll('button[aria-label="同步行情"]')
   expect(refreshButtons).toHaveLength(1)
-  expect(refreshButtons[0]!.classes()).toContain('action-secondary')
+  expect(view.get('.stock-header').find('.sync-button').exists()).toBe(true)
+  await refreshButtons[0]!.trigger('click')
+  await flushPromises()
+  expect(mocks.refresh).toHaveBeenCalledTimes(2)
   view.unmount()
 })
 

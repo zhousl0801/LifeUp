@@ -2,7 +2,7 @@
 import { navigateBack } from '../utils/navigation'
 import BackButton from '../components/BackButton.vue'
 import LoadingButton from '../components/LoadingButton.vue'
-import AnimatedMoney from '../components/AnimatedMoney.vue'
+import MoneyAmount from '../components/MoneyAmount.vue'
 import LoadingState from '../components/LoadingState.vue'
 import CashAdjustmentLink from '../components/CashAdjustmentLink.vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
@@ -358,7 +358,7 @@ function goBack(): void {
 
 <template>
   <main class="page provident-page with-nav">
-    <header class="provident-header">
+    <header class="provident-header asset-page-header">
       <BackButton @back="goBack" />
       <h1>公积金</h1>
     </header>
@@ -368,7 +368,7 @@ function goBack(): void {
 
     <section v-else-if="errorMessage" class="state">
       <p>{{ errorMessage }}</p>
-      <LoadingButton class="secondary-button" :loading="isLoading" loading-label="加载中…" @click="loadOverview">重新加载</LoadingButton>
+      <LoadingButton class="secondary-button" :loading="isLoading" loading-label="加载中…" @click="loadPage">重新加载</LoadingButton>
     </section>
 
     <template v-else-if="overview">
@@ -377,7 +377,7 @@ function goBack(): void {
           公积金余额
           <span class="hero-tag">个人＋单位</span>
         </p>
-        <h2 class="hero-balance"><span>¥</span><AnimatedMoney :value="overview.balance" prefix="" /></h2>
+        <h2 class="hero-balance"><span>¥</span><MoneyAmount :value="overview.balance" prefix="" /></h2>
         <p class="hero-meta">截至 {{ formatBusinessDate(overview.asOfDate) }}</p>
         <div class="hero-metrics">
           <div>
@@ -649,28 +649,8 @@ function goBack(): void {
 .provident-actions button {
   flex: 1;
   min-height: 48px;
-  border: 0;
-  border-radius: var(--radius-pill);
   font-size: 0.9375rem;
   font-weight: 600;
-}
-
-.action-primary {
-  background: var(--color-brand);
-  color: var(--color-on-brand);
-}
-
-.action-primary:hover {
-  background: var(--color-brand-hover);
-}
-
-.action-secondary {
-  background: var(--color-bg-subtle);
-  color: var(--color-brand);
-}
-
-.action-secondary:hover {
-  background: var(--color-brand-soft);
 }
 
 .hint,
@@ -793,16 +773,18 @@ function goBack(): void {
 .monthly-setting {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 16px;
-  border-radius: var(--radius-card);
-  background: var(--color-bg-subtle);
+  gap: 0;
+  margin-bottom: 10px;
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--color-bg-surface);
 }
 
 .monthly-toggle {
   display: flex;
   align-items: flex-start;
   gap: 10px;
+  padding: 12px 14px;
   cursor: pointer;
 }
 
@@ -834,6 +816,11 @@ function goBack(): void {
 .monthly-fields {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.monthly-fields > .form-hint {
+  padding: 6px 14px 10px;
 }
 </style>

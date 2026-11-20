@@ -29,11 +29,17 @@ public sealed class PlanSchedulerService : BackgroundService
         var interval = TimeSpan.FromSeconds(Math.Max(5, _options.Value.IntervalSeconds));
         using var timer = new PeriodicTimer(interval);
 
-        do
+        try
         {
-            await RunAsync(stoppingToken);
+            do
+            {
+                await RunAsync(stoppingToken);
+            }
+            while (await timer.WaitForNextTickAsync(stoppingToken));
         }
-        while (await timer.WaitForNextTickAsync(stoppingToken));
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+        }
     }
 
     private async Task RunAsync(CancellationToken stoppingToken)

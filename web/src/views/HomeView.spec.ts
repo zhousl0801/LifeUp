@@ -9,12 +9,15 @@ import type { AssetTrend } from '../types/trend'
 
 const mocks = vi.hoisted(() => ({
   ledger: vi.fn(),
+  funds: vi.fn(),
   trend: vi.fn(),
   dayChange: vi.fn(),
   change: vi.fn(),
   plans: vi.fn(),
   quotes: vi.fn()
 }))
+
+vi.mock('../api/funds', () => ({ fetchFundOverview: mocks.funds }))
 
 vi.mock('../api/ledger', () => ({
   fetchLedger: mocks.ledger,
@@ -151,6 +154,7 @@ test.each([
   const view = mount(HomeView, { global: { plugins: [createPinia()] } })
   await flushPromises()
 
+  await view.get('.hero-amount button[aria-label="显示资产金额"]').trigger('click')
   const card = view.get('.month-flow')
   const segments = card.findAll<HTMLElement>('.month-flow-segment')
   expect(segments.map((segment) => segment.element.style.width)).toEqual([incomeWidth, expenseWidth])
@@ -181,6 +185,8 @@ test('shows recorded assets, no comparable month change and the seven-day trend 
   expect(distribution.text()).not.toContain('管理')
   expect(view.text()).not.toContain('自动记账')
   expect(mocks.plans).not.toHaveBeenCalled()
+  expect(distribution.get('[aria-label="现金资产"]').text()).not.toContain('68.8%')
+  await view.get('button[aria-label="显示资产金额"]').trigger('click')
   expect(distribution.get('[aria-label="现金资产"]').text()).toContain('68.8%')
   expect(distribution.get('[aria-label="基金资产"]').text()).toContain('暂未录入')
   expect(view.find('.chart-stub').exists()).toBe(false)
@@ -200,24 +206,24 @@ test('draws the daily asset totals once seven days are recorded', async () => {
   expect(mocks.trend).toHaveBeenCalledWith('week')
   expect(view.find('.range-button.active').text()).toBe('7日')
   expect(view.find('.chart-stub').exists()).toBe(true)
-  expect(view.get('.chart-readout').text()).toContain('¥3••••')
-  expect(view.get('.hero-value').text()).toBe('¥3••••')
+  expect(view.get('.chart-readout').text()).toContain('¥••••')
+  expect(view.get('.hero-value').text()).toBe('¥••••')
   expect(view.get('.chart-readout').text()).toContain('已记录资产')
   expect(view.find('.distribution-head').exists()).toBe(false)
   const card = view.get('[aria-label="现金资产"]')
   const fundCard = view.get('[aria-label="基金资产"]')
-  expect(card.get('.card-balance').text()).toBe('¥2••••')
+  expect(card.get('.card-balance').text()).toBe('¥••••')
   expect(card.find('.card-visibility').exists()).toBe(false)
-  await view.get('.hero-label button[aria-label="显示资产金额"]').trigger('click')
+  await view.get('.hero-amount button[aria-label="显示资产金额"]').trigger('click')
   expect(view.get('.hero-value').text()).toBe('¥355,851.75')
   expect(view.get('.chart-readout').text()).toContain('¥355,851.75')
   expect(card.get('.card-balance').text()).toBe('¥244,685.00')
-  await view.get('.hero-label button[aria-label="隐藏资产金额"]').trigger('click')
-  expect(view.get('.hero-value').text()).toBe('¥3••••')
-  expect(view.get('.chart-readout').text()).toContain('¥3••••')
-  expect(card.get('.card-balance').text()).toBe('¥2••••')
-  expect(fundCard.get('.card-balance').text()).toBe('¥2••••')
-  await view.get('.hero-label button[aria-label="显示资产金额"]').trigger('click')
+  await view.get('.hero-amount button[aria-label="隐藏资产金额"]').trigger('click')
+  expect(view.get('.hero-value').text()).toBe('¥••••')
+  expect(view.get('.chart-readout').text()).toContain('¥••••')
+  expect(card.get('.card-balance').text()).toBe('¥••••')
+  expect(fundCard.get('.card-balance').text()).toBe('¥••••')
+  await view.get('.hero-amount button[aria-label="显示资产金额"]').trigger('click')
   expect(fundCard.get('.card-balance').text()).toBe('¥278,788.02')
   expect(view.find('.chart-note').exists()).toBe(false)
   expect(view.find('.trend-wait').exists()).toBe(false)
@@ -277,7 +283,7 @@ test('defaults to today change and switches to month change', async () => {
   expect(document.body.querySelector('.breakdown-total b')?.textContent).toBe('••••')
   document.body.querySelector<HTMLButtonElement>('.sheet-close')!.click()
   await flushPromises()
-  await view.get('.hero-label button[aria-label="显示资产金额"]').trigger('click')
+  await view.get('.hero-amount button[aria-label="显示资产金额"]').trigger('click')
   expect(view.find('.hero-change').text()).toContain('+1,000.00')
   expect(view.find('.hero-change').text()).toContain('+5.00%')
 
@@ -329,6 +335,204 @@ test('negative comparable changes show a downward arrow', async () => {
   mocks.dayChange.mockResolvedValue({ ...monthChange, hasComparableData: true, comparableChange: -100, comparableBase: 1000 })
   const view = mount(HomeView, { global: { plugins: [createPinia()] } })
   await flushPromises()
-  expect(view.find('.change-arrow').text()).toBe('▼')
+  expect(view.find('.change-arrow').exists()).toBe(false)
+  await view.get('button[aria-label="显示资产金额"]').trigger('click')
+  expect(view.get('.change-arrow').text()).toBe('▼')
+  view.unmount()
+})
+
+test('explains the daily increases and decreases with separate cash and investment amounts', async () => {
+  const start = shift(today, -30)
+  mocks.ledger.mockResolvedValue(overview(start))
+  mocks.trend.mockResolvedValue(trend(start))
+  mocks.dayChange.mockResolvedValue({
+    ...monthChange,
+    from: today, to: today, hasComparableData: true, comparableChange: 1100, comparableBase: 25000,
+    addedRecords: 2000,
+    dayBreakdown: {
+      cashIncome: 500, cashExpense: 120, providentDeposit: 1000,
+      fund: { profit: 200, previousValue: 1000, currentValue: 1200, cashTransfer: 0, openingValue: 0, adjustment: 0 },
+      stock: { profit: -5, previousValue: 0, currentValue: 3000, cashTransfer: -1005, openingValue: 2000, adjustment: 0 },
+      gold: { profit: -500, previousValue: 9000, currentValue: 8500, cashTransfer: 0, openingValue: 0, adjustment: 0 },
+      cashAdjustment: 25, holdingAdjustment: 0, otherDifference: 0
+    }
+  })
+  const view = mount(HomeView, { attachTo: document.body, global: { plugins: [createPinia()] } })
+  await flushPromises()
+  try {
+    await view.get('.hero-change').trigger('click')
+    const sheet = document.body.querySelector('[role="dialog"]')!
+    expect(sheet.textContent).toContain('基金盈亏')
+    expect(sheet.textContent).not.toMatch(/500\.00|120\.00|1,100\.00|2,000\.00|1,005\.00/)
+    document.body.querySelector<HTMLButtonElement>('.sheet-close')!.click()
+    await flushPromises()
+    await view.get('button[aria-label="显示资产金额"]').trigger('click')
+    await view.get('.hero-change').trigger('click')
+    const rows = [...document.body.querySelectorAll('.breakdown-row')].map(row => row.textContent?.trim())
+    expect(rows).toEqual(expect.arrayContaining([
+      '现金收入+500.00', '现金支出−120.00', '公积金缴存+1,000.00',
+      '基金盈亏+200.00', '股票盈亏−5.00', '贵金属盈亏−500.00', '现金核对差额+25.00',
+      '新增记录（不计入变化）+2,000.00'
+    ]))
+    expect(document.body.querySelector('.breakdown-total b')?.textContent).toBe('+1,100.00')
+    const stock = [...document.body.querySelectorAll('details')].find(item => item.querySelector('summary')?.textContent?.includes('股票盈亏'))
+    expect(stock?.textContent).toContain('对应现金变动')
+    expect(stock?.textContent).toContain('−1,005.00')
+  } finally {
+    view.unmount()
+  }
+})
+
+test('includes earlier NAV profit in the headline and detail total with the NAV date', async () => {
+  const start = shift(today, -30)
+  const disclosureDate = shift(today, -2)
+  mocks.ledger.mockResolvedValue(overview(start, {
+    fund: { isConfigured: true, amount: 273349.99, note: null, notHeld: false }
+  }))
+  mocks.trend.mockResolvedValue(trend(start))
+  mocks.dayChange.mockResolvedValue({
+    ...monthChange,
+    hasComparableData: true,
+    comparableChange: -436.64,
+    comparableBase: 620000
+  })
+  mocks.funds.mockResolvedValue({
+    funds: [
+      { hasDailyProfit: true, dailyProfitDate: disclosureDate, dailyProfit: -5000.01 },
+      { hasDailyProfit: true, dailyProfitDate: disclosureDate, dailyProfit: -4198.05 },
+      { hasDailyProfit: true, dailyProfitDate: shift(today, -3), dailyProfit: 600 }
+    ]
+  })
+  const view = mount(HomeView, { attachTo: document.body, global: { plugins: [createPinia()] } })
+  try {
+    await flushPromises()
+    expect(view.get('.hero-change').text()).not.toContain('9,634.70')
+    expect(view.get('.hero-change-context time').attributes('datetime')).toBe(disclosureDate)
+    await view.get('.hero-change').trigger('click')
+    await flushPromises()
+    let sheet = document.body.querySelector('[role="dialog"]')!
+    expect(sheet.textContent).toContain('最近已披露基金收益')
+    expect(sheet.textContent).not.toContain('9,198.06')
+    sheet.querySelector<HTMLButtonElement>('.sheet-close')!.click()
+    await flushPromises()
+
+    await view.get('button[aria-label="显示资产金额"]').trigger('click')
+    expect(view.get('.hero-change b').text()).toBe('−9,634.70')
+    expect(view.get('.hero-change .change-percent').text()).toBe('-1.55%')
+    await view.get('.hero-change').trigger('click')
+    await flushPromises()
+    sheet = document.body.querySelector('[role="dialog"]')!
+    expect(sheet.querySelector('.fund-disclosure')?.textContent).toContain('−9,198.06')
+    expect(sheet.querySelector('.fund-disclosure time')?.getAttribute('datetime')).toBe(disclosureDate)
+    expect(sheet.querySelector('.fund-disclosure')?.textContent).toContain('2/3')
+    expect(sheet.querySelector('.breakdown-total b')?.textContent).toBe('−9,634.70')
+  } finally {
+    view.unmount()
+  }
+})
+
+test('does not add the fund profit twice when the NAV date matches the daily change', async () => {
+  const start = shift(today, -30)
+  mocks.ledger.mockResolvedValue(overview(start, {
+    fund: { isConfigured: true, amount: 1000, note: null, notHeld: false }
+  }))
+  mocks.trend.mockResolvedValue(trend(start))
+  mocks.dayChange.mockResolvedValue({ ...monthChange, to: today, hasComparableData: true, comparableChange: -20 })
+  mocks.funds.mockResolvedValue({ funds: [{ hasDailyProfit: true, dailyProfitDate: today, dailyProfit: -20 }] })
+
+  const view = mount(HomeView, { global: { plugins: [createPinia()] } })
+  try {
+    await flushPromises()
+    await view.get('button[aria-label="显示资产金额"]').trigger('click')
+    expect(view.get('.hero-change b').text()).toBe('−20.00')
+    expect(view.find('.hero-change-context').exists()).toBe(false)
+  } finally {
+    view.unmount()
+  }
+})
+
+
+test('shows asset changes by selected period and masks all card figures with the overview eye', async () => {
+  const start = shift(today, -30)
+  mocks.ledger.mockResolvedValue(overview(start, {
+    month: {
+      income: 9800, expense: 3268.50, surplus: 6531.50, hasRecords: true,
+      providentDeposit: 5440.68, providentWithdrawal: 1200.20
+    },
+    fund: { isConfigured: true, amount: 278788.02, note: '持有 1 只基金 · 待确认 1,800.00', notHeld: false },
+    stock: { isConfigured: true, amount: 1500, note: '持有 1 只股票', notHeld: false }
+  }))
+  mocks.funds.mockResolvedValue({ funds: [] })
+  mocks.trend.mockResolvedValue(trend(start))
+  mocks.dayChange.mockResolvedValue({
+    ...monthChange, hasComparableData: true, comparableChange: 319.54, comparableBase: 350000,
+    assetChanges: [
+      { assetType: 'cash', change: 319.54, baselineAmount: 10000, isNew: false },
+      { assetType: 'fund', change: -400, baselineAmount: 10000, isNew: false },
+      { assetType: 'stock', change: 1500, baselineAmount: 0, isNew: false },
+      { assetType: 'gold', change: 0, baselineAmount: 10000, isNew: false }
+    ]
+  })
+  mocks.change.mockResolvedValue({
+    ...monthChange, hasComparableData: true,
+    assetChanges: [{ assetType: 'cash', change: -1000, baselineAmount: 20000, isNew: false }]
+  })
+  const view = mount(HomeView, { global: { plugins: [createPinia()] } })
+  await flushPromises()
+
+  const cardNotes = (key: string) =>
+    view.get(`.card-${key}`).findAll('.card-note > span').map(note => note.text())
+  const hiddenValues = /9,800\.00|3,268\.50|6,531\.50|1,800\.00|319\.54|3\.20%|5,441|1,200/
+  expect(view.text()).not.toMatch(hiddenValues)
+  expect(cardNotes('cash')).toEqual(['••••', '••••'])
+  expect(cardNotes('providentFund')).toEqual(['缴存 ••••', '提取 ••••'])
+  expect(view.find('.month-flow-segment').exists()).toBe(false)
+  await view.get('.hero-amount button[aria-label="显示资产金额"]').trigger('click')
+  expect(view.get('.month-flow').text()).toContain('¥9,800.00')
+  expect(view.get('.month-flow').text()).toContain('¥3,268.50')
+  expect(view.get('.month-surplus').text()).toContain('+6,531.50')
+  expect(cardNotes('cash')).toEqual(['+319.54', '+3.20%'])
+  expect(cardNotes('fund')).toEqual(['−400.00', '−4.00%'])
+  expect(cardNotes('stock')).toEqual(['+1,500.00', '—'])
+  expect(cardNotes('gold')).toEqual(['0.00', '0.00%'])
+  expect(cardNotes('providentFund')).toEqual(['缴存 5,441', '提取 1,200'])
+  expect(view.get('.card-fund').text()).not.toContain('1,800.00')
+
+  await view.findAll('.change-scope button').find(button => button.text() === '本月')!.trigger('click')
+  expect(cardNotes('cash')).toEqual(['−1,000.00', '−5.00%'])
+  expect(cardNotes('fund')).toEqual(['—', '—'])
+  expect(cardNotes('providentFund')).toEqual(['缴存 5,441', '提取 1,200'])
+  view.unmount()
+})
+
+test('keeps the rendered trend period selected until the latest request finishes', async () => {
+  const start = shift(today, -30)
+  mocks.ledger.mockResolvedValue(overview(start))
+  mocks.trend.mockResolvedValue({ ...trend(start), range: 'week' })
+  const view = mount(HomeView, { global: { plugins: [createPinia()] } })
+  await flushPromises()
+
+  let finishMonth!: (value: AssetTrend) => void
+  let finishQuarter!: (value: AssetTrend) => void
+  mocks.trend.mockReturnValueOnce(new Promise(resolve => { finishMonth = resolve }))
+    .mockReturnValueOnce(new Promise(resolve => { finishQuarter = resolve }))
+
+  const [, month, quarter] = view.findAll('.range-button')
+  await month!.trigger('click')
+  expect(view.get('.range-button.active').text()).toBe('7日')
+  expect(view.get('.trend-panel').attributes('aria-busy')).toBe('true')
+  expect(quarter!.attributes('disabled')).toBeUndefined()
+  await quarter!.trigger('click')
+
+  finishQuarter({ ...trend(start), range: 'quarter', points: [point(today, { totalAssets: 420000 })] })
+  await flushPromises()
+  await view.get('button[aria-label="显示资产金额"]').trigger('click')
+  expect(view.get('.range-button.active').text()).toBe('3月')
+  expect(view.get('.chart-readout').text()).toContain('¥420,000.00')
+
+  finishMonth({ ...trend(start), range: 'month', points: [point(today, { totalAssets: 390000 })] })
+  await flushPromises()
+  expect(view.get('.range-button.active').text()).toBe('3月')
+  expect(view.get('.chart-readout').text()).toContain('¥420,000.00')
   view.unmount()
 })

@@ -24,11 +24,11 @@ import type { MonthChange } from '../types/ledger'
 import { formatMonthLabel, selectYearLabels } from '../utils/capital'
 import {
   amountTone,
-  formatMaskedMoney,
   formatMoney,
   formatSignedMoney,
   todayInBusinessTimeZone
 } from '../utils/format'
+import AmountVisibilityButton from '../components/AmountVisibilityButton.vue'
 
 const overview = ref<CapitalOverview | null>(null)
 const previewOverview = ref<CapitalOverview | null>(null)
@@ -276,14 +276,6 @@ function netTone(value: number): string {
     <header class="capital-header">
       <h1>目标</h1>
       <div class="capital-header-actions">
-        <button
-          type="button"
-          class="header-action"
-          :aria-label="amountsMasked ? '显示资产金额' : '隐藏资产金额'"
-          @click="amountsMasked = !amountsMasked"
-        >
-          <AppIcon :name="amountsMasked ? 'eye-off' : 'eye'" />
-        </button>
         <button type="button" class="header-action" aria-label="调整假设" @click="openAssumptions">
           <AppIcon name="settings" />
         </button>
@@ -304,11 +296,12 @@ function netTone(value: number): string {
       <section class="hero">
         <div class="hero-top">
           <span class="hero-label">{{ display.current.coverageComplete ? '当前资本' : '已记录资产' }}</span>
+          <AmountVisibilityButton />
         </div>
 
         <h2 class="hero-amount">
           <span class="currency">¥</span>
-          <template v-if="amountsMasked">{{ formatMaskedMoney(display.current.total).replace('¥', '') }}</template>
+          <template v-if="amountsMasked">••••</template>
           <template v-else>{{ amountParts.integer }}<span class="fraction">.{{ amountParts.fraction }}</span></template>
         </h2>
 
@@ -494,7 +487,7 @@ function netTone(value: number): string {
   overflow: hidden;
   padding: 20px;
   border-radius: var(--radius-card);
-  background: linear-gradient(150deg, var(--color-hero-bg), var(--color-hero-bg-end));
+  background: var(--color-hero-glow), linear-gradient(150deg, var(--color-hero-bg), var(--color-hero-bg-end));
   box-shadow: var(--shadow-hero);
   color: var(--color-hero-text);
 }
@@ -691,8 +684,8 @@ function netTone(value: number): string {
 }
 
 .set-goal-copy small {
-  color: var(--color-hero-text-secondary);
-  font-size: 11px;
+  color: color-mix(in srgb, var(--color-on-brand) 78%, transparent);
+  font-size: 12px;
 }
 
 .set-goal-pulse {

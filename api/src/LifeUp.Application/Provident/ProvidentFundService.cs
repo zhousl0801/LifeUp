@@ -64,7 +64,10 @@ public sealed class ProvidentFundService
 
     public Task<AssetOperationResult<ProvidentMutationResultDto>> SetOpeningAsync(ProvidentOpeningRequest request, CancellationToken cancellationToken)
     {
-        return new MutationExecutor(_ledgerRepository, _businessDateProvider).ExecuteAsync("provident.opening", request.RequestId, request,
+        return new MutationExecutor(_ledgerRepository, _businessDateProvider).ExecuteAssetAsync(
+            "provident.opening",
+            request.RequestId,
+            request,
             async () =>
             {
                 var ledger = await _ledgerRepository.GetForUpdateAsync(cancellationToken);
@@ -96,31 +99,36 @@ public sealed class ProvidentFundService
                     {
                         account = ProvidentFundAccount.Create(ledger.Id, request.BusinessDate, _businessDateProvider.UtcNow);
                         await _ledgerRepository.AddProvidentFundAccountAsync(account, cancellationToken);
+                        data = data with { Provident = account };
                     }
 
                     var transaction = AssetTransaction.CreateSnapshot(ledger.Id, null, AssetType.ProvidentFund, AssetTransactionKind.ProvidentOpening,
                         null, request.Balance, null, request.BusinessDate, null, request.Note, request.RequestId, _businessDateProvider.UtcNow);
-                    await new LedgerHistoryRebuilder(_ledgerRepository, _businessDateProvider).StageAsync(ledger, transaction, request.BusinessDate, null, null, cancellationToken);
+                    await new LedgerHistoryRebuilder(_ledgerRepository, _businessDateProvider).StageAsync(
+                        ledger,
+                        transaction,
+                        request.BusinessDate,
+                        null,
+                        null,
+                        cancellationToken,
+                        replayData: data);
                     return AssetOperationResult<ProvidentMutationResultDto>.Created(new(account.Balance, Map(transaction, account.Balance)));
                 }
                 catch (ArgumentException exception)
                 {
                     return AssetOperationResult<ProvidentMutationResultDto>.Invalid(new[] { exception.Message });
                 }
-            }, result => result.Status is AssetOperationStatus.Created or AssetOperationStatus.Success,
-            result => result with { Status = AssetOperationStatus.Success }, AssetOperationResult<ProvidentMutationResultDto>.Conflict,
-            message => AssetOperationResult<ProvidentMutationResultDto>.Invalid(new[] { message }), cancellationToken);
+            },
+            cancellationToken);
     }
 
     public Task<AssetOperationResult<ProvidentMutationResultDto>> DepositAsync(ProvidentDepositRequest request, CancellationToken cancellationToken)
     {
-        return new MutationExecutor(_ledgerRepository, _businessDateProvider).ExecuteAsync(
-            "provident.deposit", request.RequestId, request,
+        return new MutationExecutor(_ledgerRepository, _businessDateProvider).ExecuteAssetAsync(
+            "provident.deposit",
+            request.RequestId,
+            request,
             () => DepositCoreAsync(request, cancellationToken),
-            result => result.Status is AssetOperationStatus.Created or AssetOperationStatus.Success,
-            result => result with { Status = AssetOperationStatus.Success },
-            AssetOperationResult<ProvidentMutationResultDto>.Conflict,
-            message => AssetOperationResult<ProvidentMutationResultDto>.Invalid(new[] { message }),
             cancellationToken);
     }
 
@@ -191,13 +199,11 @@ public sealed class ProvidentFundService
 
     public Task<AssetOperationResult<ProvidentMutationResultDto>> WithdrawAsync(ProvidentWithdrawalRequest request, CancellationToken cancellationToken)
     {
-        return new MutationExecutor(_ledgerRepository, _businessDateProvider).ExecuteAsync(
-            "provident.withdraw", request.RequestId, request,
+        return new MutationExecutor(_ledgerRepository, _businessDateProvider).ExecuteAssetAsync(
+            "provident.withdraw",
+            request.RequestId,
+            request,
             () => WithdrawCoreAsync(request, cancellationToken),
-            result => result.Status is AssetOperationStatus.Created or AssetOperationStatus.Success,
-            result => result with { Status = AssetOperationStatus.Success },
-            AssetOperationResult<ProvidentMutationResultDto>.Conflict,
-            message => AssetOperationResult<ProvidentMutationResultDto>.Invalid(new[] { message }),
             cancellationToken);
     }
 

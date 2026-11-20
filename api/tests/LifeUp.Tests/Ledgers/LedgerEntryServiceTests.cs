@@ -9,6 +9,49 @@ public sealed class LedgerEntryServiceTests
     private static readonly DateOnly BusinessToday = new(2026, 10, 21);
 
     [Fact]
+    public async Task ImportHistoricalExpensesAsync_RecordsHistoricalSpendingWithoutChangingCash()
+    {
+        var (service, repository) = await CreateServiceAsync();
+        var month = new DateOnly(2021, 5, 1);
+        var request = new HistoricalExpenseImportRequest(Guid.NewGuid(), [new(month, "水果", 2150m)]);
+
+        var result = await service.ImportHistoricalExpensesAsync(request, CancellationToken.None);
+        var repeated = await service.ImportHistoricalExpensesAsync(
+            request with { RequestId = Guid.NewGuid() }, CancellationToken.None);
+        var period = await service.GetPeriodAsync(EntryPeriod.Month, month, null, null, null, CancellationToken.None);
+
+        Assert.Equal(EntryOperationStatus.Success, result.Status);
+        Assert.Equal(1, result.Added);
+        Assert.Equal(0, repeated.Added);
+        Assert.Equal(1, repeated.Skipped);
+        var entry = Assert.Single(repository.Entries);
+        Assert.Equal(0m, entry.CashEffect);
+        Assert.Equal(2150m, period!.Expense);
+        Assert.Equal(1000m, repository.CashAccount!.Balance);
+
+        var updated = await service.UpdateAsync(entry.Id, new(
+            LedgerEntryKind.Expense, "水果", 2200m, month, entry.Note, Guid.NewGuid()), CancellationToken.None);
+        Assert.Equal(EntryOperationStatus.Success, updated.Status);
+        Assert.Equal(1000m, updated.Result!.CashBalance);
+
+        var reversed = await service.ReverseAsync(entry.Id, new(null, Guid.NewGuid()), CancellationToken.None);
+        Assert.Equal(EntryOperationStatus.Success, reversed.Status);
+        Assert.Equal(1000m, reversed.Result!.CashBalance);
+    }
+
+    [Fact]
+    public async Task ImportHistoricalExpensesAsync_RejectsExcludedMonthWithoutSavingAnyRows()
+    {
+        var (service, repository) = await CreateServiceAsync();
+        var result = await service.ImportHistoricalExpensesAsync(new(Guid.NewGuid(),
+            [new(new DateOnly(2021, 5, 1), "水果", 10m), new(new DateOnly(2026, 11, 1), "水果", 20m)]),
+            CancellationToken.None);
+
+        Assert.Equal(EntryOperationStatus.Invalid, result.Status);
+        Assert.Empty(repository.Entries);
+    }
+
+    [Fact]
     public async Task CreateAsync_WithExpense_ReducesCash()
     {
         var (service, repository) = await CreateServiceAsync();

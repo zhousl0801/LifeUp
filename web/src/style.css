@@ -22,6 +22,37 @@ body {
   min-height: 100dvh;
 }
 
+/* iOS 26 起，WebKit 在顶部安全区找不到纯色不透明的 fixed/sticky 元素时，
+ * 会给状态栏及下方约 44px 区域叠加系统级渐进毛玻璃（topScrollPocket），导致页面标题被雾化。
+ * 用一条纯色不透明的 fixed 色条锚定顶部安全区，让 WebKit 采样纯色并关闭渐进模糊。 */
+.status-bar-scrim {
+  --scrim-base: var(--color-bg-page);
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 55;
+  height: env(safe-area-inset-top);
+  background-color: var(--scrim-base);
+  pointer-events: none;
+}
+
+body:has(.home-hero) .status-bar-scrim {
+  --scrim-base: var(--color-hero-bg);
+}
+
+body:has(.entry-screen) .status-bar-scrim {
+  --scrim-base: color-mix(in srgb, var(--color-bg-page) 78%, var(--color-bg-surface));
+}
+
+body:has(.sheet-backdrop) .status-bar-scrim {
+  background-color: color-mix(in srgb, #120f24 48%, var(--scrim-base));
+}
+
+:root[data-color-scheme='dark'] body:has(.sheet-backdrop) .status-bar-scrim {
+  background-color: color-mix(in srgb, #000000 62%, var(--scrim-base));
+}
+
 button,
 input,
 select,
@@ -60,6 +91,18 @@ summary:focus-visible {
 
 .page.with-nav {
   padding-bottom: calc(97px + env(safe-area-inset-bottom));
+}
+
+.page > .asset-page-header {
+  --asset-header-inset: max(20px, env(safe-area-inset-top));
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin-block-start: calc(-1 * var(--asset-header-inset));
+  margin-inline: calc(-1 * var(--page-gutter));
+  padding-block: var(--asset-header-inset) var(--space-2);
+  padding-inline: var(--page-gutter);
+  background-color: var(--color-bg-page);
 }
 
 .app-header {
@@ -102,7 +145,7 @@ summary:focus-visible {
 }
 
 /* Hero 内的财务数字使用适合深色背景的文字色。 */
-:is(.home-hero, .cash-hero, .funds-hero, .stock-hero, .gold-hero, .provident-hero, .hero) {
+:is(.home-hero, .cash-hero, .funds-hero, .stock-hero, .gold-hero, .provident-hero, .investment-hero, .hero) {
   --color-finance-gain: var(--color-finance-gain-on-hero);
   --color-finance-loss: var(--color-finance-loss-on-hero);
 }
@@ -136,45 +179,265 @@ summary:focus-visible {
   white-space: nowrap;
 }
 
-.secondary-button {
-  min-height: var(--touch-target);
-  padding: 0 18px;
+/* ========== 内透琉璃全胶囊按钮系统（Dissolve Glossy × Midnight Mint） ========== */
+:is(
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .confirm-button,
+  .action-primary,
+  .action-secondary,
+  .icon-button
+) {
+  --glossy-light: 1;
+  --glossy-glow-blur: 7px;
+  --glossy-glow-spread: 2px;
+  position: relative;
   border: 0;
   border-radius: var(--radius-pill);
-  background: var(--color-bg-subtle);
-  color: var(--color-text-primary);
+  user-select: none;
+  -webkit-user-select: none;
+  transition:
+    transform 220ms cubic-bezier(0.22, 1.35, 0.36, 1),
+    background-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease,
+    color var(--motion-fast) ease;
+}
+
+:is(
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .confirm-button,
+  .action-primary,
+  .action-secondary,
+  .icon-button
+) > * {
+  position: relative;
+}
+
+:is(
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .confirm-button,
+  .action-primary,
+  .action-secondary,
+  .icon-button
+)::before,
+:is(
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .confirm-button,
+  .action-primary,
+  .action-secondary,
+  .icon-button
+)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+:is(
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .confirm-button,
+  .action-primary,
+  .action-secondary,
+  .icon-button
+)::before {
+  padding: 1px;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, var(--glossy-stroke, 0.44)),
+    rgba(255, 255, 255, 0)
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+:is(
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .confirm-button,
+  .action-primary,
+  .action-secondary,
+  .icon-button
+)::after {
+  box-shadow: inset 0 0 var(--glossy-glow-blur) var(--glossy-glow-spread)
+    rgba(255, 255, 255, var(--glossy-glow, 0.24));
+  opacity: var(--glossy-light);
+  transition: opacity 140ms ease;
+}
+
+:is(
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .confirm-button,
+  .action-primary,
+  .action-secondary,
+  .icon-button
+):active:not(:disabled) {
+  --glossy-light: 0.52;
+  transform: scale(0.968);
+}
+
+:is(
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .confirm-button,
+  .action-primary,
+  .action-secondary,
+  .icon-button
+)[aria-busy='true'] {
+  --glossy-light: 0.72;
+}
+
+:is(
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .confirm-button,
+  .action-primary,
+  .action-secondary,
+  .icon-button
+):disabled:not([aria-busy='true']) {
+  background: var(--color-bg-disabled);
+  color: var(--color-text-disabled);
+  box-shadow: none;
+}
+
+:is(
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .confirm-button,
+  .action-primary,
+  .action-secondary,
+  .icon-button
+):disabled:not([aria-busy='true'])::before,
+:is(
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .confirm-button,
+  .action-primary,
+  .action-secondary,
+  .icon-button
+):disabled:not([aria-busy='true'])::after {
+  opacity: 0;
+}
+
+.secondary-button {
+  --glossy-stroke: var(--color-btn-secondary-stroke);
+  --glossy-glow: var(--color-btn-secondary-glow);
+  --glossy-glow-blur: 5px;
+  --glossy-glow-spread: 1px;
+  min-height: var(--touch-target);
+  padding: 0 18px;
+  background: var(--color-btn-secondary-bg);
+  color: var(--color-btn-secondary-fg);
+  box-shadow:
+    0 2px 6px var(--color-btn-secondary-shadow),
+    0 0 0 1px var(--color-btn-secondary-ring);
   font-size: 0.875rem;
   font-weight: 600;
 }
 
-.secondary-button:hover {
-  background: var(--color-bg-hover);
+.secondary-button:hover:not(:disabled) {
+  background: var(--color-btn-secondary-bg-hover);
   color: var(--color-brand);
+}
+
+.primary-button,
+.confirm-button,
+.action-primary {
+  --glossy-stroke: var(--color-btn-primary-stroke);
+  --glossy-glow: var(--color-btn-primary-glow);
+  background: var(--color-btn-primary-bg);
+  color: var(--color-btn-primary-fg);
+  box-shadow:
+    0 4px 10px var(--color-btn-primary-shadow),
+    0 0 0 1px var(--color-btn-primary-ring);
+  letter-spacing: -0.013em;
 }
 
 .primary-button {
   min-height: 52px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-brand);
-  color: var(--color-on-brand);
+  padding: 0 20px;
   font-size: var(--text-body);
   font-weight: 700;
-  letter-spacing: -0.01em;
 }
 
-.primary-button:hover:not(:disabled) {
-  background: var(--color-brand-hover);
+.confirm-button {
+  min-height: 48px;
+  padding: 0 18px;
+  font-size: var(--text-body);
+  font-weight: 600;
 }
 
-.primary-button:active:not(:disabled) {
-  background: var(--color-brand-active);
-  transform: scale(.99);
+:is(.primary-button, .confirm-button, .action-primary):hover:not(:disabled) {
+  background: var(--color-btn-primary-bg-hover);
+  box-shadow:
+    0 6px 14px var(--color-btn-primary-shadow),
+    0 0 0 1px var(--color-btn-primary-bg-hover);
 }
 
-.primary-button:disabled {
-  background: var(--color-bg-disabled);
-  color: var(--color-text-disabled);
+:is(.primary-button, .confirm-button, .action-primary):active:not(:disabled) {
+  background: var(--color-btn-primary-bg-active);
+}
+
+.action-secondary {
+  --glossy-stroke: var(--color-btn-soft-stroke);
+  --glossy-glow: var(--color-btn-soft-glow);
+  --glossy-glow-blur: 5px;
+  --glossy-glow-spread: 1px;
+  background: var(--color-btn-soft-bg);
+  color: var(--color-btn-soft-fg);
+  box-shadow:
+    0 2px 6px var(--color-btn-soft-shadow),
+    0 0 0 1px var(--color-btn-soft-ring);
+}
+
+.action-secondary:hover:not(:disabled) {
+  background: var(--color-btn-soft-bg-hover);
+}
+
+.danger-button,
+.confirm-button.danger {
+  --glossy-stroke: var(--color-btn-danger-stroke);
+  --glossy-glow: var(--color-btn-danger-glow);
+  background: var(--color-btn-danger-bg);
+  color: var(--color-btn-danger-fg);
+  box-shadow:
+    0 4px 10px var(--color-btn-danger-shadow),
+    0 0 0 1px var(--color-btn-danger-ring);
+}
+
+.danger-button {
+  min-height: 48px;
+  padding: 0 20px;
+  font-size: var(--text-subhead);
+  font-weight: 700;
+}
+
+:is(.danger-button, .confirm-button.danger):hover:not(:disabled) {
+  background: var(--color-btn-danger-bg-hover);
+  box-shadow:
+    0 6px 14px var(--color-btn-danger-shadow),
+    0 0 0 1px var(--color-btn-danger-bg-hover);
+}
+
+:is(.danger-button, .confirm-button.danger):active:not(:disabled) {
+  background: var(--color-btn-danger-bg-active);
 }
 
 .text-link {
@@ -207,6 +470,10 @@ summary:focus-visible {
 }
 
 .icon-button {
+  --glossy-stroke: var(--color-btn-secondary-stroke);
+  --glossy-glow: var(--color-btn-secondary-glow);
+  --glossy-glow-blur: 5px;
+  --glossy-glow-spread: 1px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -214,18 +481,20 @@ summary:focus-visible {
   width: var(--touch-target);
   height: var(--touch-target);
   padding: 0;
-  border: 0;
   border-radius: 50%;
-  background: var(--color-bg-subtle);
-  color: var(--color-text-primary);
+  background: var(--color-btn-secondary-bg);
+  color: var(--color-btn-secondary-fg);
+  box-shadow:
+    0 2px 6px var(--color-btn-secondary-shadow),
+    0 0 0 1px var(--color-btn-secondary-ring);
 }
 
-.icon-button:hover {
-  background: var(--color-brand-soft);
+.icon-button:hover:not(:disabled) {
+  background: var(--color-btn-soft-bg);
   color: var(--color-brand);
-}
-.icon-button:active {
-  background: var(--color-bg-selected);
+  box-shadow:
+    0 3px 8px var(--color-btn-soft-shadow),
+    0 0 0 1px var(--color-btn-soft-ring);
 }
 
 .ui-disclosure > summary {
@@ -291,102 +560,250 @@ summary:focus-visible {
 .form-stack {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 0;
+}
+
+.form-stack > :not(.form-field):not(.form-row) + :not(.form-field):not(.form-row) {
+  margin-top: 10px;
 }
 
 .form-row {
   display: flex;
-  gap: 10px;
+  flex-direction: column;
+  gap: 0;
+  overflow: hidden;
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 
 .form-row > .form-field {
   flex: 1;
   min-width: 0;
+  border-radius: 0;
+  margin-bottom: 0;
+}
+
+.form-row > .form-field:last-child {
+  border-bottom: 0;
 }
 
 .form-field {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  color: var(--color-text-secondary);
-  font-size: var(--text-footnote);
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 4px;
+  min-height: 46px;
+  padding: 8px 14px;
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border-subtle);
+  color: var(--color-text-primary);
+  font-size: 0.875rem;
+  transition: background-color 0.15s ease;
+}
+
+.form-stack > :is(.form-field, .form-row):not(:is(.form-field, .form-row) + *) {
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+}
+
+.form-stack > :is(.form-field, .form-row):not(:has(+ :is(.form-field, .form-row))) {
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
+  border-bottom-color: transparent;
+  margin-bottom: 10px;
+}
+
+.form-field > span:first-child {
+  color: var(--color-text-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.form-field > b {
+  justify-self: end;
+  color: var(--color-text-primary);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .form-field input,
 .form-field select {
+  appearance: none;
+  -webkit-appearance: none;
   box-sizing: border-box;
   width: 100%;
-  min-height: 52px;
-  padding: 0 14px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-control);
-  background: var(--color-bg-subtle);
+  min-width: 0;
+  max-width: 100%;
+  min-height: 30px;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--color-text-primary);
   font-size: 1rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  text-align-last: right;
 }
 
-.form-field input:hover,
-.form-field select:hover {
-  border-color: var(--color-border-default);
+.form-field input::placeholder {
+  color: var(--color-text-placeholder);
+  opacity: 1;
+  font-weight: 400;
+}
+
+/* 分类图标容器多色语义微彩：按图标类别自动映射柔和底色与前景，打破单一紫色。 */
+:is(.entry-mark, .category-tile:not(.active) .category-mark):has(.category-icon[data-tone='amber']) {
+  background: var(--color-tint-amber-bg);
+  color: var(--color-tint-amber-fg);
+}
+
+:is(.entry-mark, .category-tile:not(.active) .category-mark):has(.category-icon[data-tone='sky']) {
+  background: var(--color-tint-sky-bg);
+  color: var(--color-tint-sky-fg);
+}
+
+:is(.entry-mark, .category-tile:not(.active) .category-mark):has(.category-icon[data-tone='emerald']) {
+  background: var(--color-tint-emerald-bg);
+  color: var(--color-tint-emerald-fg);
+}
+
+:is(.entry-mark, .category-tile:not(.active) .category-mark):has(.category-icon[data-tone='rose']) {
+  background: var(--color-tint-rose-bg);
+  color: var(--color-tint-rose-fg);
+}
+
+:is(.entry-mark, .category-tile:not(.active) .category-mark):has(.category-icon[data-tone='violet']) {
+  background: var(--color-tint-violet-bg);
+  color: var(--color-tint-violet-fg);
+}
+
+.form-field select {
+  padding-right: 16px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238A8E9E' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right center;
+  background-size: 12px 12px;
+}
+
+.form-field input[type='date'],
+.form-field input[type='time'] {
+  justify-self: end;
+  width: auto;
+  min-height: 30px;
+  padding-right: 2px;
+  text-align: right;
+}
+
+.form-field input[type='date']::-webkit-date-and-time-value,
+.form-field input[type='time']::-webkit-date-and-time-value {
+  margin: 0;
+  text-align: right;
 }
 
 .form-field input:focus-visible,
 .form-field select:focus-visible {
-  border-color: var(--color-border-focus);
-  background: var(--color-bg-surface);
+  outline: none;
+  box-shadow: none;
+}
+
+.form-field:focus-within {
+  background: color-mix(in srgb, var(--color-brand) 4%, var(--color-bg-surface));
+}
+
+.form-field > small,
+.form-field > .form-note,
+.form-field > .fund-selected,
+.form-field > .fund-search-results,
+.form-field > .group-create-row,
+.form-field > .search-row {
+  grid-column: 1 / -1;
+}
+
+.form-field > small {
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  line-height: 1.45;
 }
 
 .form-hint {
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
-  line-height: 1.6;
+  line-height: 1.5;
+  padding: 0 4px;
 }
 
 .form-note {
   margin: 0;
-  padding: 10px 12px;
-  border-radius: var(--radius-control);
-  background: var(--color-bg-subtle);
+  padding: 6px 6px 2px;
+  border-radius: 0;
+  background: transparent;
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
-  line-height: 1.7;
+  line-height: 1.55;
 }
 
 .form-error {
   margin: 0;
-  padding: 10px 12px;
-  border-radius: var(--radius-control);
+  padding: 9px 12px;
+  border-radius: 12px;
   background: var(--color-error-bg);
   color: var(--color-error);
   font-size: var(--text-footnote);
-  line-height: 1.7;
+  line-height: 1.55;
 }
 
 .form-actions {
   display: flex;
   gap: 10px;
+  margin-top: 10px;
 }
 
 .form-actions > * {
   flex: 1;
 }
 
+.sheet-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow: hidden;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-brand) 7%, var(--color-bg-surface));
+}
+
 .summary-line {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
   gap: 12px;
-  padding: 11px 12px;
-  border-radius: var(--radius-control);
-  background: var(--color-bg-subtle);
+  padding: 8px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-brand) 10%, transparent);
+  border-radius: 0;
+  background: transparent;
   color: var(--color-text-secondary);
-  font-size: var(--text-footnote);
+  font-size: var(--text-caption);
+}
+
+.summary-line:only-child {
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-brand) 7%, var(--color-bg-surface));
+  border-bottom: 0;
+}
+
+.sheet-summary > .summary-line:last-child {
+  border-bottom: 0;
 }
 
 .summary-line b {
-  color: var(--color-text-primary);
-  font-size: var(--text-subhead);
-  font-weight: 600;
+  color: var(--color-brand);
+  font-size: 0.875rem;
+  font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
 
@@ -599,7 +1016,7 @@ summary:focus-visible {
 
 .loading-bar {
   position: fixed;
-  top: 0;
+  top: env(safe-area-inset-top);
   right: 0;
   left: 0;
   z-index: 9999;
@@ -646,7 +1063,7 @@ summary:focus-visible {
   animation-delay: calc(var(--stagger, 0) * 45ms);
 }
 
-.animated-money {
+.money-amount {
   font-variant-numeric: tabular-nums;
 }
 
@@ -665,18 +1082,55 @@ summary:focus-visible {
   .skeleton::after {
     animation: none;
   }
+
+  :is(
+    .primary-button,
+    .secondary-button,
+    .danger-button,
+    .confirm-button,
+    .action-primary,
+    .action-secondary,
+    .icon-button
+  ):active:not(:disabled) {
+    transform: none;
+  }
 }
 
 @media (forced-colors: active) {
   .primary-button,
   .secondary-button,
+  .danger-button,
   .confirm-button,
+  .action-primary,
+  .action-secondary,
   .back-button,
   .icon-button,
-  .nav-add-circle,
+  .nav-add,
   .maintenance-action,
   .row-action {
     border: 1px solid ButtonText;
+    box-shadow: none;
+  }
+
+  :is(
+    .primary-button,
+    .secondary-button,
+    .danger-button,
+    .confirm-button,
+    .action-primary,
+    .action-secondary,
+    .icon-button
+  )::before,
+  :is(
+    .primary-button,
+    .secondary-button,
+    .danger-button,
+    .confirm-button,
+    .action-primary,
+    .action-secondary,
+    .icon-button
+  )::after {
+    display: none;
   }
 
   .nav-item.active,

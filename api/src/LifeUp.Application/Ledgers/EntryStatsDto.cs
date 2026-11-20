@@ -22,7 +22,8 @@ public sealed record EntryStatsPointDto(
     string Label,
     decimal Income,
     decimal Expense,
-    string? Category = null);
+    string? Category = null,
+    string? IconKey = null);
 
 public sealed record EntryStatsCategoryDto(
     string Category,

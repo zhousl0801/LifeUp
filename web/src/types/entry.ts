@@ -1,5 +1,5 @@
 export type EntryKind = 'income' | 'expense'
-export type EntrySource = 'manual' | 'automatic' | 'import'
+export type EntrySource = 'manual' | 'automatic' | 'import' | 'monthlyImport'
 export type EntryStatus = 'active' | 'reversed'
 export type EntryPeriod = 'day' | 'month' | 'year'
 
@@ -38,6 +38,7 @@ export interface EntryStatsPoint {
   category?: string | null
   income: number
   expense: number
+  iconKey?: string | null
 }
 
 export interface EntryStatsCategory {

@@ -97,6 +97,9 @@ public sealed class QuoteRefreshSchedulerService : BackgroundService
             }.Where(scope => scope is not null).Select(scope => scope!.Value).ToList();
             var refreshScope = enabled.Count == 1 ? enabled[0] : QuoteRefreshScope.All;
             var result = await service.RefreshAsync(
+                options.IncludeFunds,
+                options.IncludeGold,
+                options.IncludeStocks,
                 refreshScope,
                 "scheduled",
                 service.RetryCount,

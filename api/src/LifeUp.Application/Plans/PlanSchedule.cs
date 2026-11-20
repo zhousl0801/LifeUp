@@ -85,9 +85,65 @@ public static class PlanSchedule
     public static PlanDuePeriod? GetNextDue(AutoPlan plan, DateOnly from, TradingCalendar? calendar = null)
     {
         var start = plan.GenerateFrom > from ? plan.GenerateFrom : from;
-        var periods = GetDuePeriods(plan, start, start.AddYears(2), calendar);
+        var limit = start.AddYears(2);
 
-        return periods.Count == 0 ? null : periods[0];
+        if (plan.Cycle == AutoPlanCycle.TradingDay)
+        {
+            var resolvedCalendar = calendar ?? TradingCalendar.Default;
+
+            for (var date = start; date <= limit; date = date.AddDays(1))
+            {
+                if (IsTradingDay(plan, resolvedCalendar, date))
+                {
+                    return new PlanDuePeriod(PeriodKeyFor(plan, date), date, plan.Time);
+                }
+            }
+
+            return null;
+        }
+
+        if (plan.Cycle == AutoPlanCycle.Monthly)
+        {
+            var cursor = new DateOnly(start.Year, start.Month, 1);
+
+            while (cursor <= limit)
+            {
+                var day = Math.Min(plan.DayOfMonth!.Value, DateTime.DaysInMonth(cursor.Year, cursor.Month));
+                var dueDate = new DateOnly(cursor.Year, cursor.Month, day);
+
+                if (dueDate >= start && dueDate <= limit)
+                {
+                    return new PlanDuePeriod($"{dueDate.Year:D4}-{dueDate.Month:D2}", dueDate, plan.Time);
+                }
+
+                cursor = cursor.AddMonths(1);
+            }
+
+            return null;
+        }
+
+        if (plan.Cycle == AutoPlanCycle.Yearly)
+        {
+            var month = plan.MonthOfYear!.Value;
+            var year = start.Year;
+            var firstDay = Math.Min(plan.DayOfMonth!.Value, DateTime.DaysInMonth(year, month));
+
+            if (new DateOnly(year, month, firstDay) < start)
+            {
+                year++;
+            }
+
+            var day = Math.Min(plan.DayOfMonth!.Value, DateTime.DaysInMonth(year, month));
+            var dueDate = new DateOnly(year, month, day);
+
+            return dueDate <= limit ? new PlanDuePeriod($"Y{dueDate.Year:D4}", dueDate, plan.Time) : null;
+        }
+
+        var targetDay = plan.DayOfWeek!.Value % 7;
+        var delta = (targetDay - (int)start.DayOfWeek + 7) % 7;
+        var weeklyDue = start.AddDays(delta);
+
+        return weeklyDue <= limit ? new PlanDuePeriod($"W{weeklyDue:yyyy-MM-dd}", weeklyDue, plan.Time) : null;
     }
 
     public static string PeriodKeyFor(AutoPlan plan, DateOnly dueDate)

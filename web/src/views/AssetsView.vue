@@ -6,17 +6,19 @@ import { fetchMonthChange, updateAssetCoverage } from '../api/ledger'
 import { getApiErrorMessage } from '../api/client'
 import { toast } from '../composables/useMessage'
 import AppNav from '../components/AppNav.vue'
-import AnimatedMoney from '../components/AnimatedMoney.vue'
+import MoneyAmount from '../components/MoneyAmount.vue'
 import AssetDistribution from '../components/AssetDistribution.vue'
 import BackButton from '../components/BackButton.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import LoadingState from '../components/LoadingState.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import { useLedgerStore } from '../stores/ledger'
+import { useHomePreferencesStore } from '../stores/homePreferences'
 import type { AssetKey, LedgerOverview, MonthChange } from '../types/ledger'
 
 const router = useRouter()
 const ledgerStore = useLedgerStore()
+const privacy = useHomePreferencesStore()
 const overview = ref<LedgerOverview | null>(null)
 const monthChange = ref<MonthChange | null>(null)
 const isLoading = ref(false)
@@ -140,6 +142,7 @@ async function toggleNotHeld(key: AssetKey, notHeld: boolean): Promise<void> {
       goldNotHeld: key === 'gold' ? notHeld : ledger.goldNotHeld,
       stockNotHeld: key === 'stock' ? notHeld : ledger.stockNotHeld
     })
+    ledgerStore.overview = overview.value
     toast.success(notHeld ? '已标记为不持有。' : '已恢复为待录入。')
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error, '保存失败，请重试。')
@@ -155,7 +158,7 @@ function goHome(): void {
 
 <template>
   <main class="page with-nav">
-    <header class="page-head">
+    <header class="page-head asset-page-header">
       <div class="page-head-row">
         <BackButton @back="goHome" />
         <div class="page-head-title">
@@ -179,7 +182,7 @@ function goHome(): void {
           {{ overview.coverageComplete ? '总资产' : '已记录资产' }}
           <span class="tag">{{ overview.currency }}</span>
         </p>
-        <h1 class="hero-value"><span class="currency">¥</span><AnimatedMoney :value="overview.totalAssets" prefix="" /></h1>
+        <h1 class="hero-value"><span class="currency">¥</span><MoneyAmount :value="overview.totalAssets" :masked="privacy.amountsMasked" prefix="" /></h1>
       </section>
 
       <p v-if="errorMessage" class="form-error" role="alert">{{ errorMessage }}</p>
@@ -196,6 +199,7 @@ function goHome(): void {
         :overview="overview"
         :changes="monthChange?.assetChanges"
         :comparable="monthChange?.hasComparableData ?? false"
+        :amounts-masked="privacy.amountsMasked"
         editable
         :busy-key="coverageBusyKey"
         @toggle-not-held="toggleNotHeld"
@@ -212,7 +216,7 @@ function goHome(): void {
         <div v-for="row in maintenanceRows" :key="row.key" class="maintenance-row">
           <div class="maintenance-copy">
             <strong>{{ row.label }}</strong>
-            <small>{{ row.note }}</small>
+              <small v-if="!privacy.amountsMasked">{{ row.note }}</small>
           </div>
           <button
             v-if="row.notHeld"
@@ -341,7 +345,7 @@ function goHome(): void {
   margin: 0 0 16px;
   padding: var(--card-padding);
   border-radius: var(--radius-card);
-  background: linear-gradient(180deg, var(--color-hero-bg) 0%, var(--color-hero-bg-end) 100%);
+  background: var(--color-hero-glow), linear-gradient(180deg, var(--color-hero-bg) 0%, var(--color-hero-bg-end) 100%);
   box-shadow: var(--shadow-hero);
   color: var(--color-hero-text);
 }

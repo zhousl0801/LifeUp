@@ -27,6 +27,7 @@ const summary = {
   fundPendingArrival: 0,
   goldValue: 9000,
   goldPendingArrival: 0,
+  stockValue: 12500,
   totalAssets: null,
   isComplete: false,
   entryCount: 2,
@@ -89,6 +90,8 @@ test('valid backup shows both summaries and requires confirmation before replaci
   expect(view.text()).toContain('恢复将替换当前账本')
   expect(view.text()).toContain('执行期次')
   expect(view.text()).toContain('2 个')
+  expect(view.text()).toContain('股票')
+  expect(view.text()).toContain('¥12,500.00')
 
   const restoreButton = view.findAll('button').find((button) => button.text() === '确认恢复并替换当前账本')!
   expect(restoreButton.attributes('disabled')).toBeDefined()

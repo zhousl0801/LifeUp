@@ -55,8 +55,32 @@ public sealed class LedgerService
         }
 
         var (from, to) = EntryPeriodRange.For(EntryPeriod.Month, _businessDateProvider.Today);
-        var totals = await _ledgerRepository.GetEntryTotalsAsync(ledger.Id, from, to, cancellationToken);
         var data = await _ledgerRepository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
+        var monthIncome = 0m;
+        var monthExpense = 0m;
+        var monthEntryCount = 0;
+
+        foreach (var entry in data.Entries)
+        {
+            if (entry.Status != LedgerEntryStatus.Active
+                || entry.BusinessDate < from
+                || entry.BusinessDate > to)
+            {
+                continue;
+            }
+
+            monthEntryCount++;
+
+            if (entry.Kind == LedgerEntryKind.Income)
+            {
+                monthIncome += entry.Amount;
+            }
+            else
+            {
+                monthExpense += entry.Amount;
+            }
+        }
+
         var providentAccount = data.Provident;
         var fundPositions = data.Positions;
         var stockPositions = data.Stocks;
@@ -72,6 +96,14 @@ public sealed class LedgerService
         var monthDeposit = providentTransactions
             .Where(transaction => transaction.Kind == AssetTransactionKind.ProvidentDeposit)
             .Sum(transaction => transaction.Amount);
+        var monthWithdrawal = providentTransactions
+            .Where(transaction => transaction.Kind == AssetTransactionKind.ProvidentWithdrawal)
+            .Sum(transaction => transaction.Amount);
+        var month = new MonthSummaryDto(monthIncome, monthExpense, monthIncome - monthExpense, monthEntryCount > 0)
+        {
+            ProvidentDeposit = monthDeposit,
+            ProvidentWithdrawal = monthWithdrawal
+        };
         var snapshot = new LedgerReplayCalculator().Calculate(data, BusinessFact.From(data), _businessDateProvider.Today, currentDate: _businessDateProvider.Today);
         var pendingFund = snapshot.Funds.Sum(item => item.PendingAmount);
         var pendingFundValue = snapshot.Funds.Sum(item => item.PendingValue);
@@ -175,9 +207,7 @@ public sealed class LedgerService
         return Map(
             ledger,
             ledger.CashAccount,
-            totals.Income,
-            totals.Expense,
-            totals.Count > 0,
+            month,
             fund,
             provident,
             gold,
@@ -291,9 +321,7 @@ public sealed class LedgerService
         return InitializeLedgerResult.Created(Map(
             ledger,
             cashAccount,
-            0m,
-            0m,
-            false,
+            new MonthSummaryDto(0m, 0m, 0m, false),
             new AssetOverviewDto(false, null, "尚未录入"),
             new AssetOverviewDto(false, null, "尚未录入"),
             new AssetOverviewDto(false, null, "尚未录入"),
@@ -342,9 +370,7 @@ public sealed class LedgerService
     private static LedgerOverviewDto Map(
         Ledger ledger,
         CashAccount cashAccount,
-        decimal income,
-        decimal expense,
-        bool hasRecords,
+        MonthSummaryDto month,
         AssetOverviewDto fund,
         AssetOverviewDto providentFund,
         AssetOverviewDto gold,
@@ -374,7 +400,7 @@ public sealed class LedgerService
             providentFund,
             gold,
             stock,
-            new MonthSummaryDto(income, expense, income - expense, hasRecords),
+            month,
             FundNotHeld: fundNotHeld,
             ProvidentFundNotHeld: providentFundNotHeld,
             GoldNotHeld: goldNotHeld,

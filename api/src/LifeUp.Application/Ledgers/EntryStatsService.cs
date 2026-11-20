@@ -43,7 +43,6 @@ public sealed class EntryStatsService
         var expense = entries.Where(entry => entry.Kind == LedgerEntryKind.Expense).Sum(entry => entry.Amount);
         var coverageStart = from < ledger.StartDate ? ledger.StartDate : from;
         var coveredDays = CalculateCoveredDays(period, coverageStart, dataFrom > dataTo ? from.AddDays(-1) : dataTo);
-        var points = BuildPoints(period, from, dataTo, entries);
         var note = BuildNote(from, dataFrom, dataTo, ledger.StartDate);
 
         var categories = await _ledgerRepository.GetCategoriesAsync(ledger.Id, cancellationToken);
@@ -51,6 +50,10 @@ public sealed class EntryStatsService
         var groupsByCategory = categories.Where(category => !category.IsGroup).ToDictionary(
             category => (category.Kind, category.Name),
             category => category.ParentId is Guid parent && groupNames.TryGetValue(parent, out var name) ? name : "未归类");
+
+        var iconsByCategory = categories.Where(category => !category.IsGroup)
+            .ToDictionary(category => (category.Kind, category.Name), category => category.IconKey);
+        var points = BuildPoints(period, from, dataTo, entries, iconsByCategory);
 
         return new EntryStatsDto(
             period,
@@ -76,9 +79,10 @@ public sealed class EntryStatsService
         EntryPeriod period,
         DateOnly from,
         DateOnly to,
-        IReadOnlyList<LedgerEntry> entries)
+        IReadOnlyList<LedgerEntry> entries,
+        IReadOnlyDictionary<(LedgerEntryKind Kind, string Name), string?> iconsByCategory)
     {
-        if (to < from || from > to)
+        if (to < from)
         {
             return [];
         }
@@ -98,32 +102,73 @@ public sealed class EntryStatsService
 
         if (period == EntryPeriod.Month)
         {
+            var entriesByDate = entries.ToLookup(entry => entry.BusinessDate);
+
             for (var date = from; date <= to; date = date.AddDays(1))
             {
-                var dayEntries = entries.Where(entry => entry.BusinessDate == date).ToList();
+                var dayEntries = entriesByDate[date];
+                var income = 0m;
+                var expense = 0m;
+                LedgerEntry? representative = null;
+
+                foreach (var entry in dayEntries)
+                {
+                    if (entry.Kind == LedgerEntryKind.Income)
+                    {
+                        income += entry.Amount;
+                    }
+                    else
+                    {
+                        expense += entry.Amount;
+                    }
+
+                    if (representative is null
+                        || entry.Amount > representative.Amount
+                        || (entry.Amount == representative.Amount && entry.Id.CompareTo(representative.Id) < 0))
+                    {
+                        representative = entry;
+                    }
+                }
+
                 points.Add(new EntryStatsPointDto(
                     date,
                     $"{date.Day}日",
-                    Round(dayEntries.Where(entry => entry.Kind == LedgerEntryKind.Income).Sum(entry => entry.Amount)),
-                    Round(dayEntries.Where(entry => entry.Kind == LedgerEntryKind.Expense).Sum(entry => entry.Amount)),
-                    dayEntries.OrderByDescending(entry => entry.Amount).ThenBy(entry => entry.Id).FirstOrDefault()?.Category));
+                    Round(income),
+                    Round(expense),
+                    representative?.Category,
+                    representative is null ? null : iconsByCategory.GetValueOrDefault((representative.Kind, representative.Category))));
             }
 
             return points;
         }
 
+        var entriesByMonth = entries
+            .Where(entry => entry.BusinessDate.Year == from.Year)
+            .ToLookup(entry => entry.BusinessDate.Month);
+
         for (var month = 1; month <= to.Month; month++)
         {
             var monthStart = new DateOnly(from.Year, month, 1);
-            var monthEnd = new DateOnly(from.Year, month, DateTime.DaysInMonth(from.Year, month));
-            var monthEntries = entries
-                .Where(entry => entry.BusinessDate >= monthStart && entry.BusinessDate <= monthEnd)
-                .ToList();
+            var income = 0m;
+            var expense = 0m;
+
+            foreach (var entry in entriesByMonth[month])
+            {
+                if (entry.Kind == LedgerEntryKind.Income)
+                {
+                    income += entry.Amount;
+                }
+                else
+                {
+                    expense += entry.Amount;
+                }
+            }
+
             points.Add(new EntryStatsPointDto(
                 monthStart,
                 $"{month}月",
-                Round(monthEntries.Where(entry => entry.Kind == LedgerEntryKind.Income).Sum(entry => entry.Amount)),
-                Round(monthEntries.Where(entry => entry.Kind == LedgerEntryKind.Expense).Sum(entry => entry.Amount))));
+                Round(income),
+                Round(expense)));
         }
 
         return points;

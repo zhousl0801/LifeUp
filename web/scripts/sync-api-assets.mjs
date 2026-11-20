@@ -1,4 +1,4 @@
-import { cp, mkdir, rm } from 'node:fs/promises'
+import { access, cp, mkdir, rm } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -7,6 +7,7 @@ const webDirectory = resolve(scriptDirectory, '..')
 const source = resolve(webDirectory, 'dist')
 const destination = resolve(webDirectory, '../api/src/LifeUp.Api/wwwroot')
 
+await access(source)
 await rm(destination, { recursive: true, force: true })
 await mkdir(dirname(destination), { recursive: true })
 await cp(source, destination, { recursive: true })

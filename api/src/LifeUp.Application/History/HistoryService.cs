@@ -25,7 +25,7 @@ public sealed class HistoryService
 
     public async Task<HistoryOverviewDto?> GetAsync(DateOnly? asOf, CancellationToken cancellationToken)
     {
-        var ledger = await _repository.GetForUpdateAsync(cancellationToken);
+        var ledger = await _repository.GetAsync(cancellationToken);
 
         if (ledger is null)
         {
@@ -61,7 +61,15 @@ public sealed class HistoryService
 
     public async Task<AssetOperationResult<HistoryPreviewDto>> PreviewAsync(HistoryChangeRequest request, CancellationToken cancellationToken)
     {
-        var ledger = await _repository.GetForUpdateAsync(cancellationToken);
+        return await PreviewCoreAsync(request, replayData: null, cancellationToken);
+    }
+
+    private async Task<AssetOperationResult<HistoryPreviewDto>> PreviewCoreAsync(
+        HistoryChangeRequest request,
+        LedgerReplayData? replayData,
+        CancellationToken cancellationToken)
+    {
+        var ledger = replayData?.Ledger ?? await _repository.GetAsync(cancellationToken);
 
         if (ledger is null)
         {
@@ -94,7 +102,7 @@ public sealed class HistoryService
                 }
             }
 
-            var data = await _repository.GetReplayDataAsync(ledger.Id, cancellationToken);
+            var data = replayData ?? await _repository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
             var before = new LedgerReplayCalculator().Calculate(data, BusinessFact.From(data), _dates.Today, currentDate: _dates.Today);
             var after = Preview(data, request);
             return AssetOperationResult<HistoryPreviewDto>.Success(new(ledger.Version, before, after, Sign(request)));
@@ -120,7 +128,16 @@ public sealed class HistoryService
             return AssetOperationResult<HistoryPreviewDto>.Conflict("预览已失效或内容已修改，请重新预览后确认。");
         }
 
-        var preview = await PreviewAsync(request.Change, cancellationToken);
+        var ledger = await _repository.GetForUpdateAsync(cancellationToken);
+
+        if (ledger is null)
+        {
+            return AssetOperationResult<HistoryPreviewDto>.NotFound("账本尚未初始化。");
+        }
+
+        // 只加载一次带跟踪的完整回放快照，预览与实际重放复用同一份内存数据。
+        var data = await _repository.GetReplayDataAsync(ledger.Id, cancellationToken);
+        var preview = await PreviewCoreAsync(request.Change, data, cancellationToken);
 
         if (preview.Status != AssetOperationStatus.Success)
         {
@@ -128,9 +145,8 @@ public sealed class HistoryService
         }
 
         var change = request.Change;
-        var ledger = (await _repository.GetForUpdateAsync(cancellationToken))!;
-        var data = await _repository.GetReplayDataAsync(ledger.Id, cancellationToken);
         var rebuilder = new LedgerHistoryRebuilder(_repository, _dates);
+        PriceObservation? addedPrice = null;
 
         try
         {
@@ -190,13 +206,17 @@ public sealed class HistoryService
                         transaction.Correct(change.Quantity, change.Amount, change.Price, change.Date, change.PriceDate, change.Sequence, change.Note, change.Fee);
                         SyncFundTradeDateAfterCorrection(transaction, previousBusinessDate);
                         transaction.LinkCashAdjustment(change.RelatedCashAdjustmentId);
-                        await rebuilder.AddPriceAsync(ledger, transaction, cancellationToken);
+                        addedPrice = await rebuilder.AddPriceAsync(ledger, transaction, cancellationToken);
                     }
 
                     break;
             }
 
-            await rebuilder.RebuildAsync(ledger.Id, change.FactId, cancellationToken, confirmedImpact: true);
+            var stagedData = addedPrice is null || data.Prices.Any(item => item.Id == addedPrice.Id)
+                ? data
+                : data with { Prices = data.Prices.Append(addedPrice).ToList() };
+
+            await rebuilder.RebuildAsync(ledger.Id, change.FactId, cancellationToken, confirmedImpact: true, replayData: stagedData);
             return AssetOperationResult<HistoryPreviewDto>.Success(preview.Result! with { LedgerVersion = ledger.Version + 1 });
         }
         catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
@@ -305,7 +325,8 @@ public sealed class HistoryService
                 throw new HistoryValidationException(string.Join(" ", errors));
             }
 
-            cashEffect = request.EntryKind == Domain.Ledgers.LedgerEntryKind.Income ? request.Amount : -request.Amount;
+            var entry = data.Entries.Single(item => item.Id == original.Id);
+            cashEffect = entry.CalculateCashEffect(request.EntryKind!.Value, request.Amount);
         }
         else if (original.Source == "asset")
         {

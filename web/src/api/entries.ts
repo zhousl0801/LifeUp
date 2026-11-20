@@ -53,7 +53,7 @@ export function fetchEntryStats(period: EntryPeriod, anchor: string): Promise<En
 }
 
 export function fetchEntry(entryId: string): Promise<LedgerEntry> {
-  return apiRequest<LedgerEntry>(`/api/ledger/entries/${entryId}`)
+  return apiRequest<LedgerEntry>(`/api/ledger/entries/${encodeURIComponent(entryId)}`)
 }
 
 export function createEntry(input: CreateEntryInput): Promise<EntryMutationResult> {
@@ -64,14 +64,14 @@ export function createEntry(input: CreateEntryInput): Promise<EntryMutationResul
 }
 
 export function updateEntry(entryId: string, input: UpdateEntryInput): Promise<EntryMutationResult> {
-  return apiRequest<EntryMutationResult>(`/api/ledger/entries/${entryId}`, {
+  return apiRequest<EntryMutationResult>(`/api/ledger/entries/${encodeURIComponent(entryId)}`, {
     method: 'PUT',
     body: JSON.stringify(input)
   })
 }
 
 export function reverseEntry(entryId: string, reason: string, requestId: string): Promise<EntryMutationResult> {
-  return apiRequest<EntryMutationResult>(`/api/ledger/entries/${entryId}/reverse`, {
+  return apiRequest<EntryMutationResult>(`/api/ledger/entries/${encodeURIComponent(entryId)}/reverse`, {
     method: 'POST',
     body: JSON.stringify({ reason, requestId })
   })

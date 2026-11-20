@@ -1,7 +1,7 @@
 .investment-hero {
   padding: var(--card-padding);
   border-radius: var(--radius-card);
-  background: linear-gradient(180deg, var(--color-hero-bg), var(--color-hero-bg-end));
+  background: var(--color-hero-glow), linear-gradient(155deg, var(--color-hero-bg), var(--color-hero-bg-end));
   box-shadow: var(--shadow-hero);
   color: var(--color-hero-text);
   font-variant-numeric: tabular-nums;
@@ -81,6 +81,13 @@
   overflow-wrap: anywhere;
 }
 
+.investment-hero .hero-metric-rate {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: var(--text-caption);
+  font-weight: 500;
+}
+
 .investment-hero .hero-foot {
   margin: var(--space-4) 0 0;
   padding-top: var(--space-3);
@@ -89,12 +96,10 @@
 
 @media (max-width: 360px) {
   .investment-hero .hero-metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
   }
 
-  .investment-hero .hero-metrics > div:last-child {
-    grid-column: 1 / -1;
-    padding-inline-start: 0;
-    border-inline-start: 0;
+  .investment-hero .hero-metrics > div + div {
+    padding-inline-start: var(--space-2);
   }
 }

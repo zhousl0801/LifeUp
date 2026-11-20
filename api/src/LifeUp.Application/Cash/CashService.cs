@@ -195,7 +195,7 @@ public sealed class CashService
     {
         var activities = new List<(DateOnly BusinessDate, DateTimeOffset CreatedAt, CashActivityDto Activity)>();
 
-        foreach (var entry in entries)
+        foreach (var entry in entries.Where(entry => entry.CashEffect != 0m))
         {
             activities.Add((
                 entry.BusinessDate,
@@ -262,6 +262,8 @@ public sealed class CashService
             AssetTransactionKind.GoldBuy => "积存金买入",
             AssetTransactionKind.GoldSell => "积存金卖出",
             AssetTransactionKind.GoldSellArrival => "积存金卖到账",
+            AssetTransactionKind.StockBuy => "股票买入",
+            AssetTransactionKind.StockSell => "股票卖出",
             _ => "资产流转"
         };
     }
