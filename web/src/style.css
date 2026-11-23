@@ -32,7 +32,8 @@ body {
   right: 0;
   left: 0;
   z-index: 55;
-  height: env(safe-area-inset-top);
+  /* standalone + status-bar-style=default 时安全区可能为 0，保底高度保证 WebKit 能采样到该色条。 */
+  height: max(env(safe-area-inset-top), 8px);
   background-color: var(--scrim-base);
   pointer-events: none;
 }

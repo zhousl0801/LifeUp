@@ -322,13 +322,6 @@ async function syncQuotes(): Promise<void> {
 }
 
 onMounted(() => {
-  const statusBar = document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-status-bar-style"]')
-
-  if (statusBar) {
-    statusBar.dataset.previousContent = statusBar.getAttribute('content') ?? 'default'
-    statusBar.setAttribute('content', 'black-translucent')
-  }
-
   void loadLedger()
 })
 
@@ -337,12 +330,6 @@ onBeforeUnmount(() => {
   fundDisclosureSequence++
   dayChangeSequence++
   monthChangeSequence++
-  const statusBar = document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-status-bar-style"]')
-
-  if (statusBar) {
-    statusBar.setAttribute('content', statusBar.dataset.previousContent ?? 'default')
-    delete statusBar.dataset.previousContent
-  }
 })
 </script>
 

@@ -1,4 +1,6 @@
+import { nextTick } from 'vue'
 import { createRouter, createWebHashHistory } from 'vue-router'
+import { syncStatusBarColor } from '../utils/theme'
 import HomeView from '../views/HomeView.vue'
 
 const router = createRouter({
@@ -80,6 +82,11 @@ const router = createRouter({
       redirect: '/'
     }
   ]
+})
+
+// 新页面渲染完成后再读取顶部色条颜色，使状态栏 theme-color 与当前页面顶部同色。
+router.afterEach(() => {
+  void nextTick().then(syncStatusBarColor)
 })
 
 export default router

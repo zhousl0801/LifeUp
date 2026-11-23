@@ -73,7 +73,8 @@ defineEmits<{ refresh: [] }>()
 }
 
 .on-hero {
-  --sync-bg: rgba(255, 255, 255, 0.14);
+  /* 顶部区域不使用 backdrop-filter，避免叠加出毛玻璃雾感；用实色混合替代原半透明。 */
+  --sync-bg: color-mix(in srgb, #ffffff 16%, var(--color-hero-bg));
   --sync-text: var(--color-hero-text);
   --sync-hover: rgba(255, 255, 255, 0.22);
   --sync-disabled: var(--color-hero-text-muted);
@@ -81,8 +82,6 @@ defineEmits<{ refresh: [] }>()
   --sync-shadow: rgba(15, 10, 46, 0.22);
   --sync-stroke: 0.48;
   --sync-glow: 0.18;
-  backdrop-filter: blur(12px) saturate(150%);
-  -webkit-backdrop-filter: blur(12px) saturate(150%);
 }
 
 .sync-button:hover:not(:disabled) {

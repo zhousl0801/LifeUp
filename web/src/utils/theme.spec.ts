@@ -3,6 +3,7 @@ import {
   initializeTheme,
   resolvedTheme,
   setThemeMode,
+  syncStatusBarColor,
   themeStorageKey
 } from './theme'
 
@@ -72,4 +73,25 @@ test('initialization reads a stored explicit choice', () => {
 
   expect(resolvedTheme.value).toBe('dark')
   expect(document.documentElement.dataset.colorScheme).toBe('dark')
+})
+
+test('syncs theme-color with the opaque status bar scrim color', () => {
+  const meta = document.createElement('meta')
+  meta.name = 'theme-color'
+  meta.content = '#F4F6FA'
+  const scrim = document.createElement('div')
+  scrim.className = 'status-bar-scrim'
+  scrim.style.backgroundColor = 'rgb(59, 56, 184)'
+  document.head.append(meta)
+  document.body.append(scrim)
+
+  syncStatusBarColor()
+  expect(meta.content).toBe('rgb(59, 56, 184)')
+
+  scrim.style.backgroundColor = 'transparent'
+  syncStatusBarColor()
+  expect(meta.content).toBe('rgb(59, 56, 184)')
+
+  meta.remove()
+  scrim.remove()
 })

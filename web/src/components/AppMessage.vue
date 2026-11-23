@@ -104,11 +104,10 @@ const toneLabel: Record<MessageTone, string> = {
   border-radius: 14px;
   background:
     linear-gradient(135deg, var(--message-accent-soft), rgba(10, 14, 22, 0) 58%),
-    rgba(10, 13, 20, 0.93);
+    rgb(10, 13, 20);
   box-shadow:
     0 18px 42px rgba(2, 5, 12, 0.46),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(18px) saturate(140%);
   color: #f4f7fb;
   pointer-events: auto;
 }
@@ -131,7 +130,7 @@ const toneLabel: Record<MessageTone, string> = {
   border-color: rgba(17, 24, 39, 0.08);
   background:
     linear-gradient(135deg, var(--message-accent-soft), rgba(255, 255, 255, 0) 58%),
-    rgba(255, 255, 255, 0.91);
+    rgb(255, 255, 255);
   box-shadow:
     0 16px 38px rgba(18, 22, 34, 0.14),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);

@@ -51,10 +51,37 @@ function applyTheme(): void {
   root.style.colorScheme = resolved
 
   const themeColor = resolved === 'dark' ? '#0B0C10' : '#F4F6FA'
+  setThemeColorMeta(themeColor)
+  syncStatusBarColor()
+}
+
+function setThemeColorMeta(color: string): void {
   document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]').forEach((meta) => {
     meta.removeAttribute('media')
-    meta.setAttribute('content', themeColor)
+    meta.setAttribute('content', color)
   })
+}
+
+/**
+ * 让 theme-color 与顶部状态栏色条保持同色（首页 hero、记账页等色条颜色随页面变化）。
+ * 色条不存在或未解析出颜色时保留 applyTheme 设置的默认值。
+ */
+export function syncStatusBarColor(): void {
+  if (typeof document === 'undefined' || typeof window === 'undefined') {
+    return
+  }
+
+  const scrim = document.querySelector<HTMLElement>('.status-bar-scrim')
+  if (!scrim) {
+    return
+  }
+
+  const color = window.getComputedStyle(scrim).backgroundColor
+  if (!color || color === 'transparent' || color === 'rgba(0, 0, 0, 0)') {
+    return
+  }
+
+  setThemeColorMeta(color)
 }
 
 export function initializeTheme(): void {
