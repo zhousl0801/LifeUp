@@ -13,8 +13,8 @@ const { resolvedTheme } = useTheme()
     position="top-center"
     :visible-toasts="3"
     :gap="8"
-    :offset="{ top: 'calc(env(safe-area-inset-top) + 12px)' }"
-    :mobile-offset="{ top: 12, left: 16, right: 16 }"
+    :offset="{ top: 'var(--app-safe-top)' }"
+    :mobile-offset="{ top: 'var(--app-top-gap)', left: 16, right: 16 }"
     rich-colors
     :toast-options="{ class: 'lifeup-toast' }"
   />
