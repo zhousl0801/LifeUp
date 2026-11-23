@@ -382,13 +382,13 @@ async function refreshQuotes(): Promise<void> {
     if (!overview.value) return
 
     if (result.failed > 0) {
-      toast.info(`行情刷新结果：成功 ${result.succeeded} 只，失败 ${result.failed} 只${result.errors[0] ? `；${result.errors[0]}` : ''}`)
+      toast.info(`刷新完成：成功 ${result.succeeded}，失败 ${result.failed}`)
     } else if (result.succeeded === 0) {
-      toast.info('暂无可刷新的行情。')
+      toast.info('暂无可刷新行情')
     } else if (result.updated === 0) {
-      toast.info('行情已是最新。')
+      toast.info('行情已是最新')
     } else {
-      toast.success(`行情已更新：更新 ${result.updated} 只股票。`)
+      toast.success(`已更新 ${result.updated} 只股票行情`)
     }
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error, '行情刷新失败，请稍后重试。')
@@ -596,7 +596,7 @@ async function submitBuy(): Promise<void> {
     note: form.note.trim(),
     requestId: requestId.value
   })
-  toast.success(`已买入 ${formatShares(result.activity.shares)} 股，当前现金 ¥${formatMoney(result.cashBalance)}。`)
+  toast.success(`已买入 ${formatShares(result.activity.shares)} 股`)
   sheet.value = null
 
   // 当天买入还没有行情记录时，今日盈亏会空着；成交成功后顺手拉一次行情。
@@ -633,7 +633,7 @@ async function submitSell(): Promise<void> {
     note: form.note.trim(),
     requestId: requestId.value
   })
-  toast.success(`已卖出 ${formatShares(result.activity.shares)} 股，当前现金 ¥${formatMoney(result.cashBalance)}。`)
+  toast.success(`已卖出 ${formatShares(result.activity.shares)} 股`)
   sheet.value = null
   await loadOverview()
 }
@@ -668,7 +668,7 @@ async function submitHolding(): Promise<void> {
     expectedVersion: expectedVersion.value,
     positionId: selectedPosition.value?.id
   })
-  toast.success('股票持仓已保存。')
+  toast.success('持仓已保存')
   sheet.value = null
   await loadOverview()
 }

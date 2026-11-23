@@ -205,13 +205,13 @@ async function submit(): Promise<void> {
     isSaving.value = true
 
     try {
-      const result = await setProvidentOpening({
+      await setProvidentOpening({
         balance,
         businessDate: today,
         note: form.note.trim(),
         requestId: requestId.value
       })
-      toast.success(`已录入起始公积金 ¥${formatMoney(result.balance)}。`)
+      toast.success('起始公积金已录入')
       sheet.value = null
       await loadOverview()
     } catch (error) {
@@ -282,9 +282,7 @@ async function submit(): Promise<void> {
           requestId: createRequestId(),
           expectedVersion: plan?.version ?? null
         })
-        messages.push(plan
-          ? '每月缴存已更新'
-          : `已设置每月 ${monthlyDay.value} 日缴存 ¥${formatMoney(amount)}`)
+        messages.push(plan ? '每月缴存已更新' : '每月缴存已设置')
       }
 
       if (plan && !plan.isActive) {
@@ -297,7 +295,7 @@ async function submit(): Promise<void> {
     }
 
     if (deposit > 0) {
-      const result = await depositProvident({
+      await depositProvident({
         amount: deposit,
         businessDate: today,
         note: form.note.trim(),
@@ -305,26 +303,23 @@ async function submit(): Promise<void> {
         requestId: depositRequestId.value
       })
       deposited = true
-      messages.push(`已缴存 ¥${formatMoney(result.activity.amount)}`)
+      messages.push('缴存已记录')
     }
 
     if (withdrawal > 0) {
-      const result = await withdrawProvident({
+      await withdrawProvident({
         amount: withdrawal,
         businessDate: today,
         note: form.note.trim(),
         relatedCashAdjustmentId: form.relatedCashAdjustmentId,
         requestId: withdrawalRequestId.value
       })
-      messages.push(`已提取 ¥${formatMoney(result.activity.amount)} 至现金`)
+      messages.push('提取已记录')
     }
 
     sheet.value = null
     await Promise.all([loadOverview(), loadPlan()])
-    const balanceNote = deposit > 0 || withdrawal > 0
-      ? `；当前余额 ¥${formatMoney(overview.value?.balance ?? 0)}`
-      : ''
-    toast.success(`${messages.join('，')}${balanceNote}。`)
+    toast.success(messages.length === 1 ? messages[0]! : '公积金设置已保存')
   } catch (error) {
     const prefix = messages.length ? `${messages.join('，')}；` : ''
     formError.value = deposited

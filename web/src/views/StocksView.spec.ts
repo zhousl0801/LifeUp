@@ -217,7 +217,7 @@ test('buying an existing position sends market code and computed amount fields',
     price: 10
   })
   expect(mocks.buy.mock.calls[0]![0]).not.toHaveProperty('fee')
-  expect(messages.value.at(-1)?.text ?? '').toContain('当前现金 ¥7,999.00')
+  expect(messages.value.at(-1)?.text).toBe('已买入 10 股')
   view.unmount()
 })
 

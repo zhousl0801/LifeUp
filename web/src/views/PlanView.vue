@@ -584,7 +584,7 @@ async function submit(): Promise<void> {
     }
 
     await savePlan(input)
-    toast.success(editingPlan.value ? '计划已更新，后续期次按新配置生成。' : '计划已保存。')
+    toast.success(editingPlan.value ? '计划已更新' : '计划已保存')
 
     if (entryGroup.value) {
       expandedGroups[entryGroup.value] = true
@@ -665,10 +665,10 @@ async function togglePlan(plan: AutoPlan): Promise<void> {
   try {
     if (plan.isActive) {
       await pausePlan(plan.id, createRequestId())
-      toast.success('计划已暂停；已有期次保留，暂停期间不追补。')
+      toast.success('计划已暂停')
     } else {
       await resumePlan(plan.id, createRequestId())
-      toast.success('计划已恢复，从下一期继续。')
+      toast.success('计划已恢复')
     }
 
     await load()
@@ -697,7 +697,7 @@ async function confirmPlanRemoval(): Promise<void> {
   try {
     await deletePlan(plan.id, createRequestId())
     pendingPlanRemoval.value = null
-    toast.success('计划已删除；已记账的收支记录会保留。')
+    toast.success('计划已删除')
     await load()
   } catch (error) {
     actionError.value = getApiErrorMessage(error, '删除计划失败，请重试。')
@@ -714,10 +714,10 @@ async function handleOccurrence(occurrenceId: string, action: 'retry' | 'skip'):
   try {
     if (action === 'retry') {
       await retryOccurrence(occurrenceId, createRequestId())
-      toast.success('已重新排队；余额补足后点击“立即执行”或等待后台任务。')
+      toast.success('已重新排队')
     } else {
       await skipOccurrence(occurrenceId, createRequestId())
-      toast.success('本期已跳过，不会再次生成。')
+      toast.success('本期已跳过')
     }
 
     await load()
@@ -737,7 +737,7 @@ async function recordCurrentOccurrence(occurrenceId: string): Promise<void> {
   try {
     const result = await recordOccurrence(occurrenceId, createRequestId())
     if (result.recorded) {
-      toast.success('本期期次已补记到账本。')
+      toast.success('本期已补记')
     } else {
       actionError.value = result.error ?? '本期仍待处理，请检查账本余额和关联资料。'
     }
@@ -757,9 +757,8 @@ async function runNow(): Promise<void> {
 
   try {
     const result = await runPlans()
-    const summary = `执行完成：新建 ${result.createdOccurrences}，已记账 ${result.completed}，待处理 ${result.waiting}，失败 ${result.failed}。`
-    if (result.failed > 0) toast.info(summary)
-    else toast.success(summary)
+    if (result.failed > 0) toast.info(`执行完成，${result.failed} 项失败`)
+    else toast.success(result.completed > 0 ? `已执行 ${result.completed} 项计划` : '执行完成')
     await load()
   } catch (error) {
     actionError.value = getApiErrorMessage(error, '立即执行失败，请重试。')

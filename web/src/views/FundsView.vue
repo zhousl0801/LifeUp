@@ -582,16 +582,16 @@ async function syncQuotes(): Promise<void> {
     if (!overview.value) return
 
     if (run.fundFailed > 0) {
-      toast.info(`基金行情刷新结果：成功 ${run.fundSucceeded} 项，失败 ${run.fundFailed} 项。`)
+      toast.info(`刷新完成：成功 ${run.fundSucceeded}，失败 ${run.fundFailed}`)
     } else if (run.fundSucceeded === 0) {
-      toast.info('暂无可刷新的基金行情。')
+      toast.info('暂无可刷新行情')
     } else if (run.updated === 0) {
-      toast.info('基金行情已是最新。')
+      toast.info('行情已是最新')
     } else {
-      toast.success(`基金行情已更新：更新 ${run.updated} 项。`)
+      toast.success(`已更新 ${run.updated} 项行情`)
     }
   } catch (error) {
-    toast.error(getApiErrorMessage(error, '基金行情刷新失败，请稍后重试。'))
+    toast.error(getApiErrorMessage(error, '行情刷新失败'))
   } finally {
     quoteRefreshing.value = false
   }
@@ -765,7 +765,7 @@ async function submitGroup(): Promise<void> {
   try {
     const created = await createFundGroup(name)
     groupDraft.value = ''
-    toast.success(`已新增投资分组「${name}」，可以继续添加资产。`)
+    toast.success('分组已新增')
     await loadOverview()
     groupDetailId.value = created.id
   } catch (error) {
@@ -795,7 +795,7 @@ async function saveGroupName(groupId: string): Promise<void> {
   try {
     await renameFundGroup(groupId, name)
     editingGroupId.value = null
-    toast.success(`分组已更名为「${name}」。`)
+    toast.success('分组已更名')
     await loadOverview()
   } catch (error) {
     groupError.value = getApiErrorMessage(error, '分组改名失败，请重试。')
@@ -829,7 +829,7 @@ async function confirmRemoveGroup(): Promise<void> {
       groupDetailId.value = null
     }
 
-    toast.success(`已删除分组「${target.name}」，组内基金回到未分组。`)
+    toast.success('分组已删除')
     pendingGroupRemoval.value = null
     await loadOverview()
   } catch (error) {
@@ -860,9 +860,7 @@ async function toggleGroupFund(fund: FundSummary): Promise<void> {
       await assignFundGroup(positionId, isMember ? null : group.id)
     }
 
-    toast.success(isMember
-      ? `「${fund.name}」已移出「${group.name}」。`
-      : `「${fund.name}」已加入「${group.name}」。`)
+    toast.success(isMember ? '已移出分组' : '已加入分组')
     await loadOverview()
   } catch (error) {
     groupError.value = getApiErrorMessage(error, '调整分组资产失败，请重试。')
@@ -1047,7 +1045,7 @@ async function submitOpening(forceAdd = false): Promise<void> {
     priorRealizedProfit,
     requestId: requestId.value
   })
-  toast.success(`已录入基金「${form.name.trim()}」。`)
+  toast.success('基金已录入')
   sheet.value = null
   await loadOverview()
 }
@@ -1079,7 +1077,7 @@ async function updateDuplicatePosition(): Promise<void> {
       note: form.note.trim() || '按新录入核对已有持仓',
       requestId: requestId.value
     })
-    toast.success(`已更新「${prompt.position.name}」持仓为 ${formatQuantity(prompt.shares)} 份、成本 ¥${formatMoney(prompt.cost)}。`)
+    toast.success('持仓已更新')
     duplicatePrompt.value = null
     sheet.value = null
     await loadOverview()
@@ -1123,7 +1121,7 @@ async function submitBuy(): Promise<void> {
   }
 
   isSaving.value = true
-  const result = await buyFund({
+  await buyFund({
     positionId: position.id,
     amount,
     fee,
@@ -1131,7 +1129,7 @@ async function submitBuy(): Promise<void> {
     note: form.note.trim(),
     requestId: requestId.value
   })
-  toast.success(`已记录买入待确认 ¥${formatMoney(result.activity.amount)}，当前现金 ¥${formatMoney(result.cashBalance)}。`)
+  toast.success('买入已记录')
   sheet.value = null
   await loadOverview()
 }
@@ -1151,7 +1149,7 @@ async function submitShareCorrection(): Promise<void> {
     note: form.note.trim() || '持仓份额核对',
     requestId: requestId.value
   })
-  toast.success(`已更新「${position.name}」持仓份额。`)
+  toast.success('持仓已更新')
   sheet.value = null
   await loadOverview()
 }
@@ -1171,14 +1169,14 @@ async function submitSell(): Promise<void> {
   }
 
   isSaving.value = true
-  const result = await sellFund({
+  await sellFund({
     positionId: position.id,
     shares,
     businessDate: form.businessDate,
     note: form.note.trim(),
     requestId: requestId.value
   })
-  toast.success(`已申请赎回 ${formatQuantity(result.activity.shares)} 份，确认后转为待到账。`)
+  toast.success('赎回已申请')
   sheet.value = null
   await loadOverview()
 }
@@ -1228,7 +1226,7 @@ async function submitSellConfirm(): Promise<void> {
   }
 
   isSaving.value = true
-  const result = await confirmFundSell(application.transactionId, {
+  await confirmFundSell(application.transactionId, {
     shares,
     netValue,
     netValueDate: form.netValueDate,
@@ -1238,7 +1236,7 @@ async function submitSellConfirm(): Promise<void> {
     note: form.note.trim(),
     requestId: requestId.value
   })
-  toast.success(`已确认赎回 ${formatQuantity(result.activity.shares)} 份，待到账 ¥${formatMoney(result.activity.amount)}。`)
+  toast.success('赎回已确认')
   sheet.value = null
   await loadOverview()
 }
@@ -1268,13 +1266,13 @@ async function submitSellArrival(): Promise<void> {
   }
 
   isSaving.value = true
-  const result = await arriveFundSell(arrival.transactionId, {
+  await arriveFundSell(arrival.transactionId, {
     amount,
     businessDate: form.businessDate,
     note: form.note.trim(),
     requestId: requestId.value
   })
-  toast.success(`赎回到账 ¥${formatMoney(result.activity.amount)}，当前现金 ¥${formatMoney(result.cashBalance)}。`)
+  toast.success('赎回已到账')
   sheet.value = null
   await loadOverview()
 }
@@ -1331,7 +1329,7 @@ async function cancelPending(transactionId: string): Promise<void> {
   try {
     await cancelFundPending(transactionId, pendingCancelRequest.requestId)
     pendingCancelRequest = null
-    toast.success('待处理基金交易已撤销。')
+    toast.success('交易已撤销')
     sheet.value = null
     await loadOverview()
   } catch (error) {

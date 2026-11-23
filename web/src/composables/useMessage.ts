@@ -1,15 +1,10 @@
 import { readonly, ref } from 'vue'
+import { toast as sonnerToast } from 'vue-sonner'
 
 export type MessageTone = 'success' | 'error' | 'info'
 
-export interface MessageAction {
-  label: string
-  run: () => void
-}
-
 export interface MessageOptions {
   duration?: number
-  action?: MessageAction
 }
 
 export interface MessageItem {
@@ -17,7 +12,6 @@ export interface MessageItem {
   tone: MessageTone
   text: string
   duration: number
-  action?: MessageAction
 }
 
 const maxVisible = 3
@@ -31,7 +25,7 @@ const items = ref<MessageItem[]>([])
 const timers = new Map<number, ReturnType<typeof setTimeout>>()
 let sequence = 0
 
-function dismiss(id: number): void {
+function removeLocal(id: number): void {
   const timer = timers.get(id)
 
   if (timer) {
@@ -42,12 +36,40 @@ function dismiss(id: number): void {
   items.value = items.value.filter((item) => item.id !== id)
 }
 
+function dismissSonner(id?: number): void {
+  if (typeof requestAnimationFrame === 'function') {
+    sonnerToast.dismiss(id)
+  }
+}
+
+function dismiss(id: number): void {
+  removeLocal(id)
+  dismissSonner(id)
+}
+
 function schedule(item: MessageItem): void {
   if (item.duration <= 0) {
     return
   }
 
   timers.set(item.id, setTimeout(() => dismiss(item.id), item.duration))
+}
+
+function emitSonner(item: MessageItem): void {
+  const options = {
+    id: item.id,
+    duration: item.duration <= 0 ? Number.POSITIVE_INFINITY : item.duration,
+    onDismiss: () => removeLocal(item.id),
+    onAutoClose: () => removeLocal(item.id)
+  }
+
+  if (item.tone === 'success') {
+    sonnerToast.success(item.text, options)
+  } else if (item.tone === 'error') {
+    sonnerToast.error(item.text, options)
+  } else {
+    sonnerToast.info(item.text, options)
+  }
 }
 
 function push(tone: MessageTone, text: string, options: MessageOptions = {}): number {
@@ -69,7 +91,7 @@ function push(tone: MessageTone, text: string, options: MessageOptions = {}): nu
     }
 
     existing.duration = duration
-    existing.action = options.action
+    emitSonner(existing)
     schedule(existing)
     return existing.id
   }
@@ -82,11 +104,11 @@ function push(tone: MessageTone, text: string, options: MessageOptions = {}): nu
     id: ++sequence,
     tone,
     text: content,
-    duration,
-    action: options.action
+    duration
   }
 
   items.value.push(item)
+  emitSonner(item)
   schedule(item)
   return item.id
 }
@@ -98,6 +120,7 @@ function clear(): void {
 
   timers.clear()
   items.value = []
+  dismissSonner()
 }
 
 export const toast = {

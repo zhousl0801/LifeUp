@@ -273,11 +273,8 @@ async function refreshQuote(): Promise<void> {
     await loadOverview()
     if (!overview.value) return
 
-    const summary = result.updated
-      ? `报价已更新：¥${formatMoney(result.quote)} / 克（${formatBusinessDate(result.quoteDate)}）。`
-      : `报价已是最新：¥${formatMoney(result.quote)} / 克。`
-    if (result.updated) toast.success(summary)
-    else toast.info(summary)
+    if (result.updated) toast.success('报价已更新')
+    else toast.info('报价已是最新')
   } catch (error) {
     if (error instanceof ApiError && error.status === 409) {
       await loadOverview()
@@ -384,7 +381,7 @@ async function submitBuy(): Promise<void> {
     note: form.note.trim(),
     requestId: requestId.value
   })
-  toast.success(`已买入 ${formatQuantity(result.activity.grams)} 克，当前现金 ¥${formatMoney(result.cashBalance)}。`)
+  toast.success(`已买入 ${formatQuantity(result.activity.grams)} 克`)
   sheet.value = null
   await loadOverview()
 }
@@ -407,7 +404,7 @@ async function submitSell(): Promise<void> {
     note: form.note.trim(),
     requestId: requestId.value
   })
-  toast.success(`已卖出 ${formatQuantity(result.activity.grams)} 克，当前现金 ¥${formatMoney(result.cashBalance)}。`)
+  toast.success(`已卖出 ${formatQuantity(result.activity.grams)} 克`)
   sheet.value = null
   await loadOverview()
 }
@@ -437,13 +434,13 @@ async function submitSellArrival(): Promise<void> {
   }
 
   isSaving.value = true
-  const result = await arriveGoldSell(pending.transactionId, {
+  await arriveGoldSell(pending.transactionId, {
     amount,
     businessDate: form.businessDate,
     note: form.note.trim(),
     requestId: requestId.value
   })
-  toast.success(`积存金卖到账 ¥${formatMoney(result.activity.amount)}，当前现金 ¥${formatMoney(result.cashBalance)}。`)
+  toast.success('卖出已到账')
   sheet.value = null
   await loadOverview()
 }
@@ -477,7 +474,7 @@ async function submitHolding(): Promise<void> {
     holdingDate: form.businessDate,
     requestId: requestId.value
   })
-  toast.success('积存金持仓已保存。')
+  toast.success('持仓已保存')
   sheet.value = null
   await loadOverview()
 }

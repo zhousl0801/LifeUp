@@ -232,9 +232,7 @@ async function submitReconcile(): Promise<void> {
     })
 
     isReconcileOpen.value = false
-    toast.success(result.isBalanced
-      ? '核对一致，无需调整。'
-      : `余额已调整为 ¥${formatMoney(result.cashBalance)}，生活收支保持不变。`)
+    toast.success(result.isBalanced ? '余额核对一致' : '余额已调整')
     await loadCash()
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {

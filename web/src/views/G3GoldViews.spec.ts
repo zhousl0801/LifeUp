@@ -184,7 +184,7 @@ test('gold sale uses grams and quote and records received cash by default', asyn
   })
   expect(mocks.sell.mock.calls[0]![0]).not.toHaveProperty('settlement')
   expect(mocks.sell.mock.calls[0]![0]).not.toHaveProperty('relatedCashAdjustmentId')
-  expect(messages.value.at(-1)?.text ?? '').toContain('当前现金 ¥10,898.00')
+  expect(messages.value.at(-1)?.text).toBe('已卖出 1.0000 克')
   view.unmount()
 })
 

@@ -108,9 +108,7 @@ test('one provident form records the monthly deposit and withdrawal together', a
   await flushPromises()
   expect(mocks.deposit).toHaveBeenCalledTimes(1)
   expect(mocks.withdraw).toHaveBeenCalledTimes(1)
-  const latest = messages.value.at(-1)?.text ?? ''
-  expect(latest).toContain('已缴存 ¥200.00')
-  expect(latest).toContain('已提取 ¥50.00 至现金')
+  expect(messages.value.at(-1)?.text).toBe('公积金设置已保存')
   view.unmount()
 })
 
@@ -147,7 +145,7 @@ test('provident form sets the monthly deposit inside the deposit and withdrawal 
     dayOfMonth: 15,
     cycle: 'monthly'
   }))
-  expect(messages.value.at(-1)?.text ?? '').toContain('已设置每月 15 日缴存 ¥800.00')
+  expect(messages.value.at(-1)?.text).toBe('每月缴存已设置')
   view.unmount()
 })
 
@@ -228,7 +226,7 @@ test('stock cash activity opens stocks rather than gold', async () => {
 })
 
 
-test('saving outside the current ledger filters keeps the list and opens the saved record separately', async () => {
+test('saving outside the current ledger filters keeps the list and shows a concise toast without navigation', async () => {
   const previous = window.history.state
   const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
   const entry: LedgerEntry = {
@@ -254,12 +252,8 @@ test('saving outside the current ledger filters keeps the list and opens the sav
     expect(view.get('[aria-label="账单列表"]').attributes('aria-pressed')).toBe('true')
     expect(view.get<HTMLInputElement>('input[type="search"]').element.value).toBe('午餐')
     expect(scrollTo).toHaveBeenCalledWith({ top: 126 })
-    const message = messages.value.find(item => item.action?.label === '查看账单')
-    expect(message?.action).toBeDefined()
-
-    message!.action!.run()
-    expect(mocks.push).toHaveBeenCalledWith({ name: 'entry', query: { id: 'new-expense' } })
-    expect(view.get<HTMLInputElement>('input[type="search"]').element.value).toBe('午餐')
+    expect(messages.value.at(-1)?.text).toBe('已保存')
+    expect(mocks.push).not.toHaveBeenCalled()
   } finally {
     view.unmount()
     window.history.replaceState(previous, '')

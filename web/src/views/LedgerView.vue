@@ -155,7 +155,7 @@ const groupedEntries = computed(() => {
 if (ledgerChange) {
   const { action, entry } = ledgerChange
   if (action === 'reverse') {
-    toast.success('账单已撤销。')
+    toast.success('账单已撤销')
   } else {
     const matchesPeriod = periodStart(entry.businessDate, period.value) === periodStart(anchor.value, period.value)
       && (view.value !== 'calendar' || selectedDate.value === entry.businessDate)
@@ -163,17 +163,10 @@ if (ledgerChange) {
       highlightedEntry.value = entry.id
     }
 
-    toast.success(action === 'create' ? '已保存。' : '已保存修改。', {
-      action: {
-        label: '查看账单',
-        run: () => {
-          if (route.name === 'ledger') openEntry(entry.id)
-        }
-      }
-    })
+    toast.success(action === 'create' ? '已保存' : '已保存修改')
   }
 } else if (focusEntry) {
-  toast.success('已保存。')
+  toast.success('已保存')
 }
 
 onBeforeRouteLeave((to) => {
@@ -224,7 +217,7 @@ watch(() => route.query, (query, previous) => {
   highlightedEntry.value = ''
   focusEntry = typeof query.focus === 'string' ? query.focus : ''
   if (focusEntry) {
-    toast.success('已保存。')
+    toast.success('已保存')
   }
   if (!queryChanges) void loadEntries()
 })

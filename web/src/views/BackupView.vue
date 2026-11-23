@@ -47,7 +47,7 @@ async function exportDetails(): Promise<void> {
 
   try {
     await downloadDetails(exportFrom.value, exportTo.value)
-    toast.success('明细 CSV 已生成，浏览器已开始下载。')
+    toast.success('明细 CSV 已导出')
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '导出明细失败，请重试。'
   } finally {
@@ -63,7 +63,7 @@ async function exportBackup(): Promise<void> {
 
   try {
     await downloadBackup()
-    toast.success('完整备份已生成，浏览器已开始下载。')
+    toast.success('完整备份已导出')
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '下载备份失败，请重试。'
   } finally {
@@ -113,7 +113,7 @@ async function validateSelected(): Promise<void> {
   try {
     validation.value = await validateBackup(backup.value)
     if (validation.value.isValid) {
-      toast.success('备份校验通过，请核对摘要后确认恢复。')
+      toast.success('备份校验通过')
     } else {
       errorMessage.value = '备份校验未通过，未修改当前账本。'
     }
@@ -141,9 +141,7 @@ async function restore(): Promise<void> {
       current.validationToken,
       current.willReplace
     )
-    toast.success(restoreResult.value.replacedExisting
-      ? '恢复完成，当前账本已按备份替换。'
-      : '恢复完成，已建立账本。')
+    toast.success('账本已恢复')
     validation.value = null
     backup.value = null
     confirmReplace.value = false

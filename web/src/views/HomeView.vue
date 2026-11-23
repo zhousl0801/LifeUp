@@ -298,10 +298,10 @@ async function syncQuotes(): Promise<void> {
       return
     }
 
-    if (failed > 0) toast.info(`行情刷新结果：成功 ${succeeded} 项，失败 ${failed} 项。`)
-    else if (succeeded === 0) toast.info('暂无可刷新的行情。')
-    else if (run.updated === 0) toast.info('行情已是最新。')
-    else toast.success(`行情已更新：更新 ${run.updated} 项。`)
+    if (failed > 0) toast.info(`刷新完成：成功 ${succeeded}，失败 ${failed}`)
+    else if (succeeded === 0) toast.info('暂无可刷新行情')
+    else if (run.updated === 0) toast.info('行情已是最新')
+    else toast.success(`已更新 ${run.updated} 项行情`)
   } catch (error) {
     quoteError.value = getApiErrorMessage(error, '行情同步失败，请稍后重试。')
   } finally {
