@@ -249,7 +249,7 @@ function goHome(): void {
 
 .page-head {
   margin: 0 calc(var(--page-gutter) * -1) 16px;
-  padding: max(14px, env(safe-area-inset-top)) var(--page-gutter) 10px;
+  padding: max(14px, var(--app-safe-top)) var(--page-gutter) 10px;
   background: transparent;
 }
 

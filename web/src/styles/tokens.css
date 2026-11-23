@@ -3,6 +3,11 @@
  * Midnight Mint：大圆角、无描边卡片、数字优先。
  */
 :root {
+  /* 顶部安全区：内容与状态栏之间额外留白，避开 iOS 26 状态栏下方的渐进模糊带；
+   * 留白区域由 .status-bar-scrim 纯色覆盖。调整间距只改 --app-top-gap。 */
+  --app-top-gap: 12px;
+  --app-safe-top: calc(env(safe-area-inset-top) + var(--app-top-gap));
+
   /* 文本层级：正文不小于 15px，说明文字不小于 12px。 */
   --text-caption: 0.75rem;
   --text-footnote: 0.8125rem;

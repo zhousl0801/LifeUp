@@ -32,14 +32,16 @@ body {
   right: 0;
   left: 0;
   z-index: 55;
-  /* standalone + status-bar-style=default 时安全区可能为 0，保底高度保证 WebKit 能采样到该色条。 */
-  height: max(env(safe-area-inset-top), 8px);
+  /* 覆盖安全区 + 顶部留白，内容从色条下方开始，滚动内容在色条下沿被纯色截断而不是被模糊。 */
+  height: var(--app-safe-top);
   background-color: var(--scrim-base);
   pointer-events: none;
 }
 
 body:has(.home-hero) .status-bar-scrim {
   --scrim-base: var(--color-hero-bg);
+  /* 首页 hero 顶部有光晕渐变，色条只盖安全区，避免与光晕产生色带。 */
+  height: max(env(safe-area-inset-top), 8px);
 }
 
 body:has(.entry-screen) .status-bar-scrim {
@@ -87,7 +89,7 @@ summary:focus-visible {
   width: min(100%, 430px);
   min-height: 100dvh;
   margin: 0 auto;
-  padding: max(20px, env(safe-area-inset-top)) var(--page-gutter) calc(28px + env(safe-area-inset-bottom));
+  padding: max(20px, var(--app-safe-top)) var(--page-gutter) calc(28px + env(safe-area-inset-bottom));
 }
 
 .page.with-nav {
@@ -95,7 +97,7 @@ summary:focus-visible {
 }
 
 .page > .asset-page-header {
-  --asset-header-inset: max(20px, env(safe-area-inset-top));
+  --asset-header-inset: max(20px, var(--app-safe-top));
   position: sticky;
   top: 0;
   z-index: 5;
@@ -1017,7 +1019,7 @@ summary:focus-visible {
 
 .loading-bar {
   position: fixed;
-  top: env(safe-area-inset-top);
+  top: var(--app-safe-top);
   right: 0;
   left: 0;
   z-index: 9999;

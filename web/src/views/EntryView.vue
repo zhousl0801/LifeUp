@@ -1020,7 +1020,7 @@ function handleKeydown(event: KeyboardEvent): void {
   grid-template-columns: 44px minmax(0, 1fr) 44px;
   align-items: center;
   gap: 8px;
-  padding: calc(8px + env(safe-area-inset-top)) 16px 0;
+  padding: var(--app-safe-top) 16px 0;
 }
 
 .entry-manage {
