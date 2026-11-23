@@ -1,4 +1,5 @@
 using System.Globalization;
+using LifeUp.Application.Funds;
 using LifeUp.Application.History;
 using LifeUp.Domain.Assets;
 
@@ -244,11 +245,13 @@ public sealed class MonthChangeService
             notes.Add($"含新增记录 {addedRecords.ToString("N2", CultureInfo.InvariantCulture)} 元，不计入当日变化。");
         }
 
+        var priorFundDisclosure = FundService.CalculatePriorFundDisclosure(data, facts, today, data.Ledger.StartDate);
+
         return new MonthChangeDto(
             today, today, comparableChange, cashIncome - cashExpense, providentDeposit, investmentProfit,
             reconciliationDifference, hasComparableData, notes.Distinct().ToList(),
             BuildAssetChanges(beforeValues, nowValues, hasBaseline), comparableChange, comparableBase, addedRecords,
-            investmentProfit, netDeposit, hasComparableData, breakdown);
+            investmentProfit, netDeposit, hasComparableData, breakdown, priorFundDisclosure);
     }
 
     private static IReadOnlyList<AssetChangeDto> BuildAssetChanges(

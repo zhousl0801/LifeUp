@@ -197,6 +197,57 @@ public sealed class FundService
             .ToList();
     }
 
+    /// <summary>
+    /// 计算早于当日的最近已披露基金日收益汇总；无持仓或最新披露日不早于当日时返回 null。
+    /// </summary>
+    internal static PriorFundDisclosureDto? CalculatePriorFundDisclosure(
+        LedgerReplayData replayData,
+        IReadOnlyList<BusinessFact> facts,
+        DateOnly today,
+        DateOnly ledgerStart)
+    {
+        var positions = replayData.Positions;
+
+        if (positions.Count == 0)
+        {
+            return null;
+        }
+
+        var dailyProfits = CalculateDailyProfits(replayData, facts, positions, today, ledgerStart);
+        var familyKeys = FundIdentity.FamilyKeys(positions);
+        var summaries = positions
+            .GroupBy(position => familyKeys[position.Id], StringComparer.Ordinal)
+            .Select(group => AggregateDaily(group.ToList(), dailyProfits))
+            .ToList();
+        var disclosed = summaries
+            .Where(item => item.Has && item.Date is not null)
+            .ToList();
+
+        if (disclosed.Count == 0)
+        {
+            return null;
+        }
+
+        var latestDate = disclosed.Max(item => item.Date!.Value);
+
+        if (latestDate >= today)
+        {
+            return null;
+        }
+
+        var latest = disclosed
+            .Where(item => item.Date == latestDate)
+            .ToList();
+        var total = summaries.Count;
+
+        return new PriorFundDisclosureDto(
+            latestDate,
+            decimal.Round(latest.Sum(item => item.Profit), 2),
+            latest.Count,
+            total,
+            total > 0 && latest.Count == total);
+    }
+
     private static Dictionary<Guid, (decimal? Profit, DateOnly? Date)> CalculateDailyProfits(
         LedgerReplayData replayData,
         IReadOnlyList<BusinessFact> facts,

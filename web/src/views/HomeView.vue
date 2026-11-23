@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { fetchAssetTrend, fetchDayChange, fetchMonthChange } from '../api/ledger'
-import { fetchFundOverview } from '../api/funds'
 import { refreshQuotes } from '../api/quotes'
 import { getApiErrorMessage } from '../api/client'
 import { toast } from '../composables/useMessage'
@@ -18,8 +17,7 @@ import LoadingState from '../components/LoadingState.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import { useHomePreferencesStore } from '../stores/homePreferences'
 import { useLedgerStore } from '../stores/ledger'
-import { addAmounts, amountTone, formatBusinessDate, formatMoney, formatSignedMoney, todayInBusinessTimeZone } from '../utils/format'
-import { latestFundDailyProfit } from '../utils/fundDailyProfit'
+import { addAmounts, amountTone, formatBusinessDate, formatMoney, formatSignedMoney, subtractAmounts, todayInBusinessTimeZone } from '../utils/format'
 import { buildAssetTrend, trendAmountLabel } from '../utils/trend'
 import type { DayInvestmentChange, MonthChange } from '../types/ledger'
 import type { AssetTrend, AssetTrendPoint, TrendRange } from '../types/trend'
@@ -50,11 +48,6 @@ const changeScope = ref<'day' | 'month'>('day')
 const dayChangeError = ref('')
 const monthChangeError = ref('')
 const changeSheetOpen = ref(false)
-const fundDisclosure = shallowRef<
-  | { status: 'idle' | 'loading' | 'error' }
-  | { status: 'ready'; profit: ReturnType<typeof latestFundDailyProfit> }
->({ status: 'idle' })
-let fundDisclosureSequence = 0
 let dayChangeSequence = 0
 let monthChangeSequence = 0
 const quoteRefreshing = ref(false)
@@ -107,23 +100,37 @@ const activeChangeError = computed(() =>
 const changeSheetTitle = computed(() => changeScope.value === 'day' ? '当日变化构成' : '本月变化构成')
 const addedRecords = computed(() => activeChange.value?.addedRecords ?? 0)
 const priorFundDisclosure = computed(() => {
-  const state = fundDisclosure.value
-  if (changeScope.value !== 'day' || state.status !== 'ready') return null
+  if (changeScope.value !== 'day') return null
 
-  const date = state.profit.latestDate
-  return date && date < (dayChange.value?.to ?? today) ? { ...state.profit, date } : null
+  const disclosure = dayChange.value?.priorFundDisclosure
+  if (!disclosure || disclosure.date >= (dayChange.value?.to ?? today)) return null
+
+  return disclosure
 })
-const waitingForFundProfit = computed(() =>
-  changeScope.value === 'day' && overview.value?.fund.isConfigured
-  && (quoteRefreshing.value || fundDisclosure.value.status === 'idle' || fundDisclosure.value.status === 'loading'))
 const displayedChange = computed(() => {
   const change = activeChange.value
-  if (!change?.hasComparableData || change.comparableChange === null || waitingForFundProfit.value) return null
+  if (!change?.hasComparableData || change.comparableChange === null) return null
 
-  return addAmounts(change.comparableChange, priorFundDisclosure.value?.value ?? 0)
+  return addAmounts(change.comparableChange, priorFundDisclosure.value?.profit ?? 0)
+})
+const displayedAssetChanges = computed(() => {
+  const changes = activeChange.value?.assetChanges
+  if (!changes) return changes
+
+  const prior = priorFundDisclosure.value
+  if (!prior) return changes
+
+  return changes.map((item) => {
+    if (item.assetType !== 'fund' || item.isNew) return item
+
+    const change = item.change === null ? prior.profit : addAmounts(item.change, prior.profit)
+    const baselineAmount = item.baselineAmount != null
+      ? subtractAmounts(item.baselineAmount, prior.profit)
+      : item.baselineAmount
+    return { ...item, change, baselineAmount }
+  })
 })
 const changeContextDate = computed(() => displayedChange.value !== null ? priorFundDisclosure.value?.date : undefined)
-const fundDisclosureError = computed(() => changeScope.value === 'day' && fundDisclosure.value.status === 'error')
 const dayDetailGroups = computed(() => {
   const detail = dayChange.value?.dayBreakdown
   if (!detail || changeScope.value !== 'day') return []
@@ -184,31 +191,10 @@ function selectPoint(point: AssetTrendPoint): void {
 
 function openChangeSheet(): void {
   changeSheetOpen.value = true
-  if (fundDisclosureError.value) void loadFundDisclosure()
-}
-
-async function loadFundDisclosure(): Promise<void> {
-  const sequence = ++fundDisclosureSequence
-  if (!overview.value?.fund.isConfigured) {
-    fundDisclosure.value = { status: 'idle' }
-    return
-  }
-
-  fundDisclosure.value = { status: 'loading' }
-  try {
-    const fundOverview = await fetchFundOverview()
-    if (sequence === fundDisclosureSequence) {
-      fundDisclosure.value = { status: 'ready', profit: latestFundDailyProfit(fundOverview.funds, today) }
-    }
-  } catch {
-    if (sequence === fundDisclosureSequence) fundDisclosure.value = { status: 'error' }
-  }
 }
 
 async function loadOverview() {
-  const status = await ledgerStore.load()
-  if (status === 'ready') await loadFundDisclosure()
-  return status
+  return ledgerStore.load()
 }
 
 async function loadLedger(): Promise<void> {
@@ -327,7 +313,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   trendSequence++
-  fundDisclosureSequence++
   dayChangeSequence++
   monthChangeSequence++
 })
@@ -384,7 +369,7 @@ onBeforeUnmount(() => {
               type="button"
               class="hero-change"
               :aria-expanded="changeSheetOpen"
-              :aria-describedby="changeContextDate || fundDisclosureError ? 'hero-change-context' : undefined"
+              :aria-describedby="changeContextDate ? 'hero-change-context' : undefined"
               @click="openChangeSheet"
             >
               <span v-if="!amountsMasked" class="change-arrow" aria-hidden="true" :class="amountTone(displayedChange)">{{ displayedChange > 0 ? '▲' : displayedChange < 0 ? '▼' : '—' }}</span>
@@ -401,11 +386,10 @@ onBeforeUnmount(() => {
               type="button"
               class="hero-change muted"
               :aria-expanded="changeSheetOpen"
-              :aria-busy="waitingForFundProfit || undefined"
               @click="openChangeSheet"
             >
               <span>{{ changeScope === 'day' ? '当日变化' : '本月变化' }}</span>
-              <b>{{ waitingForFundProfit ? '正在读取基金收益' : '暂无可比数据' }}</b>
+              <b>暂无可比数据</b>
               <span class="info-mark">ⓘ</span>
             </button>
             <div class="change-scope" role="group" aria-label="资产变化范围">
@@ -425,9 +409,6 @@ onBeforeUnmount(() => {
           </div>
           <p v-if="changeContextDate" id="hero-change-context" class="hero-change-context">
             含 <time :datetime="changeContextDate">{{ formatBusinessDate(changeContextDate) }}</time>净值收益
-          </p>
-          <p v-else-if="fundDisclosureError && displayedChange !== null" id="hero-change-context" class="hero-change-context">
-            最近已披露基金收益暂时无法读取
           </p>
         </div>
 
@@ -512,7 +493,7 @@ onBeforeUnmount(() => {
 
       <AssetDistribution
         :overview="overview"
-        :changes="activeChange?.assetChanges"
+        :changes="displayedAssetChanges"
         :comparable="activeChange?.hasComparableData ?? false"
         :change-scope="changeScope"
         cards
@@ -577,8 +558,8 @@ onBeforeUnmount(() => {
         <section v-if="priorFundDisclosure" class="fund-disclosure">
           <div class="breakdown-row">
             <span>最近已披露基金收益</span>
-            <b :class="amountsMasked ? '' : amountTone(priorFundDisclosure.value)">
-              {{ amountsMasked ? '••••' : formatSignedMoney(priorFundDisclosure.value) }}
+            <b :class="amountsMasked ? '' : amountTone(priorFundDisclosure.profit)">
+              {{ amountsMasked ? '••••' : formatSignedMoney(priorFundDisclosure.profit) }}
             </b>
           </div>
           <p class="sheet-note">
@@ -587,12 +568,6 @@ onBeforeUnmount(() => {
             <template v-if="displayedChange !== null"> · 计入总览合计</template>
           </p>
         </section>
-        <p v-else-if="changeScope === 'day' && fundDisclosure.status === 'loading'" class="sheet-note" role="status">
-          正在读取最近已披露基金收益…
-        </p>
-        <p v-else-if="changeScope === 'day' && fundDisclosure.status === 'error'" class="sheet-note" role="status">
-          最近已披露基金收益暂时无法读取。
-        </p>
         <div v-if="displayedChange !== null" class="breakdown-total">
           <span>{{ changeScope === 'day' ? '当日变化合计' : '本月变化' }}</span>
           <b :class="amountsMasked ? '' : amountTone(displayedChange)">{{ amountsMasked ? '••••' : formatSignedMoney(displayedChange) }}</b>

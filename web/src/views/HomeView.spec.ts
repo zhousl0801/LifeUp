@@ -394,18 +394,19 @@ test('includes earlier NAV profit in the headline and detail total with the NAV 
     ...monthChange,
     hasComparableData: true,
     comparableChange: -436.64,
-    comparableBase: 620000
-  })
-  mocks.funds.mockResolvedValue({
-    funds: [
-      { hasDailyProfit: true, dailyProfitDate: disclosureDate, dailyProfit: -5000.01 },
-      { hasDailyProfit: true, dailyProfitDate: disclosureDate, dailyProfit: -4198.05 },
-      { hasDailyProfit: true, dailyProfitDate: shift(today, -3), dailyProfit: 600 }
-    ]
+    comparableBase: 620000,
+    priorFundDisclosure: {
+      date: disclosureDate,
+      profit: -9198.06,
+      covered: 2,
+      total: 3,
+      complete: false
+    }
   })
   const view = mount(HomeView, { attachTo: document.body, global: { plugins: [createPinia()] } })
   try {
     await flushPromises()
+    expect(mocks.funds).not.toHaveBeenCalled()
     expect(view.get('.hero-change').text()).not.toContain('9,634.70')
     expect(view.get('.hero-change-context time').attributes('datetime')).toBe(disclosureDate)
     await view.get('.hero-change').trigger('click')
@@ -437,8 +438,16 @@ test('does not add the fund profit twice when the NAV date matches the daily cha
     fund: { isConfigured: true, amount: 1000, note: null, notHeld: false }
   }))
   mocks.trend.mockResolvedValue(trend(start))
-  mocks.dayChange.mockResolvedValue({ ...monthChange, to: today, hasComparableData: true, comparableChange: -20 })
-  mocks.funds.mockResolvedValue({ funds: [{ hasDailyProfit: true, dailyProfitDate: today, dailyProfit: -20 }] })
+  mocks.dayChange.mockResolvedValue({
+    ...monthChange,
+    to: today,
+    hasComparableData: true,
+    comparableChange: -20,
+    assetChanges: [
+      { assetType: 'fund', change: -20, baselineAmount: 1020, isNew: false }
+    ],
+    priorFundDisclosure: null
+  })
 
   const view = mount(HomeView, { global: { plugins: [createPinia()] } })
   try {
@@ -446,6 +455,60 @@ test('does not add the fund profit twice when the NAV date matches the daily cha
     await view.get('button[aria-label="显示资产金额"]').trigger('click')
     expect(view.get('.hero-change b').text()).toBe('−20.00')
     expect(view.find('.hero-change-context').exists()).toBe(false)
+    expect(view.get('.card-fund').findAll('.card-note > span').map(note => note.text())).toEqual(['−20.00', '−1.96%'])
+  } finally {
+    view.unmount()
+  }
+})
+
+test('carries over the latest disclosed fund profit and rate to the fund card before today NAV updates', async () => {
+  const start = shift(today, -30)
+  const fridayDate = shift(today, -3)
+  mocks.ledger.mockResolvedValue(overview(start, {
+    fund: { isConfigured: true, amount: 273349.99, note: null, notHeld: false }
+  }))
+  mocks.trend.mockResolvedValue(trend(start))
+  mocks.dayChange.mockResolvedValue({
+    ...monthChange,
+    to: today,
+    hasComparableData: true,
+    comparableChange: 0,
+    comparableBase: 620000,
+    assetChanges: [
+      { assetType: 'cash', change: 0, baselineAmount: 244685, isNew: false },
+      { assetType: 'fund', change: 0, baselineAmount: 273349.99, isNew: false }
+    ],
+    priorFundDisclosure: {
+      date: fridayDate,
+      profit: -9198.06,
+      covered: 2,
+      total: 2,
+      complete: true
+    }
+  })
+  mocks.change.mockResolvedValue({
+    ...monthChange,
+    hasComparableData: true,
+    assetChanges: [
+      { assetType: 'fund', change: 12000, baselineAmount: 261349.99, isNew: false }
+    ]
+  })
+
+  const view = mount(HomeView, { global: { plugins: [createPinia()] } })
+  try {
+    await flushPromises()
+    expect(mocks.funds).not.toHaveBeenCalled()
+    const fundNotes = () => view.get('.card-fund').findAll('.card-note > span').map(note => note.text())
+
+    // Masked by default
+    expect(fundNotes()).toEqual(['••••', '••••'])
+
+    await view.get('button[aria-label="显示资产金额"]').trigger('click')
+    expect(fundNotes()).toEqual(['−9,198.06', '−3.26%'])
+
+    // Switching to monthly scope uses monthly asset change without adding prior daily disclosure
+    await view.findAll('.change-scope button').find(button => button.text() === '本月')!.trigger('click')
+    expect(fundNotes()).toEqual(['+12,000.00', '+4.59%'])
   } finally {
     view.unmount()
   }

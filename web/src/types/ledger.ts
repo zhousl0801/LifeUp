@@ -44,6 +44,14 @@ export interface AssetChange {
   baselineAmount?: number | null
 }
 
+export interface PriorFundDisclosure {
+  date: string
+  profit: number
+  covered: number
+  total: number
+  complete: boolean
+}
+
 export interface MonthChange {
   from: string
   to: string
@@ -62,6 +70,7 @@ export interface MonthChange {
   netDeposit: number | null
   hasComparableData: boolean
   dayBreakdown?: DayChangeBreakdown | null
+  priorFundDisclosure?: PriorFundDisclosure | null
 }
 
 export interface DayChangeBreakdown {

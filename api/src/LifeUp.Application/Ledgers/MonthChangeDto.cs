@@ -35,6 +35,16 @@ public sealed record DayInvestmentChangeDto(
     decimal OpeningValue,
     decimal Adjustment);
 
+/// <summary>
+/// 最近已披露的基金日收益汇总（仅在最新披露日早于当日时随当日变化返回）。
+/// </summary>
+public sealed record PriorFundDisclosureDto(
+    DateOnly Date,
+    decimal Profit,
+    int Covered,
+    int Total,
+    bool Complete);
+
 public sealed record MonthChangeDto(
     DateOnly From,
     DateOnly To,
@@ -52,4 +62,5 @@ public sealed record MonthChangeDto(
     decimal? MarketValueChange = null,
     decimal? NetDeposit = null,
     bool HasComparableData = false,
-    DayChangeBreakdownDto? DayBreakdown = null);
+    DayChangeBreakdownDto? DayBreakdown = null,
+    PriorFundDisclosureDto? PriorFundDisclosure = null);

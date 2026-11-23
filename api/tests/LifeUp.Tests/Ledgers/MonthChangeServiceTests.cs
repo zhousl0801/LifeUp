@@ -88,6 +88,12 @@ public sealed class MonthChangeServiceTests
         var cashChange = Assert.Single(change.AssetChanges, item => item.AssetType == "cash");
         Assert.Equal(10000m, cashChange.BaselineAmount);
         Assert.Equal(500m, cashChange.Change);
+        var priorFundDisclosure = Assert.IsType<PriorFundDisclosureDto>(change.PriorFundDisclosure);
+        Assert.Equal(new DateOnly(2026, 10, 15), priorFundDisclosure.Date);
+        Assert.Equal(200m, priorFundDisclosure.Profit);
+        Assert.Equal(1, priorFundDisclosure.Covered);
+        Assert.Equal(1, priorFundDisclosure.Total);
+        Assert.True(priorFundDisclosure.Complete);
     }
 
     [Fact]
@@ -158,6 +164,7 @@ public sealed class MonthChangeServiceTests
         Assert.Equal(-500m, details.Gold?.Profit);
         Assert.Equal(25m, details.CashAdjustment);
         Assert.Equal(0m, details.OtherDifference);
+        Assert.Null(change.PriorFundDisclosure);
     }
 
     [Fact]
