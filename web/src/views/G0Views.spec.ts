@@ -281,7 +281,7 @@ test('restores a scrolled chart after the chart data has rendered', async () => 
     resolveStats({ points: [], incomeCategories: [], expenseCategories: [], coveredDays: 1, income: 0, expense: 202, expenseDailyAverage: 202 })
     await flushPromises()
     expect(view.get('.stats-panel').text()).toContain('¥202.00')
-    expect(view.findAll('.stats-direction button.active').map(button => button.text())).toContain('一级分类')
+    expect(view.findAll('[aria-label="分类汇总层级"] button.active').map(button => button.text())).toContain('一级')
     expect(scrollTo).toHaveBeenCalledWith({ top: 600 })
   } finally {
     view.unmount()

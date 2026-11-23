@@ -8,17 +8,16 @@ import { toast } from '../composables/useMessage'
 import AppNav from '../components/AppNav.vue'
 import AppIcon from '../components/AppIcon.vue'
 import CategoryIcon from '../components/CategoryIcon.vue'
-import MoneyAmount from '../components/MoneyAmount.vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import LedgerCalendar from '../components/LedgerCalendar.vue'
 import LedgerMonthlyBudget from '../components/LedgerMonthlyBudget.vue'
-import LedgerStatsChart from '../components/LedgerStatsChart.vue'
+import LedgerStatsPanel from '../components/LedgerStatsPanel.vue'
+import type { StatsChartMode } from '../components/LedgerStatsChart.vue'
 import { ExpenseCategories, IncomeCategories } from '../constants/categories'
 import type { EntryCategory } from '../types/category'
 import { formatBusinessDateWithWeekday, formatMoney, sumAmounts, todayInBusinessTimeZone } from '../utils/format'
-import { groupEntryStats } from '../utils/entryStatsGroups'
 import { takeLedgerReturn } from '../utils/ledgerReturn'
 import { formatPeriodLabel, periodStart, shiftAnchor } from '../utils/period'
 import type { EntryKind, EntryPeriod, EntryPeriodSummary, EntryStats, LedgerEntry } from '../types/entry'
@@ -31,7 +30,7 @@ interface LedgerContext {
   kind: 'all' | EntryKind
   category: string
   search: string
-  statsKind: EntryKind
+  statsKind: StatsChartMode
   statsByGroup: boolean
   page: number
   scrollTop: number
@@ -51,14 +50,23 @@ const periodOptions: Array<{ value: EntryPeriod; label: string }> = [
   { value: 'month', label: '月' },
   { value: 'year', label: '年' }
 ]
+const chartPeriodOptions: Array<{ value: EntryPeriod; label: string }> = [
+  { value: 'month', label: '月' },
+  { value: 'year', label: '年' }
+]
 
-const period = ref<EntryPeriod>(savedContext?.period ?? 'month')
+const initialView = savedContext?.view ?? 'calendar'
+const period = ref<EntryPeriod>(
+  initialView === 'chart' && savedContext?.period === 'day'
+    ? 'month'
+    : (savedContext?.period ?? 'month')
+)
 const anchor = ref(savedContext?.anchor ?? ledgerDate(route.query.date) ?? today)
-const view = ref<'calendar' | 'list' | 'chart'>(savedContext?.view ?? 'calendar')
+const view = ref<'calendar' | 'list' | 'chart'>(initialView)
 const selectedDate = ref(savedContext?.selectedDate ?? anchor.value)
 const displayExpense = computed(() =>
   period.value === 'month' || view.value !== 'list' ? stats.value?.expense ?? null : summary.value?.expense ?? null)
-const statsKind = ref<EntryKind>(savedContext?.statsKind ?? 'expense')
+const statsKind = ref<StatsChartMode>(savedContext?.statsKind ?? 'expense')
 const statsByGroup = ref(savedContext?.statsByGroup ?? false)
 const stats = ref<EntryStats | null>(null)
 const statsLoading = ref(false)
@@ -106,32 +114,6 @@ const categoryOptions = computed(() => {
   }
 
   return [...ExpenseCategories, ...IncomeCategories]
-})
-const statsCategories = computed(() => {
-  if (!stats.value) {
-    return []
-  }
-
-  const isIncome = statsKind.value === 'income'
-  const leaves = isIncome ? stats.value.incomeCategories : stats.value.expenseCategories
-  if (!statsByGroup.value) return leaves
-
-  const groups = isIncome ? stats.value.incomeGroups : stats.value.expenseGroups
-  return groups?.length ? groups : groupEntryStats(leaves, categoryItems.value, statsKind.value)
-})
-const statsTotal = computed(() => {
-  if (!stats.value) {
-    return 0
-  }
-
-  return statsKind.value === 'income' ? stats.value.income : stats.value.expense
-})
-const statsAverage = computed(() => {
-  if (!stats.value) {
-    return 0
-  }
-
-  return statsKind.value === 'income' ? stats.value.incomeDailyAverage : stats.value.expenseDailyAverage
 })
 const hasFilters = computed(() =>
   kindFilter.value !== 'all' || categoryFilter.value !== '' || search.value.trim() !== '')
@@ -251,6 +233,8 @@ function switchView(next: 'calendar' | 'list' | 'chart'): void {
     period.value = 'month'
     clearFilters()
     if (selectedDate.value.slice(0, 7) !== anchor.value.slice(0, 7)) selectedDate.value = anchor.value
+  } else if (next === 'chart' && period.value === 'day') {
+    period.value = 'month'
   }
   view.value = next
 }
@@ -258,7 +242,6 @@ function switchView(next: 'calendar' | 'list' | 'chart'): void {
 async function loadStats(): Promise<void> {
   const sequence = ++statsSequence
   statsLoading.value = true
-  stats.value = null
   statsError.value = ''
 
   try {
@@ -282,9 +265,9 @@ async function loadStats(): Promise<void> {
   }
 }
 
-function selectStatsCategory(category: string): void {
-  kindFilter.value = statsKind.value
-  categoryFilter.value = category
+function selectStatsCategory(payload: { kind: EntryKind; category: string }): void {
+  kindFilter.value = payload.kind
+  categoryFilter.value = payload.category
   view.value = 'list'
 }
 
@@ -432,7 +415,7 @@ function openEntry(entryId?: string): void {
       <RouterLink class="round-tool ledger-settings" :to="{ name: 'categories' }" aria-label="分类设置"><AppIcon name="settings" /></RouterLink>
     </header>
 
-    <section class="ledger-hero">
+    <section v-if="view !== 'chart'" class="ledger-hero">
       <LedgerMonthlyBudget v-if="period === 'month'"
         :month="anchor.slice(0, 7)" :today="today" :expense="displayExpense">
         <span class="ledger-hero-label">▣ 本月支出</span>
@@ -444,12 +427,24 @@ function openEntry(entryId?: string): void {
       </div>
     </section>
 
-    <section class="ledger-calendar-card">
+    <section v-if="view === 'chart'" class="chart-toolbar-card">
+      <div class="period-tabs" role="group" aria-label="图表周期">
+        <button v-for="item in chartPeriodOptions" :key="item.value" type="button"
+          :class="{ active: period === item.value }" @click="setPeriod(item.value)">{{ item.label }}</button>
+      </div>
+      <div class="toolbar-views">
+        <button type="button" class="round-tool" aria-label="收支图表" :aria-pressed="true" @click="switchView('chart')"><AppIcon name="chart" /></button>
+        <button type="button" class="round-tool" aria-label="账单列表" :aria-pressed="false" @click="switchView('list')"><AppIcon name="list" /></button>
+        <button type="button" class="round-tool" aria-label="收支日历" :aria-pressed="false" @click="switchView('calendar')"><AppIcon name="calendar" /></button>
+      </div>
+    </section>
+
+    <section v-else class="ledger-calendar-card">
       <header class="calendar-heading">
-        <strong><AppIcon :name="view === 'chart' ? 'chart' : view === 'list' ? 'list' : 'calendar'" />
-          {{ view === 'chart' ? '收支图表' : view === 'list' ? '账单列表' : '收支日历' }}
+        <strong><AppIcon :name="view === 'list' ? 'list' : 'calendar'" />
+          {{ view === 'list' ? '账单列表' : '收支日历' }}
         </strong>
-        <button type="button" class="round-tool" aria-label="收支图表" :aria-pressed="view === 'chart'" @click="switchView('chart')"><AppIcon name="chart" /></button>
+        <button type="button" class="round-tool" aria-label="收支图表" :aria-pressed="false" @click="switchView('chart')"><AppIcon name="chart" /></button>
         <button type="button" class="round-tool" aria-label="账单列表" :aria-pressed="view === 'list'" @click="switchView('list')"><AppIcon name="list" /></button>
         <button type="button" class="round-tool" aria-label="收支日历" :aria-pressed="view === 'calendar'" @click="switchView('calendar')"><AppIcon name="calendar" /></button>
       </header>
@@ -569,72 +564,27 @@ function openEntry(entryId?: string): void {
     </template>
 
     <template v-else>
-      <div class="stats-direction" role="tablist" aria-label="图表方向">
-        <button type="button" :class="{ active: statsKind === 'expense' }" @click="statsKind = 'expense'">支出</button>
-        <button type="button" :class="{ active: statsKind === 'income' }" @click="statsKind = 'income'">收入</button>
-      </div>
-
-      <div class="stats-direction" role="group" aria-label="分类汇总层级">
-        <button type="button" :class="{ active: statsByGroup }" @click="statsByGroup = true">一级分类</button>
-        <button type="button" :class="{ active: !statsByGroup }" @click="statsByGroup = false">二级分类</button>
-      </div>
-
       <LoadingState v-if="statsLoading && !stats" variant="chart" compact label="正在读取图表" />
-      <section v-else-if="statsError" class="state">
+      <section v-else-if="statsError && !stats" class="state">
         <p>{{ statsError }}</p>
         <LoadingButton class="secondary-button" :loading="statsLoading" loading-label="加载中…" @click="loadStats">重新加载</LoadingButton>
       </section>
 
-      <template v-else-if="stats">
-        <section class="stats-panel">
-          <div class="stats-head">
-            <h2>{{ statsKind === 'income' ? '收入' : '支出' }}</h2>
-            <b><MoneyAmount :value="statsTotal" /></b>
-          </div>
-          <p class="stats-meta">
-            日均 ¥{{ formatMoney(statsAverage) }} · 覆盖 {{ stats.coveredDays }} 天 · {{ periodLabel }}
-          </p>
-          <p v-if="stats.note" class="stats-note">{{ stats.note }}</p>
-        </section>
-
-        <section class="chart-card">
-          <div class="stats-head">
-            <h2>{{ statsKind === 'income' ? '收入趋势' : '支出趋势' }}</h2>
-            <span class="tiny">{{ stats.period === 'day' ? '当天' : stats.period === 'month' ? '按日' : '按月' }}</span>
-          </div>
-          <p v-if="stats.period === 'day'" class="state-inline">日视图只显示当天合计，切换月或年可查看趋势。</p>
-          <LedgerStatsChart
-            v-else-if="stats.points.length"
-            :points="stats.points"
-            :direction="statsKind"
-            :period="stats.period"
-            :total="statsTotal"
-          />
-          <p v-else class="state-inline">该周期还没有记录。</p>
-        </section>
-
-        <section class="ranking-panel" :class="{ income: statsKind === 'income' }">
-          <div class="stats-head">
-            <h2>分类排行</h2>
-            <span class="tiny">{{ statsCategories.length }} 类</span>
-          </div>
-          <button
-            v-for="category in statsCategories"
-            :key="category.category"
-            type="button"
-            class="rank-row"
-            :disabled="statsByGroup" @click="selectStatsCategory(category.category)"
-          >
-            <span class="rank-top">
-              <span>{{ category.category }}</span>
-              <b>¥{{ formatMoney(category.amount) }}</b>
-            </span>
-            <span class="rank-bar"><span :style="{ width: `${Math.max(category.share, 1)}%` }" /></span>
-            <small>{{ category.count }} 笔 · {{ category.share.toFixed(2) }}%</small>
-          </button>
-          <p v-if="!statsCategories.length" class="state-inline">该周期还没有{{ statsKind === 'income' ? '收入' : '支出' }}记录。</p>
-        </section>
-      </template>
+      <LedgerStatsPanel
+        v-else-if="stats"
+        v-model:mode="statsKind"
+        v-model:by-group="statsByGroup"
+        :stats="stats"
+        :loading="statsLoading"
+        :period="period"
+        :anchor="anchor"
+        :today="today"
+        :period-label="periodLabel"
+        :categories="categoryItems"
+        :category-icons-by-kind="categoryIconsByKind"
+        @open-entry="openEntry"
+        @filter-list="selectStatsCategory"
+      />
     </template>
     <AppNav />
   </main>
@@ -663,12 +613,24 @@ function openEntry(entryId?: string): void {
 }
 .round-tool .app-icon, .calendar-heading strong .app-icon { width: 17px; height: 17px; }
 .ledger-settings { background: color-mix(in srgb, var(--color-bg-surface) 68%, transparent); }
-.ledger-hero, .ledger-calendar-card { background: var(--color-bg-surface); border-radius: 24px; padding: 16px; }
+.ledger-hero, .ledger-calendar-card, .chart-toolbar-card { background: var(--color-bg-surface); border-radius: 24px; padding: 16px; }
 .ledger-hero { margin-bottom: 12px; }
 .ledger-hero-copy { display: grid; gap: 5px; }
 .ledger-hero-amount { font-size: clamp(1.5rem, 7vw, 2.15rem); line-height: 1.12; overflow-wrap: anywhere; }
 .ledger-hero-label { font-weight: 650; }
 .ledger-calendar-card { padding: 12px; margin-bottom: 16px; }
+.chart-toolbar-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow-card);
+}
+.toolbar-views { display: flex; align-items: center; gap: 6px; }
+.toolbar-views .round-tool { background: var(--color-bg-subtle); }
+.toolbar-views .round-tool[aria-pressed='true'] { background: color-mix(in srgb, var(--ledger-accent) 15%, var(--color-bg-surface)); }
 .calendar-heading { margin-bottom: 8px; }
 .calendar-heading strong { display: flex; gap: 6px; align-items: center; margin-right: auto; }
 .calendar-heading .round-tool { background: var(--color-bg-subtle); }
@@ -711,70 +673,6 @@ function openEntry(entryId?: string): void {
   font-size: var(--text-footnote);
 }
 
-.stats-direction {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.stats-direction button {
-  min-height: 44px;
-  padding: 0 20px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-bg-surface);
-  color: var(--color-text-secondary);
-  font-size: var(--text-subhead);
-  font-weight: 600;
-  box-shadow: 0 2px 10px var(--color-shadow);
-}
-
-.stats-direction button.active {
-  background: var(--color-brand-soft);
-  color: var(--color-brand);
-  font-weight: 700;
-  box-shadow: none;
-}
-
-.stats-panel,
-.chart-card,
-.ranking-panel {
-  margin-bottom: 14px;
-  padding: 20px;
-  border: 0;
-  border-radius: var(--radius-card);
-  background: var(--color-bg-surface);
-  box-shadow: var(--shadow-card);
-}
-
-.stats-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.stats-head h2 {
-  margin: 0;
-  font-size: 1.125rem;
-  font-weight: 700;
-  letter-spacing: -0.3px;
-}
-
-.stats-head b {
-  font-size: 1.25rem;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  font-variant-numeric: tabular-nums;
-}
-
-.stats-head .tiny {
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-  font-weight: 500;
-}
-
 .ledger-page > .secondary-button {
   display: block;
   width: 100%;
@@ -782,84 +680,11 @@ function openEntry(entryId?: string): void {
   margin-top: 4px;
 }
 
-.stats-meta {
-  margin: 0;
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-  line-height: 1.7;
-}
-
-.stats-note {
-  margin: 8px 0 0;
-  color: var(--color-warning);
-  font-size: var(--text-caption);
-  line-height: 1.6;
-}
-
 .state-inline {
   margin: 8px 0 4px;
   color: var(--color-text-secondary);
   font-size: var(--text-footnote);
   line-height: 1.7;
-}
-
-.rank-row {
-  display: block;
-  box-sizing: border-box;
-  width: 100%;
-  padding: 12px 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-}
-
-.rank-row + .rank-row {
-  border-top: 1px solid var(--color-border-subtle);
-}
-
-.rank-row:hover {
-  background: var(--color-bg-hover);
-}
-
-.rank-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 10px;
-  font-size: var(--text-footnote);
-  font-weight: 600;
-}
-
-.rank-top b {
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-}
-
-.rank-bar {
-  display: block;
-  height: 5px;
-  margin: 6px 0 4px;
-  overflow: hidden;
-  border-radius: var(--radius-tag);
-  background: var(--color-bg-subtle);
-}
-
-.rank-bar span {
-  display: block;
-  height: 100%;
-  border-radius: var(--radius-tag);
-  background: var(--color-brand);
-}
-
-.ranking-panel.income .rank-bar span {
-  background: var(--color-finance-income);
-}
-
-.rank-row small {
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
 }
 
 .period-panel {

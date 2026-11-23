@@ -31,7 +31,17 @@ public interface ILedgerRepository
 
     Task<EntryTotals> GetEntryTotalsAsync(Guid ledgerId, DateOnly from, DateOnly to, CancellationToken cancellationToken);
 
-    Task<EntryPage> GetEntryPageAsync(Guid ledgerId, DateOnly from, DateOnly to, LedgerEntryKind? kind, string? category, string? search, int page, int pageSize, CancellationToken cancellationToken);
+    Task<EntryPage> GetEntryPageAsync(
+        Guid ledgerId,
+        DateOnly from,
+        DateOnly to,
+        LedgerEntryKind? kind,
+        string? category,
+        string? search,
+        int page,
+        int pageSize,
+        string? sort = null,
+        CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<AssetTransaction>> GetAllAssetTransactionsAsync(Guid ledgerId, CancellationToken cancellationToken);
 

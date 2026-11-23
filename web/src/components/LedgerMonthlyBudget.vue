@@ -8,7 +8,7 @@ import { formatMoney, parseAmount, sumAmounts } from '../utils/format'
 import BottomSheet from './BottomSheet.vue'
 import LoadingButton from './LoadingButton.vue'
 
-const props = defineProps<{ month: string; today: string; expense: number | null }>()
+const props = defineProps<{ month: string; today: string; expense: number | null; compact?: boolean }>()
 const budget = ref<number | null>(null)
 const loading = ref(true)
 const saving = ref(false)
@@ -102,7 +102,47 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="monthly-budget">
+  <div v-if="compact" class="monthly-budget-compact">
+    <div v-if="loadError" class="budget-compact-error">
+      <small>{{ loadError }}</small>
+      <button type="button" class="budget-compact-link" @click="load">重试</button>
+    </div>
+    <template v-else-if="!loading">
+      <button
+        v-if="budget !== null"
+        type="button"
+        class="budget-compact-bar"
+        :class="{ over: remaining !== null && remaining < 0 }"
+        :aria-label="`更改月度预算，当前 ${budgetAmount}${progressLabel ? '，已用 ' + progressLabel : ''}`"
+        @click="edit"
+      >
+        <span class="budget-compact-track">
+          <span class="budget-compact-fill" :style="{ width: `${Math.min(percentage ?? 0, 100)}%` }" />
+        </span>
+        <span class="budget-compact-text">
+          <span>预算已用 {{ progressLabel || '0%' }}</span>
+          <small v-if="remaining !== null">{{ remaining < 0 ? '超支' : '剩' }} ¥{{ formatMoney(Math.abs(remaining)) }} ›</small>
+        </span>
+      </button>
+      <button v-else type="button" class="budget-compact-set" @click="edit">设置本月预算 ›</button>
+    </template>
+
+    <BottomSheet :open="open" :title="monthLabel + '预算'" subtitle="只应用于这个月。"
+      close-icon :close-disabled="saving" @close="open = false">
+      <form class="budget-form" @submit.prevent="submit">
+        <label for="monthly-budget-amount">预算金额（元）</label>
+        <input id="monthly-budget-amount" v-model="draft" type="text" inputmode="decimal"
+          maxlength="18" placeholder="输入这个月的预算" :disabled="saving" />
+        <p v-if="formError" role="alert">{{ formError }}</p>
+        <div class="budget-form-actions" :class="{ 'can-clear': budget !== null }">
+          <button v-if="budget !== null" type="button" class="secondary-button" :disabled="saving" @click="save(null)">取消预算</button>
+          <LoadingButton type="submit" class="primary-button" :loading="saving">保存</LoadingButton>
+        </div>
+      </form>
+    </BottomSheet>
+  </div>
+
+  <div v-else class="monthly-budget">
     <div class="budget-copy">
       <slot />
       <small v-if="remaining !== null" class="budget-remaining" :class="{ over: remaining < 0 }">
@@ -191,5 +231,33 @@ onBeforeUnmount(() => {
 .budget-form input:focus-visible { outline: none; box-shadow: none; }
 .budget-form p { grid-column: 1 / -1; margin: 0; color: var(--color-danger); font-size: var(--text-footnote); }
 .budget-form-actions { grid-column: 1 / -1; display: grid; gap: 8px; }
-.budget-form-actions.can-clear { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.budget-form-actions.can-clear { grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.monthly-budget-compact { margin-top: 12px; }
+.budget-compact-error {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  color: var(--color-text-secondary); font-size: var(--text-caption);
+}
+.budget-compact-link, .budget-compact-set {
+  border: 0; padding: 4px 0; background: transparent;
+  color: var(--color-brand); font-size: var(--text-caption); font-weight: 600;
+}
+.budget-compact-bar {
+  display: grid; gap: 6px; width: 100%; padding: 0; border: 0; background: transparent; text-align: left;
+}
+.budget-compact-track {
+  display: block; width: 100%; height: 6px; overflow: hidden;
+  border-radius: var(--radius-pill); background: var(--color-bg-subtle);
+}
+.budget-compact-fill {
+  display: block; height: 100%; border-radius: var(--radius-pill);
+  background: var(--ledger-accent, var(--color-brand));
+  transition: width var(--motion-base) var(--ease-standard);
+}
+.budget-compact-bar.over .budget-compact-fill { background: var(--color-danger); }
+.budget-compact-text {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  color: var(--color-text-secondary); font-size: var(--text-caption); font-variant-numeric: tabular-nums;
+}
+.budget-compact-bar.over .budget-compact-text small { color: var(--color-danger); font-weight: 600; }
 </style>

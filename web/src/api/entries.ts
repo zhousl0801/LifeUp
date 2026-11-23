@@ -18,6 +18,7 @@ export interface EntryPeriodQuery {
   search?: string
   page?: number
   pageSize?: number
+  sort?: 'dateDesc' | 'amountDesc'
 }
 
 export function fetchEntryPeriod(query: EntryPeriodQuery): Promise<EntryPeriodSummary> {
@@ -38,6 +39,10 @@ export function fetchEntryPeriod(query: EntryPeriodQuery): Promise<EntryPeriodSu
 
   if (query.search) {
     params.set('search', query.search)
+  }
+
+  if (query.sort) {
+    params.set('sort', query.sort)
   }
 
   return apiRequest<EntryPeriodSummary>(`/api/ledger/entries?${params.toString()}`)

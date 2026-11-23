@@ -31,6 +31,7 @@ public sealed class LedgerEntriesController : ControllerBase
         [FromQuery] string? search = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 100,
+        [FromQuery] string? sort = null,
         CancellationToken cancellationToken = default)
     {
         var result = await _ledgerEntryService.GetPeriodAsync(
@@ -41,7 +42,8 @@ public sealed class LedgerEntriesController : ControllerBase
             search,
             cancellationToken,
             page,
-            pageSize);
+            pageSize,
+            sort);
 
         if (result is null)
         {

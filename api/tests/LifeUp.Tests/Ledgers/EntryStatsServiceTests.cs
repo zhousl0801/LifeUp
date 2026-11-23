@@ -97,6 +97,74 @@ public sealed class EntryStatsServiceTests
         Assert.Equal("账本自 2026-09-01 起，周期前段未覆盖。", stats.Note);
     }
 
+    [Fact]
+    public async Task MonthStats_CompareWithSameProgressInPreviousMonthAndReturnTopEntries()
+    {
+        var context = await CreateAsync(new DateOnly(2026, 8, 1));
+        await CreateEntryAsync(context, LedgerEntryKind.Expense, "餐饮", 200m, new DateOnly(2026, 9, 5));
+        await CreateEntryAsync(context, LedgerEntryKind.Expense, "餐饮", 999m, new DateOnly(2026, 9, 25));
+        await CreateEntryAsync(context, LedgerEntryKind.Income, "工资", 1000m, new DateOnly(2026, 9, 10));
+
+        await CreateEntryAsync(context, LedgerEntryKind.Expense, "餐饮", 150m, new DateOnly(2026, 10, 3));
+        await CreateEntryAsync(context, LedgerEntryKind.Expense, "购物", 350m, new DateOnly(2026, 10, 8));
+        await CreateEntryAsync(context, LedgerEntryKind.Expense, "交通", 50m, new DateOnly(2026, 10, 12));
+        await CreateEntryAsync(context, LedgerEntryKind.Expense, "娱乐", 80m, new DateOnly(2026, 10, 15));
+        await CreateEntryAsync(context, LedgerEntryKind.Expense, "日用", 120m, new DateOnly(2026, 10, 16));
+        await CreateEntryAsync(context, LedgerEntryKind.Expense, "医疗", 30m, new DateOnly(2026, 10, 18));
+        await CreateEntryAsync(context, LedgerEntryKind.Income, "工资", 1200m, new DateOnly(2026, 10, 10));
+
+        var stats = await context.Stats.GetAsync(EntryPeriod.Month, null, CancellationToken.None);
+
+        Assert.NotNull(stats);
+        Assert.NotNull(stats.Comparison);
+        Assert.True(stats.Comparison.Comparable);
+        Assert.Equal("较上月同期", stats.Comparison.Label);
+        Assert.Equal(new DateOnly(2026, 9, 1), stats.Comparison.PreviousFrom);
+        Assert.Equal(new DateOnly(2026, 9, 21), stats.Comparison.PreviousTo);
+        Assert.Equal(200m, stats.Comparison.PreviousExpense);
+        Assert.Equal(1000m, stats.Comparison.PreviousIncome);
+        Assert.Equal(580m, stats.Comparison.ExpenseDelta);
+        Assert.Equal(290m, stats.Comparison.ExpenseDeltaPercent);
+        Assert.Equal(200m, stats.Comparison.IncomeDelta);
+        Assert.Equal(20m, stats.Comparison.IncomeDeltaPercent);
+
+        var dining = stats.ExpenseCategories.Single(category => category.Category == "餐饮");
+        Assert.Equal(200m, dining.PreviousAmount);
+        Assert.False(string.IsNullOrWhiteSpace(dining.ParentGroup));
+
+        Assert.NotNull(stats.TopExpenses);
+        Assert.Equal(5, stats.TopExpenses.Count);
+        Assert.Equal(new[] { 350m, 150m, 120m, 80m, 50m }, stats.TopExpenses.Select(item => item.Amount).ToArray());
+
+        var sortedPage = await context.Entries.GetPeriodAsync(
+            EntryPeriod.Month,
+            null,
+            LedgerEntryKind.Expense,
+            null,
+            null,
+            CancellationToken.None,
+            sort: "amountDesc");
+
+        Assert.NotNull(sortedPage);
+        Assert.Equal(350m, sortedPage.Entries[0].Amount);
+        Assert.Equal(30m, sortedPage.Entries[^1].Amount);
+    }
+
+    [Fact]
+    public async Task MonthStats_WhenLedgerStartsAfterPreviousMonthStart_MarkComparisonNotComparable()
+    {
+        var context = await CreateAsync(new DateOnly(2026, 9, 15));
+        await CreateEntryAsync(context, LedgerEntryKind.Expense, "餐饮", 100m, new DateOnly(2026, 10, 5));
+
+        var stats = await context.Stats.GetAsync(EntryPeriod.Month, null, CancellationToken.None);
+
+        Assert.NotNull(stats);
+        Assert.NotNull(stats.Comparison);
+        Assert.False(stats.Comparison.Comparable);
+        Assert.Null(stats.Comparison.ExpenseDelta);
+        Assert.Null(stats.ExpenseCategories.Single().PreviousAmount);
+    }
+
     private static Task CreateEntryAsync(
         TestContext context,
         LedgerEntryKind kind,

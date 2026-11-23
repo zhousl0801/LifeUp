@@ -127,13 +127,26 @@ internal sealed class FakeLedgerRepository : ILedgerRepository
         return new EntryTotals(entries.Where(entry => entry.Kind == LedgerEntryKind.Income).Sum(entry => entry.Amount), entries.Where(entry => entry.Kind == LedgerEntryKind.Expense).Sum(entry => entry.Amount), entries.Count);
     }
 
-    public async Task<EntryPage> GetEntryPageAsync(Guid ledgerId, DateOnly from, DateOnly to, LedgerEntryKind? kind, string? category, string? search, int page, int pageSize, CancellationToken cancellationToken)
+    public async Task<EntryPage> GetEntryPageAsync(
+        Guid ledgerId,
+        DateOnly from,
+        DateOnly to,
+        LedgerEntryKind? kind,
+        string? category,
+        string? search,
+        int page,
+        int pageSize,
+        string? sort = null,
+        CancellationToken cancellationToken = default)
     {
         var entries = await GetEntriesAsync(ledgerId, from, to, cancellationToken);
         var filtered = entries.Where(entry => kind is null || entry.Kind == kind)
             .Where(entry => string.IsNullOrWhiteSpace(category) || string.Equals(entry.Category, category.Trim(), StringComparison.OrdinalIgnoreCase))
             .Where(entry => string.IsNullOrWhiteSpace(search) || entry.Category.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase) || (entry.Note?.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase) ?? false)).ToList();
-        return new EntryPage(filtered.OrderByDescending(entry => entry.BusinessDate).ThenByDescending(entry => entry.CreatedAt).ThenBy(entry => entry.Id).Skip((page - 1) * pageSize).Take(pageSize).ToList(), filtered.Count);
+        var ordered = string.Equals(sort, "amountDesc", StringComparison.OrdinalIgnoreCase)
+            ? filtered.OrderByDescending(entry => entry.Amount).ThenByDescending(entry => entry.BusinessDate).ThenBy(entry => entry.Id)
+            : filtered.OrderByDescending(entry => entry.BusinessDate).ThenByDescending(entry => entry.CreatedAt).ThenBy(entry => entry.Id);
+        return new EntryPage(ordered.Skip((page - 1) * pageSize).Take(pageSize).ToList(), filtered.Count);
     }
 
     public Task<IReadOnlyList<AssetTransaction>> GetAllAssetTransactionsAsync(Guid ledgerId, CancellationToken cancellationToken)

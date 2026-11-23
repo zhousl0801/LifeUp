@@ -27,7 +27,8 @@ public sealed class LedgerEntryService
         string? search,
         CancellationToken cancellationToken,
         int page = 1,
-        int pageSize = 100)
+        int pageSize = 100,
+        string? sort = null)
     {
         var ledger = await _ledgerRepository.GetAsync(cancellationToken);
 
@@ -41,7 +42,17 @@ public sealed class LedgerEntryService
         page = Math.Clamp(page, 1, 1_000_000);
         pageSize = Math.Clamp(pageSize, 1, 200);
         var totals = await _ledgerRepository.GetEntryTotalsAsync(ledger.Id, from, to, cancellationToken);
-        var entries = await _ledgerRepository.GetEntryPageAsync(ledger.Id, from, to, kind, category, search, page, pageSize, cancellationToken);
+        var entries = await _ledgerRepository.GetEntryPageAsync(
+            ledger.Id,
+            from,
+            to,
+            kind,
+            category,
+            search,
+            page,
+            pageSize,
+            sort,
+            cancellationToken);
 
         return new EntryPeriodDto(period, from, to, totals.Income, totals.Expense, totals.Income - totals.Expense,
             entries.Items.Select(Map).ToList(), page, pageSize, entries.TotalCount);
