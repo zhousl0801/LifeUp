@@ -599,3 +599,38 @@ test('keeps the rendered trend period selected until the latest request finishes
   expect(view.get('.chart-readout').text()).toContain('¥420,000.00')
   view.unmount()
 })
+
+test('mounts the baseline chart while trend is loading and reuses cached trend on return', async () => {
+  const start = shift(today, -30)
+  mocks.ledger.mockResolvedValue(overview(start))
+  let finishInitialTrend!: (value: AssetTrend) => void
+  mocks.trend.mockReturnValueOnce(new Promise(resolve => { finishInitialTrend = resolve }))
+
+  const pinia = createPinia()
+  const first = mount(HomeView, { global: { plugins: [pinia] } })
+  await flushPromises()
+
+  expect(first.find('.chart-stub').exists()).toBe(true)
+  expect(first.find('.loading-state.is-chart').exists()).toBe(false)
+  expect(first.get('.chart-readout').text()).toContain('正在读取7日趋势')
+
+  finishInitialTrend({ ...trend(start), range: 'week', points: [point(today, { totalAssets: 360000 })] })
+  await flushPromises()
+  await first.get('button[aria-label="显示资产金额"]').trigger('click')
+  expect(first.get('.chart-readout').text()).toContain('¥360,000.00')
+  first.unmount()
+
+  let finishRefreshTrend!: (value: AssetTrend) => void
+  mocks.trend.mockReturnValueOnce(new Promise(resolve => { finishRefreshTrend = resolve }))
+
+  const returned = mount(HomeView, { global: { plugins: [pinia] } })
+  await flushPromises()
+  expect(returned.find('.chart-stub').exists()).toBe(true)
+  expect(returned.get('.chart-readout').text()).toContain('¥360,000.00')
+  expect(returned.get('.chart-readout').text()).not.toContain('正在读取')
+
+  finishRefreshTrend({ ...trend(start), range: 'week', points: [point(today, { totalAssets: 365000 })] })
+  await flushPromises()
+  expect(returned.get('.chart-readout').text()).toContain('¥365,000.00')
+  returned.unmount()
+})

@@ -36,3 +36,47 @@ test('selecting a trend date reports the current point without changing its fina
   view.unmount()
   expect(chart.dispose).toHaveBeenCalledOnce()
 })
+
+test('renders baseline dots while loading and transitions to the line when data arrives', async () => {
+  chart.on.mockClear()
+  chart.setOption.mockClear()
+  chart.dispose.mockClear()
+  runtime.load.mockResolvedValue({ init: () => chart })
+
+  const view = mount(AssetTrendChart, {
+    props: { trend: null, placeholderRange: 'week', placeholderEndDate: '2026-10-07', variant: 'hero' }
+  })
+  await flushPromises()
+
+  expect(chart.setOption).toHaveBeenCalledWith(
+    expect.objectContaining({
+      yAxis: expect.objectContaining({ min: 0, max: 1 }),
+      series: [expect.objectContaining({ data: [0, 0, 0, 0, 0, 0, 0], showSymbol: true })]
+    }),
+    { notMerge: false, replaceMerge: ['yAxis'] }
+  )
+
+  const select = chart.on.mock.calls[0]![1] as (event: unknown) => void
+  select({ axesInfo: [{ axisDim: 'x', axisIndex: 0, value: 0 }] })
+  expect(view.emitted('select')).toBeUndefined()
+
+  const point = {
+    date: '2026-10-07', totalAssets: 2000, knownTotalAssets: 2000, cash: 2000,
+    provident: null, fundValue: 0, fundPending: 0, fundPendingArrival: 0,
+    goldValue: 0, goldPendingArrival: 0, isComplete: true,
+    hasCash: true, hasProvident: false, hasFunds: false, hasGold: false
+  }
+  await view.setProps({ trend: { range: 'week', from: point.date, to: point.date, points: [point], notes: [] } })
+
+  expect(chart.setOption).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      yAxis: expect.objectContaining({ scale: true }),
+      series: [expect.objectContaining({ data: [2000], showSymbol: false })]
+    }),
+    { notMerge: false, replaceMerge: ['yAxis'] }
+  )
+
+  select({ axesInfo: [{ axisDim: 'x', axisIndex: 0, value: 0 }] })
+  expect(view.emitted('select')?.[0]).toEqual([point])
+  view.unmount()
+})

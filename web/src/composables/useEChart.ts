@@ -9,6 +9,7 @@ export interface UseEChartOptions {
   deep?: boolean
   flush?: 'pre' | 'post' | 'sync'
   resizeOnUpdate?: boolean
+  setOptionOpts?: { notMerge?: boolean; replaceMerge?: string | string[] }
   onInit?: (chart: ECharts) => void
 }
 
@@ -26,7 +27,7 @@ export function useEChart(
   }
 
   function render(): void {
-    chart?.setOption(buildOption(), { notMerge: true })
+    chart?.setOption(buildOption(), options.setOptionOpts ?? { notMerge: true })
   }
 
   onMounted(() => {

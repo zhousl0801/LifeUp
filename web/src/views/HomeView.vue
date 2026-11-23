@@ -20,7 +20,7 @@ import { useLedgerStore } from '../stores/ledger'
 import { addAmounts, amountTone, formatBusinessDate, formatMoney, formatSignedMoney, subtractAmounts, todayInBusinessTimeZone } from '../utils/format'
 import { buildAssetTrend, trendAmountLabel } from '../utils/trend'
 import type { DayInvestmentChange, MonthChange } from '../types/ledger'
-import type { AssetTrend, AssetTrendPoint, TrendRange } from '../types/trend'
+import type { AssetTrendPoint, TrendRange } from '../types/trend'
 
 const rangeOptions: { value: TrendRange; label: string }[] = [
   { value: 'week', label: '7日' },
@@ -31,10 +31,9 @@ const rangeOptions: { value: TrendRange; label: string }[] = [
 
 const router = useRouter()
 const ledgerStore = useLedgerStore()
-const { overview, isLoading, errorMessage } = storeToRefs(ledgerStore)
+const { overview, isLoading, errorMessage, trendRange, trendCache } = storeToRefs(ledgerStore)
 const today = todayInBusinessTimeZone()
-const trend = ref<AssetTrend | null>(null)
-const trendRange = ref<TrendRange>('week')
+const trend = computed(() => trendCache.value[trendRange.value] ?? null)
 const { amountsMasked } = storeToRefs(useHomePreferencesStore())
 const trendSelection = ref<AssetTrendPoint | null>(null)
 const pendingTrendRange = ref<TrendRange | null>(null)
@@ -214,6 +213,10 @@ async function loadLedger(): Promise<void> {
 
 async function loadTrend(range: TrendRange): Promise<void> {
   const sequence = ++trendSequence
+  if (trendCache.value[range] && trendRange.value !== range) {
+    trendRange.value = range
+    trendSelection.value = null
+  }
   pendingTrendRange.value = range
   trendError.value = ''
 
@@ -221,8 +224,7 @@ async function loadTrend(range: TrendRange): Promise<void> {
     const result = await fetchAssetTrend(range)
     if (sequence !== trendSequence) return
 
-    trendRange.value = range
-    trend.value = result
+    ledgerStore.setTrend(range, result)
     trendSelection.value = null
   } catch {
     if (sequence === trendSequence) {
@@ -416,8 +418,8 @@ onBeforeUnmount(() => {
           <h2 class="sr-only">资产趋势</h2>
 
           <template v-if="trendReady">
-            <div v-if="trendLoading && trend" class="chart-readout" role="status">
-              正在读取{{ pendingTrendLabel }}趋势
+            <div v-if="trendLoading && (!trend || pendingTrendRange !== trendRange)" class="chart-readout" role="status">
+              正在读取{{ pendingTrendLabel ?? '' }}趋势
             </div>
             <div v-else-if="trend" class="chart-readout">
               <span>{{ selectedPoint ? formatBusinessDate(selectedPoint.date) : '按日重算' }}</span>
@@ -425,10 +427,11 @@ onBeforeUnmount(() => {
                 {{ selectedPoint?.value != null && selectedPoint.source.totalAssets === null ? '已记录资产 ' : '' }}{{ trendAmountLabel(selectedPoint, amountsMasked) }}
               </b>
             </div>
-            <LoadingState v-if="trendLoading && !trend" variant="chart" compact label="正在读取趋势" />
             <AssetTrendChart
-              v-else-if="trend && assetTrendSeries"
+              v-if="(trend && assetTrendSeries) || (trendLoading && !trendError)"
               :trend="trend"
+              :placeholder-range="pendingTrendRange ?? trendRange"
+              :placeholder-end-date="today"
               variant="hero"
               :amounts-masked="amountsMasked"
               @select="selectPoint"

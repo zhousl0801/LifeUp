@@ -45,6 +45,90 @@ export function trendTooltip(point: DailyAssetPoint, amountsMasked = false): str
   return `${point.date}<br/>${label} ${trendAmountLabel(point, amountsMasked)}`
 }
 
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+export function buildTrendPlaceholderDates(endDate: string, count = 7): string[] {
+  const end = new Date(`${endDate}T00:00:00Z`)
+  if (Number.isNaN(end.getTime()) || count <= 0) {
+    return Array.from({ length: Math.max(1, count) }, (_, index) => String(index))
+  }
+
+  return Array.from({ length: count }, (_, index) => {
+    const day = new Date(end)
+    day.setUTCDate(end.getUTCDate() - (count - 1 - index))
+    return day.toISOString().slice(0, 10)
+  })
+}
+
+export function buildTrendPlaceholderOption(
+  range: TrendRange,
+  endDate: string,
+  variant: ChartThemeVariant = 'default'
+) {
+  const theme = chartTheme(variant)
+  const dates = buildTrendPlaceholderDates(endDate, 7)
+  const isHero = variant === 'hero'
+
+  return {
+    animation: false,
+    grid: isHero
+      ? { left: 7, right: 7, top: 10, bottom: 8 }
+      : { left: 10, right: 46, top: 28, bottom: 24 },
+    tooltip: {
+      show: false,
+      trigger: 'axis'
+    },
+    xAxis: {
+      type: 'category',
+      boundaryGap: false,
+      data: dates,
+      axisLabel: {
+        show: !isHero,
+        color: theme.text,
+        fontSize: chartFontSize(12),
+        formatter: (value: string) => trendAxisLabel(value, range)
+      },
+      axisLine: { show: !isHero, lineStyle: { color: theme.axis } },
+      axisTick: { show: false }
+    },
+    yAxis: {
+      type: 'value',
+      min: 0,
+      max: 1,
+      axisLabel: { show: false },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: { show: false }
+    },
+    series: [
+      {
+        id: 'asset-total',
+        name: '资产合计',
+        type: 'line',
+        data: dates.map(() => 0),
+        showSymbol: true,
+        symbol: 'circle',
+        symbolSize: 6,
+        silent: true,
+        connectNulls: false,
+        smooth: false,
+        lineStyle: { width: 2, color: theme.brand, opacity: 0.45 },
+        itemStyle: { color: theme.brand, opacity: 0.85 },
+        areaStyle: { opacity: 0 },
+        markPoint: {
+          silent: true,
+          label: { show: false },
+          data: []
+        }
+      }
+    ]
+  }
+}
+
 export function buildTrendOption(
   trend: AssetTrend,
   series: ReturnType<typeof buildAssetTrend>,
@@ -55,13 +139,18 @@ export function buildTrendOption(
   const dates = series.points.map((point) => point.date)
   const values = series.points.map((point) => point.value)
   const isHero = variant === 'hero'
+  const reducedMotion = prefersReducedMotion()
 
   return {
-    animation: false,
+    animation: !reducedMotion,
+    animationDuration: 0,
+    animationDurationUpdate: reducedMotion ? 0 : 550,
+    animationEasingUpdate: 'cubicOut',
     grid: isHero
       ? { left: 7, right: 7, top: 10, bottom: 8 }
       : { left: 10, right: 46, top: 28, bottom: 24 },
     tooltip: {
+      show: true,
       trigger: 'axis',
       confine: true,
       backgroundColor: theme.tooltipBg,
@@ -101,15 +190,18 @@ export function buildTrendOption(
     },
     series: [
       {
+        id: 'asset-total',
         name: '资产合计',
         type: 'line',
         data: values,
         showSymbol: false,
+        silent: false,
         connectNulls: false,
         smooth: false,
-        lineStyle: { width: 2, color: theme.brand },
-        itemStyle: { color: theme.brand },
+        lineStyle: { width: 2, color: theme.brand, opacity: 1 },
+        itemStyle: { color: theme.brand, opacity: 1 },
         areaStyle: {
+          opacity: 1,
           color: {
             type: 'linear',
             x: 0,
