@@ -3,8 +3,7 @@ import { computed, useId } from 'vue'
 import { RouterLink } from 'vue-router'
 import AppIcon from './AppIcon.vue'
 import LoadingButton from './LoadingButton.vue'
-import AnimatedMoney from './AnimatedMoney.vue'
-import { amountTone, formatMaskedMoney, formatMoney, formatSignedMoney, sumAmounts } from '../utils/format'
+import { amountTone, calculatePercent, formatMoney, formatPercent, formatSignedMoney, MaskedMoney, sumAmounts } from '../utils/format'
 import type { AssetChange, AssetKey, LedgerOverview } from '../types/ledger'
 
 interface DistributionRow {
@@ -29,7 +28,6 @@ const props = defineProps<{
   cards?: boolean
   amountsMasked?: boolean
   editable?: boolean
-  hideFundCount?: boolean
   busyKey?: AssetKey | null
 }>()
 
@@ -66,7 +64,7 @@ const rows = computed<DistributionRow[]>(() => {
       amount: ledger.fund.amount,
       configured: ledger.fund.isConfigured,
       notHeld: ledger.fund.notHeld,
-      note: fundNote(ledger.fund.note ?? '尚未录入'),
+      note: ledger.fund.note ?? '尚未录入',
       change: changeByKey.get('fund') ?? null,
       percent: percentOf(ledger.fund.amount)
     },
@@ -114,6 +112,7 @@ const barSegments = computed(() => rows.value
   .map((row) => ({ key: row.key, width: row.percent ?? 0 })))
 
 const changePrefix = computed(() => props.changeScope === 'day' ? '较昨日' : '较上月')
+const wholeYuan = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 0 })
 
 const gradientId = useId()
 
@@ -124,16 +123,6 @@ const barLabel = computed(() => {
 
   return parts.length ? `资产占比：${parts.join('、')}` : '暂无可计算资产占比'
 })
-
-function fundNote(note: string): string {
-  if (!props.hideFundCount) {
-    return note
-  }
-
-  const withoutCount = note.replace(/^持有\s*\d+\s*只基金\s*(?:·\s*)?/, '').trim()
-
-  return withoutCount || '按最新净值估值'
-}
 
 function amountLabel(row: DistributionRow, masked = false): string {
   if (row.notHeld) {
@@ -146,10 +135,10 @@ function amountLabel(row: DistributionRow, masked = false): string {
 
   if (row.amount === null) return '依据不足'
 
-  return masked ? formatMaskedMoney(row.amount) : `¥${formatMoney(row.amount)}`
+  return masked ? MaskedMoney : `¥${formatMoney(row.amount)}`
 }
 
-function changeLabel(row: DistributionRow): string {
+function changeLabel(row: DistributionRow, showPeriod = true): string {
   if (row.notHeld) {
     return '不持有'
   }
@@ -162,15 +151,25 @@ function changeLabel(row: DistributionRow): string {
     return `${props.changeScope === 'day' ? '当日' : '本月'}新增`
   }
 
-  if (props.comparable === false || row.change?.change == null) {
-    return `${changePrefix.value} —`
-  }
+  const amount = props.comparable === false ? null : row.change?.change
+  const label = maskedValue(amount, formatSignedMoney)
+  return showPeriod ? `${changePrefix.value} ${label}` : label
+}
 
-  return `${changePrefix.value} ${formatSignedMoney(row.change.change)}`
+function changePercentLabel(row: DistributionRow): string {
+  const percent = props.comparable === false
+    ? null
+    : calculatePercent(row.change?.change, row.change?.baselineAmount)
+  return maskedValue(percent, formatPercent)
+}
+
+function maskedValue(value: number | null | undefined, format: (amount: number) => string): string {
+  if (value == null) return '—'
+  return props.amountsMasked ? '••••' : format(value)
 }
 
 function changeTone(row: DistributionRow): string {
-  if (row.notHeld || !row.configured || row.change?.isNew || props.comparable === false || row.change?.change == null) {
+  if (props.amountsMasked || row.notHeld || !row.configured || row.change?.isNew || props.comparable === false || row.change?.change == null) {
     return ''
   }
 
@@ -188,11 +187,11 @@ function changeTone(row: DistributionRow): string {
         :key="row.key"
         class="distribution-card"
         :class="`card-${row.key}`"
-        :style="{ '--share': `${Math.min(100, Math.max(0, row.percent ?? 0))}%` }"
+        :style="amountsMasked ? undefined : { '--share': `${Math.min(100, Math.max(0, row.percent ?? 0))}%` }"
         :aria-label="`${row.label}资产`"
       >
         <svg
-          v-if="row.configured && !row.notHeld && row.percent !== null && row.percent > 0"
+          v-if="!amountsMasked && row.configured && !row.notHeld && row.percent !== null && row.percent > 0"
           class="card-glow"
           viewBox="0 0 100 100"
           preserveAspectRatio="none"
@@ -220,26 +219,35 @@ function changeTone(row: DistributionRow): string {
             <h3><AppIcon :name="row.icon" />{{ row.label }}</h3>
             <div v-if="row.configured && !row.notHeld && row.percent !== null" class="card-share">
               <span>资产占比</span>
-              <strong>{{ row.percent.toFixed(1) }}%</strong>
+              <strong>{{ amountsMasked ? '••••' : `${row.percent.toFixed(1)}%` }}</strong>
             </div>
           </div>
           <strong class="card-balance">{{ amountLabel(row, amountsMasked) }}</strong>
           <div class="card-footer">
-            <div class="card-note">
-              <span v-if="row.configured && !row.notHeld">
-                {{ row.note }}<template v-if="row.noteAmount != null"> {{ formatSignedMoney(row.noteAmount) }}</template>
-              </span>
-              <span v-if="row.configured && !row.notHeld">{{ changeLabel(row) }}</span>
+            <div
+              v-if="row.configured && !row.notHeld"
+              class="card-note"
+              role="group"
+              :aria-label="row.key === 'providentFund' ? '本月公积金缴存和提取' : changePrefix"
+            >
+              <template v-if="row.key === 'providentFund'">
+                <span>缴存 {{ maskedValue(overview.month.providentDeposit, wholeYuan.format) }}</span>
+                <span>提取 {{ maskedValue(overview.month.providentWithdrawal, wholeYuan.format) }}</span>
+              </template>
+              <template v-else>
+                <span>{{ changeLabel(row, false) }}</span>
+                <span>{{ changePercentLabel(row) }}</span>
+              </template>
             </div>
             <RouterLink v-if="!row.notHeld" :to="row.to" class="card-link">
-              {{ row.configured ? '查看详情' : '去录入' }} <AppIcon name="chevron" />
+              {{ row.configured ? '详情' : '录入' }} <AppIcon name="chevron" />
             </RouterLink>
           </div>
         </div>
       </article>
     </div>
 
-    <div v-if="!cards" class="ratio-bar" role="img" :aria-label="barLabel">
+    <div v-if="!cards && !amountsMasked" class="ratio-bar" role="img" :aria-label="barLabel">
       <span
         v-for="segment in barSegments"
         :key="segment.key"
@@ -264,19 +272,18 @@ function changeTone(row: DistributionRow): string {
               <i class="dot" :class="`type-${row.key}`" />
               <b>{{ row.label }}</b>
             </span>
-            <small>
-              {{ row.note }}<template v-if="row.noteAmount != null">&nbsp;<span :class="amountTone(row.noteAmount)">{{ formatSignedMoney(row.noteAmount) }}</span></template>
+            <small v-if="!amountsMasked || row.key === 'cash'">
+              {{ row.note }}<template v-if="row.noteAmount != null">&nbsp;<span :class="amountsMasked ? '' : amountTone(row.noteAmount)">{{ amountsMasked ? '••••' : formatSignedMoney(row.noteAmount) }}</span></template>
             </small>
           </span>
           <span class="asset-side">
             <b class="asset-amount">
-              <AnimatedMoney v-if="row.amount !== null" :value="row.amount" />
-              <template v-else>{{ amountLabel(row) }}</template>
+              {{ amountLabel(row, amountsMasked) }}
             </b>
             <small><span :class="changeTone(row)">{{ changeLabel(row) }}</span></small>
           </span>
           <span class="asset-percent">
-            <span>{{ row.percent === null ? '—' : `${row.percent.toFixed(1)}%` }}</span>
+            <span>{{ row.percent === null ? '—' : amountsMasked ? '••••' : `${row.percent.toFixed(1)}%` }}</span>
             <AppIcon class="row-chevron" name="chevron" />
           </span>
         </RouterLink>
@@ -333,7 +340,12 @@ function changeTone(row: DistributionRow): string {
 
 .asset-cards {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
+}
+
+.distribution-card:first-child {
+  grid-column: 1 / -1;
 }
 
 .distribution-card {
@@ -414,17 +426,24 @@ function changeTone(row: DistributionRow): string {
 .card-content {
   position: relative;
   display: grid;
-  gap: 6px;
-  padding: 16px 16px 10px;
+  grid-template-rows: auto auto 1fr;
+  gap: 5px;
+  box-sizing: border-box;
+  height: 100%;
+  padding: 13px 13px 10px;
   background: var(--color-asset-card-veil);
   text-shadow: var(--card-text-shadow);
+}
+
+.distribution-card:first-child .card-content {
+  padding: 14px 16px 10px;
 }
 
 .card-heading,
 .card-footer {
   display: flex;
   justify-content: space-between;
-  gap: 10px;
+  gap: 6px;
 }
 
 .card-heading {
@@ -434,15 +453,27 @@ function changeTone(row: DistributionRow): string {
 .card-heading h3 {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   margin: 0;
+  font-size: .875rem;
+  white-space: nowrap;
+}
+
+.distribution-card:first-child .card-heading h3 {
+  gap: 7px;
   font-size: .9375rem;
 }
 
 .card-heading h3 .app-icon {
+  flex-shrink: 0;
+  width: 17px;
+  height: 17px;
+  color: var(--card-accent);
+}
+
+.distribution-card:first-child .card-heading h3 .app-icon {
   width: 18px;
   height: 18px;
-  color: var(--card-accent);
 }
 
 .card-share {
@@ -450,42 +481,65 @@ function changeTone(row: DistributionRow): string {
   justify-items: end;
   gap: 2px;
   flex-shrink: 0;
-  font-size: .75rem;
+  font-size: .6875rem;
   color: var(--color-asset-card-note);
 }
 
 .card-share strong {
   color: var(--card-share);
-  font-size: 1.25rem;
+  font-size: 1.0625rem;
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 
+.distribution-card:first-child .card-share {
+  font-size: .75rem;
+}
+
+.distribution-card:first-child .card-share strong {
+  font-size: 1.25rem;
+}
+
 .card-balance {
-  font-size: clamp(1.375rem, 6vw, 1.875rem);
+  font-size: clamp(1.0625rem, 4.4vw, 1.25rem);
   font-variant-numeric: tabular-nums;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.distribution-card:first-child .card-balance {
+  font-size: clamp(1.375rem, 5.5vw, 1.6875rem);
 }
 
 .card-footer {
-  align-items: center;
-  min-height: var(--touch-target);
+  align-items: flex-end;
+  min-height: 32px;
 }
 
 .card-note {
   display: grid;
-  gap: 3px;
+  gap: 2px;
+  min-width: 0;
   color: var(--color-asset-card-note);
   font-size: .75rem;
-  line-height: 1.35;
+  line-height: 1.3;
+}
+
+.card-note > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .card-link {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  min-height: var(--touch-target);
+  flex-shrink: 0;
+  gap: 1px;
+  margin-inline-start: auto;
+  min-height: 32px;
   color: var(--card-link);
   font-size: .75rem;
   text-decoration: none;

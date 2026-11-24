@@ -2,7 +2,7 @@
 import { navigateBack } from '../utils/navigation'
 import BackButton from '../components/BackButton.vue'
 import LoadingButton from '../components/LoadingButton.vue'
-import AnimatedMoney from '../components/AnimatedMoney.vue'
+import MoneyAmount from '../components/MoneyAmount.vue'
 import LoadingState from '../components/LoadingState.vue'
 import CashAdjustmentLink from '../components/CashAdjustmentLink.vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
@@ -205,13 +205,13 @@ async function submit(): Promise<void> {
     isSaving.value = true
 
     try {
-      const result = await setProvidentOpening({
+      await setProvidentOpening({
         balance,
         businessDate: today,
         note: form.note.trim(),
         requestId: requestId.value
       })
-      toast.success(`已录入起始公积金 ¥${formatMoney(result.balance)}。`)
+      toast.success('起始公积金已录入')
       sheet.value = null
       await loadOverview()
     } catch (error) {
@@ -282,9 +282,7 @@ async function submit(): Promise<void> {
           requestId: createRequestId(),
           expectedVersion: plan?.version ?? null
         })
-        messages.push(plan
-          ? '每月缴存已更新'
-          : `已设置每月 ${monthlyDay.value} 日缴存 ¥${formatMoney(amount)}`)
+        messages.push(plan ? '每月缴存已更新' : '每月缴存已设置')
       }
 
       if (plan && !plan.isActive) {
@@ -297,7 +295,7 @@ async function submit(): Promise<void> {
     }
 
     if (deposit > 0) {
-      const result = await depositProvident({
+      await depositProvident({
         amount: deposit,
         businessDate: today,
         note: form.note.trim(),
@@ -305,26 +303,23 @@ async function submit(): Promise<void> {
         requestId: depositRequestId.value
       })
       deposited = true
-      messages.push(`已缴存 ¥${formatMoney(result.activity.amount)}`)
+      messages.push('缴存已记录')
     }
 
     if (withdrawal > 0) {
-      const result = await withdrawProvident({
+      await withdrawProvident({
         amount: withdrawal,
         businessDate: today,
         note: form.note.trim(),
         relatedCashAdjustmentId: form.relatedCashAdjustmentId,
         requestId: withdrawalRequestId.value
       })
-      messages.push(`已提取 ¥${formatMoney(result.activity.amount)} 至现金`)
+      messages.push('提取已记录')
     }
 
     sheet.value = null
     await Promise.all([loadOverview(), loadPlan()])
-    const balanceNote = deposit > 0 || withdrawal > 0
-      ? `；当前余额 ¥${formatMoney(overview.value?.balance ?? 0)}`
-      : ''
-    toast.success(`${messages.join('，')}${balanceNote}。`)
+    toast.success(messages.length === 1 ? messages[0]! : '公积金设置已保存')
   } catch (error) {
     const prefix = messages.length ? `${messages.join('，')}；` : ''
     formError.value = deposited
@@ -358,7 +353,7 @@ function goBack(): void {
 
 <template>
   <main class="page provident-page with-nav">
-    <header class="provident-header">
+    <header class="provident-header asset-page-header">
       <BackButton @back="goBack" />
       <h1>公积金</h1>
     </header>
@@ -368,7 +363,7 @@ function goBack(): void {
 
     <section v-else-if="errorMessage" class="state">
       <p>{{ errorMessage }}</p>
-      <LoadingButton class="secondary-button" :loading="isLoading" loading-label="加载中…" @click="loadOverview">重新加载</LoadingButton>
+      <LoadingButton class="secondary-button" :loading="isLoading" loading-label="加载中…" @click="loadPage">重新加载</LoadingButton>
     </section>
 
     <template v-else-if="overview">
@@ -377,7 +372,7 @@ function goBack(): void {
           公积金余额
           <span class="hero-tag">个人＋单位</span>
         </p>
-        <h2 class="hero-balance"><span>¥</span><AnimatedMoney :value="overview.balance" prefix="" /></h2>
+        <h2 class="hero-balance"><span>¥</span><MoneyAmount :value="overview.balance" prefix="" /></h2>
         <p class="hero-meta">截至 {{ formatBusinessDate(overview.asOfDate) }}</p>
         <div class="hero-metrics">
           <div>
@@ -506,7 +501,7 @@ function goBack(): void {
                 </label>
                 <label class="form-field">
                   <span>每月日期</span>
-                  <input v-model="form.monthlyDay" type="number" min="1" max="31" @input="formError = ''" />
+                  <input v-model="form.monthlyDay" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" autocomplete="off" placeholder="15" @input="formError = ''" />
                 </label>
               </div>
               <label class="form-field">
@@ -649,28 +644,8 @@ function goBack(): void {
 .provident-actions button {
   flex: 1;
   min-height: 48px;
-  border: 0;
-  border-radius: var(--radius-pill);
   font-size: 0.9375rem;
   font-weight: 600;
-}
-
-.action-primary {
-  background: var(--color-brand);
-  color: var(--color-on-brand);
-}
-
-.action-primary:hover {
-  background: var(--color-brand-hover);
-}
-
-.action-secondary {
-  background: var(--color-bg-subtle);
-  color: var(--color-brand);
-}
-
-.action-secondary:hover {
-  background: var(--color-brand-soft);
 }
 
 .hint,
@@ -793,16 +768,18 @@ function goBack(): void {
 .monthly-setting {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 16px;
-  border-radius: var(--radius-card);
-  background: var(--color-bg-subtle);
+  gap: 0;
+  margin-bottom: 10px;
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--color-bg-surface);
 }
 
 .monthly-toggle {
   display: flex;
   align-items: flex-start;
   gap: 10px;
+  padding: 12px 14px;
   cursor: pointer;
 }
 
@@ -834,6 +811,11 @@ function goBack(): void {
 .monthly-fields {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.monthly-fields > .form-hint {
+  padding: 6px 14px 10px;
 }
 </style>

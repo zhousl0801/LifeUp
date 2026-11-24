@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using LifeUp.Application.Mutations;
 using LifeUp.Application.History;
 using LifeUp.Application.Assets;
@@ -193,6 +195,57 @@ public sealed class FundService
                 item.IsQdii,
                 item.ConfirmationDelayDays))
             .ToList();
+    }
+
+    /// <summary>
+    /// 计算早于当日的最近已披露基金日收益汇总；无持仓或最新披露日不早于当日时返回 null。
+    /// </summary>
+    internal static PriorFundDisclosureDto? CalculatePriorFundDisclosure(
+        LedgerReplayData replayData,
+        IReadOnlyList<BusinessFact> facts,
+        DateOnly today,
+        DateOnly ledgerStart)
+    {
+        var positions = replayData.Positions;
+
+        if (positions.Count == 0)
+        {
+            return null;
+        }
+
+        var dailyProfits = CalculateDailyProfits(replayData, facts, positions, today, ledgerStart);
+        var familyKeys = FundIdentity.FamilyKeys(positions);
+        var summaries = positions
+            .GroupBy(position => familyKeys[position.Id], StringComparer.Ordinal)
+            .Select(group => AggregateDaily(group.ToList(), dailyProfits))
+            .ToList();
+        var disclosed = summaries
+            .Where(item => item.Has && item.Date is not null)
+            .ToList();
+
+        if (disclosed.Count == 0)
+        {
+            return null;
+        }
+
+        var latestDate = disclosed.Max(item => item.Date!.Value);
+
+        if (latestDate >= today)
+        {
+            return null;
+        }
+
+        var latest = disclosed
+            .Where(item => item.Date == latestDate)
+            .ToList();
+        var total = summaries.Count;
+
+        return new PriorFundDisclosureDto(
+            latestDate,
+            decimal.Round(latest.Sum(item => item.Profit), 2),
+            latest.Count,
+            total,
+            total > 0 && latest.Count == total);
     }
 
     private static Dictionary<Guid, (decimal? Profit, DateOnly? Date)> CalculateDailyProfits(
@@ -1263,16 +1316,23 @@ public sealed class FundService
         catch (Exception exception) when (exception is QuoteUnavailableException or HttpRequestException or TaskCanceledException
             or ArgumentException or InvalidOperationException or HistoryValidationException)
         {
-            position.RecordQuoteSyncAttempt(now, null, Shorten(exception.Message));
+            // 先丢弃本次可能已暂存的行情交易与观察记录，避免失败状态下误提交脏数据。
+            _ledgerRepository.DiscardChanges();
+            var trackedPosition = await _ledgerRepository.GetFundPositionForUpdateAsync(ledger.Id, positionId, cancellationToken);
 
-            try
+            if (trackedPosition is not null)
             {
-                await _ledgerRepository.SaveChangesAsync(cancellationToken);
-            }
-            catch (ConcurrencyConflictException)
-            {
-                _ledgerRepository.DiscardChanges();
-                return AssetOperationResult<FundQuoteRefreshDto>.Conflict("数据已被其他操作修改，请刷新后重试。");
+                trackedPosition.RecordQuoteSyncAttempt(now, null, Shorten(exception.Message));
+
+                try
+                {
+                    await _ledgerRepository.SaveChangesAsync(cancellationToken);
+                }
+                catch (ConcurrencyConflictException)
+                {
+                    _ledgerRepository.DiscardChanges();
+                    return AssetOperationResult<FundQuoteRefreshDto>.Conflict("数据已被其他操作修改，请刷新后重试。");
+                }
             }
 
             return AssetOperationResult<FundQuoteRefreshDto>.Unavailable(exception.Message);
@@ -1297,7 +1357,7 @@ public sealed class FundService
             return 0;
         }
 
-        var replayData = await _ledgerRepository.GetReplayDataAsync(ledger.Id, cancellationToken);
+        var replayData = await _ledgerRepository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
         var confirmedIds = replayData.Transactions
             .Where(transaction => !transaction.IsReversed
                 && transaction.Kind == AssetTransactionKind.FundBuyConfirm
@@ -1350,7 +1410,7 @@ public sealed class FundService
                     transaction.Fee,
                     confirmationDate,
                     "行情自动确认",
-                    Guid.NewGuid()), cancellationToken);
+                    AutoConfirmRequestId(transaction.Id)), cancellationToken);
                 if (result.Status is AssetOperationStatus.Created or AssetOperationStatus.Success)
                 {
                     confirmedCount++;
@@ -1545,8 +1605,6 @@ public sealed class FundService
         try
         {
             position.SetPriorRealizedProfit(request.Amount, _businessDateProvider.UtcNow);
-            ledger.Touch(_businessDateProvider.UtcNow);
-            await _ledgerRepository.SaveChangesAsync(cancellationToken);
         }
         catch (ArgumentException exception)
         {
@@ -1607,13 +1665,18 @@ public sealed class FundService
             : today;
     }
 
+    private static Guid AutoConfirmRequestId(Guid pendingTransactionId)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"fund.buy.auto-confirm:{pendingTransactionId:N}"));
+        return new Guid(hash.AsSpan(0, 16));
+    }
+
     private bool CanCancel(AssetTransaction transaction)
     {
         var now = _businessDateProvider.UtcNow;
         var today = _businessDateProvider.Today;
-        var timezone = TimeZoneInfo.FindSystemTimeZoneById(Ledger.DefaultTimeZone);
-        var createdDate = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, timezone).DateTime);
-        var transactionDate = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(transaction.CreatedAt, timezone).DateTime);
+        var createdDate = _businessDateProvider.ToBusinessDate(now);
+        var transactionDate = _businessDateProvider.ToBusinessDate(transaction.CreatedAt);
         return createdDate == today
             && transactionDate == today
             && now < _businessDateProvider.ToBusinessInstant(today, new TimeOnly(15, 0));

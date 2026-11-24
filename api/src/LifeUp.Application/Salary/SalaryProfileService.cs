@@ -42,15 +42,11 @@ public sealed class SalaryProfileService
         SaveSalaryProfileRequest request,
         CancellationToken cancellationToken)
     {
-        return new MutationExecutor(_ledgerRepository, _dates).ExecuteAsync(
+        return new MutationExecutor(_ledgerRepository, _dates).ExecuteAssetAsync(
             SaveOperation,
             request.RequestId,
             request,
             () => SaveCoreAsync(request, cancellationToken),
-            result => result.Status is AssetOperationStatus.Created or AssetOperationStatus.Success,
-            result => result with { Status = AssetOperationStatus.Success },
-            AssetOperationResult<SalaryProfileOverviewDto>.Conflict,
-            message => AssetOperationResult<SalaryProfileOverviewDto>.Invalid([message]),
             cancellationToken);
     }
 
@@ -58,15 +54,11 @@ public sealed class SalaryProfileService
         SalaryProfileActionRequest request,
         CancellationToken cancellationToken)
     {
-        return new MutationExecutor(_ledgerRepository, _dates).ExecuteAsync(
+        return new MutationExecutor(_ledgerRepository, _dates).ExecuteAssetAsync(
             DisableOperation,
             request.RequestId,
             request,
             () => DisableCoreAsync(cancellationToken),
-            result => result.Status is AssetOperationStatus.Success,
-            result => result,
-            AssetOperationResult<SalaryProfileOverviewDto>.Conflict,
-            message => AssetOperationResult<SalaryProfileOverviewDto>.Invalid([message]),
             cancellationToken);
     }
 

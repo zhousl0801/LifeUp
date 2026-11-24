@@ -39,19 +39,18 @@ public sealed class GoldService
             return null;
         }
 
-        var holding = await _ledgerRepository.GetGoldHoldingAsync(ledger.Id, cancellationToken);
-        var transactions = await _ledgerRepository.GetAssetTransactionsAsync(
-            ledger.Id,
-            AssetType.Gold,
-            null,
-            null,
-            200,
-            cancellationToken);
+        var replayData = await _ledgerRepository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
+        var holding = replayData.Gold;
+        var transactions = replayData.Transactions
+            .Where(transaction => !transaction.IsReversed && transaction.AssetType == AssetType.Gold)
+            .OrderByDescending(transaction => transaction.BusinessDate)
+            .ThenByDescending(transaction => transaction.CreatedAt)
+            .Take(200)
+            .ToList();
         var averageCost = holding is not null && holding.Grams > 0
             ? decimal.Round(holding.Cost / holding.Grams, 2)
             : (decimal?)null;
 
-        var replayData = await _ledgerRepository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
         var replay = new LedgerReplayCalculator().Calculate(replayData, BusinessFact.From(replayData), _businessDateProvider.Today, currentDate: _businessDateProvider.Today);
         var arrivedPendingIds = replayData.Transactions
             .Where(transaction => !transaction.IsReversed && transaction.Kind == AssetTransactionKind.GoldSellArrival
@@ -438,6 +437,7 @@ public sealed class GoldService
         }
 
         var holding = await _ledgerRepository.GetGoldHoldingForUpdateAsync(ledger.Id, cancellationToken);
+        var hadHolding = holding is not null;
         var now = _businessDateProvider.UtcNow;
 
         try
@@ -510,19 +510,27 @@ public sealed class GoldService
         catch (Exception exception) when (exception is QuoteUnavailableException or HttpRequestException or TaskCanceledException
             or ArgumentException or InvalidOperationException or HistoryValidationException)
         {
-            if (holding is not null)
-            {
-                holding.RecordQuoteSyncAttempt(now, null, Shorten(exception.Message));
+            // 先丢弃本次可能已暂存的新建持仓、行情交易或观察记录，避免失败状态下误提交脏数据。
+            _ledgerRepository.DiscardChanges();
 
-                try
+            if (hadHolding)
+            {
+                var trackedHolding = await _ledgerRepository.GetGoldHoldingForUpdateAsync(ledger.Id, cancellationToken);
+
+                if (trackedHolding is not null)
                 {
-                    await _ledgerRepository.SaveChangesAsync(cancellationToken);
-                }
-                catch (ConcurrencyConflictException)
-                {
-                    _ledgerRepository.DiscardChanges();
-                    // 报价本身没有取到，保存失败尝试时撞版本不应掩盖真正的行情错误。
-                    return AssetOperationResult<GoldQuoteRefreshDto>.Unavailable(exception.Message);
+                    trackedHolding.RecordQuoteSyncAttempt(now, null, Shorten(exception.Message));
+
+                    try
+                    {
+                        await _ledgerRepository.SaveChangesAsync(cancellationToken);
+                    }
+                    catch (ConcurrencyConflictException)
+                    {
+                        _ledgerRepository.DiscardChanges();
+                        // 报价本身没有取到，保存失败尝试时撞版本不应掩盖真正的行情错误。
+                        return AssetOperationResult<GoldQuoteRefreshDto>.Unavailable(exception.Message);
+                    }
                 }
             }
 
@@ -688,7 +696,8 @@ public sealed class GoldService
                 return AssetOperationResult<GoldMutationResultDto>.Conflict("持仓已变化，请刷新后重新核对。");
             }
 
-            var hasHoldingFacts = (await _ledgerRepository.GetReplayDataAsync(ledger.Id, cancellationToken)).Transactions
+            var replayData = await _ledgerRepository.GetReplayDataAsync(ledger.Id, cancellationToken);
+            var hasHoldingFacts = replayData.Transactions
                 .Any(item => item.AssetType == AssetType.Gold && item.Kind != AssetTransactionKind.GoldQuote);
             var transaction = AssetTransaction.CreateSnapshot(ledger.Id, null, AssetType.Gold,
                 hasHoldingFacts ? AssetTransactionKind.GoldCorrection : AssetTransactionKind.GoldOpening,
@@ -705,10 +714,17 @@ public sealed class GoldService
                     request.QuoteDate,
                     now);
                 await _ledgerRepository.AddGoldHoldingAsync(holding, cancellationToken);
+                replayData = replayData with { Gold = holding };
             }
 
-
-            await new LedgerHistoryRebuilder(_ledgerRepository, _businessDateProvider).StageAsync(ledger, transaction, request.HoldingDate!.Value, request.QuoteDate, null, cancellationToken);
+            await new LedgerHistoryRebuilder(_ledgerRepository, _businessDateProvider).StageAsync(
+                ledger,
+                transaction,
+                request.HoldingDate!.Value,
+                request.QuoteDate,
+                null,
+                cancellationToken,
+                replayData: replayData);
 
 
             return AssetOperationResult<GoldMutationResultDto>.Success(

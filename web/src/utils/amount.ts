@@ -1,6 +1,7 @@
 import Decimal from 'decimal.js'
+import { MaximumAmount } from './format'
 
-export const MaximumAmount = 1_000_000_000
+export { MaximumAmount }
 
 export type AmountKey =
   | '0'

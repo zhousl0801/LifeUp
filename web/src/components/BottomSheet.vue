@@ -6,7 +6,28 @@ type OpenSheet = {
 }
 
 const openSheets: OpenSheet[] = []
-let previousOverflow = ''
+let releasePageScroll: (() => void) | undefined
+
+function lockPageScroll(): () => void {
+  const { style } = document.body
+  const { scrollX, scrollY } = window
+  const { overflow, position, top, width } = style
+
+  // iOS 主屏幕应用仍可能滚动设置了 overflow: hidden 的 body。
+  Object.assign(style, {
+    overflow: 'hidden',
+    position: 'fixed',
+    top: `${-scrollY}px`,
+    width: '100%'
+  })
+
+  return () => {
+    Object.assign(style, { overflow, position, top, width })
+    if (window.scrollX !== scrollX || window.scrollY !== scrollY) {
+      window.scrollTo({ left: scrollX, top: scrollY, behavior: 'instant' })
+    }
+  }
+}
 </script>
 
 <script setup lang="ts">
@@ -28,10 +49,65 @@ const sheetId = useId()
 const sheet = ref<HTMLElement | null>(null)
 const dragY = ref(0)
 const dragging = ref(false)
+const keyboardInset = ref(0)
+const viewportHeight = ref<number | null>(null)
 const registration: OpenSheet = { element: () => sheet.value, previousFocus: null }
 let dragStartY: number | null = null
 let dragPointerId: number | null = null
 let wasOpen = false
+let viewportBound = false
+
+function scrollFocusedControlIntoView(): void {
+  const active = document.activeElement
+  if (!(active instanceof HTMLElement) || !sheet.value?.contains(active)) return
+  if (!active.matches('input, textarea, select')) return
+  active.scrollIntoView?.({ block: 'nearest' })
+}
+
+function syncVisualViewport(): void {
+  const viewport = window.visualViewport
+  if (!viewport) {
+    keyboardInset.value = 0
+    viewportHeight.value = null
+    return
+  }
+
+  const layoutHeight = window.innerHeight || document.documentElement.clientHeight
+  const occluded = Math.max(0, Math.round(layoutHeight - viewport.height - viewport.offsetTop))
+  if (occluded > 80) {
+    keyboardInset.value = occluded
+    viewportHeight.value = Math.max(200, Math.floor(viewport.height))
+    void nextTick(scrollFocusedControlIntoView)
+  } else {
+    keyboardInset.value = 0
+    viewportHeight.value = null
+  }
+}
+
+function bindVisualViewport(): void {
+  if (viewportBound || !window.visualViewport) return
+  viewportBound = true
+  window.visualViewport.addEventListener('resize', syncVisualViewport)
+  window.visualViewport.addEventListener('scroll', syncVisualViewport)
+  syncVisualViewport()
+}
+
+function unbindVisualViewport(): void {
+  if (viewportBound && window.visualViewport) {
+    window.visualViewport.removeEventListener('resize', syncVisualViewport)
+    window.visualViewport.removeEventListener('scroll', syncVisualViewport)
+  }
+  viewportBound = false
+  keyboardInset.value = 0
+  viewportHeight.value = null
+}
+
+function handleFocusIn(event: FocusEvent): void {
+  const target = event.target
+  if (!(target instanceof HTMLElement) || !target.matches('input, textarea, select')) return
+  syncVisualViewport()
+  void nextTick(() => target.scrollIntoView?.({ block: 'nearest' }))
+}
 
 watch(
   () => props.open,
@@ -40,17 +116,18 @@ watch(
       wasOpen = true
 
       if (openSheets.length === 0) {
-        previousOverflow = document.body.style.overflow
-        document.body.style.overflow = 'hidden'
+        releasePageScroll = lockPageScroll()
       }
       openSheets.push(registration)
       registration.previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
       resetDrag()
+      bindVisualViewport()
       await nextTick()
       // 不自动聚焦输入框，避免打开 sheet 就弹出键盘；先把焦点放在对话框本身。
-      if (openSheets.at(-1) === registration) sheet.value?.focus()
+      if (openSheets.at(-1) === registration) sheet.value?.focus({ preventScroll: true })
     } else if (wasOpen) {
       wasOpen = false
+      unbindVisualViewport()
       unregisterSheet()
     }
   },
@@ -63,6 +140,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleKeydown)
+  unbindVisualViewport()
   unregisterSheet()
 })
 
@@ -80,14 +158,17 @@ function unregisterSheet(): void {
     if (closingElement?.contains(upper.previousFocus)) upper.previousFocus = previousFocus
   }
 
-  if (openSheets.length === 0) document.body.style.overflow = previousOverflow
+  if (openSheets.length === 0) {
+    releasePageScroll?.()
+    releasePageScroll = undefined
+  }
   if (!wasTop) return
 
   const nextSheet = openSheets.at(-1)?.element()
   if (previousFocus?.isConnected && (!nextSheet || nextSheet.contains(previousFocus))) {
-    previousFocus.focus()
+    previousFocus.focus({ preventScroll: true })
   } else {
-    nextSheet?.focus()
+    nextSheet?.focus({ preventScroll: true })
   }
 }
 
@@ -198,16 +279,25 @@ async function endDrag(event: PointerEvent): Promise<void> {
 <template>
   <Teleport to="body">
     <Transition name="sheet">
-      <div v-if="open" class="sheet-backdrop" @click.self="close">
+      <div
+        v-if="open"
+        class="sheet-backdrop"
+        :style="keyboardInset > 0 ? { paddingBottom: `${keyboardInset}px` } : undefined"
+        @click.self="close"
+      >
         <section
           ref="sheet"
           class="sheet"
-          :class="{ dragging }"
-          :style="{ '--sheet-drag-y': `${dragY}px` }"
+          :class="{ dragging, 'keyboard-open': keyboardInset > 0 }"
+          :style="{
+            '--sheet-drag-y': `${dragY}px`,
+            ...(viewportHeight !== null ? { '--sheet-max-height': `${Math.max(200, viewportHeight - 16)}px` } : {})
+          }"
           role="dialog"
           aria-modal="true"
           :aria-labelledby="sheetId"
           tabindex="-1"
+          @focusin="handleFocusIn"
         >
           <div
             class="sheet-grabber"
@@ -245,6 +335,7 @@ async function endDrag(event: PointerEvent): Promise<void> {
 
 <style scoped>
 .sheet-backdrop {
+  box-sizing: border-box;
   position: fixed;
   inset: 0;
   z-index: 50;
@@ -257,15 +348,20 @@ async function endDrag(event: PointerEvent): Promise<void> {
 .sheet {
   box-sizing: border-box;
   width: min(100%, 430px);
-  max-height: 88dvh;
+  max-height: var(--sheet-max-height, 88dvh);
   overflow-y: auto;
-  padding: 0 var(--page-gutter) calc(24px + env(safe-area-inset-bottom));
+  overscroll-behavior-y: contain;
+  padding: 0 var(--page-gutter) calc(20px + env(safe-area-inset-bottom));
   border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
-  background: var(--color-bg-surface);
+  background: var(--color-bg-page);
   box-shadow: 0 -8px 30px var(--color-shadow);
   outline: none;
   transform: translateY(var(--sheet-drag-y, 0px));
   transition: transform var(--motion-sheet) var(--ease-sheet);
+}
+
+.sheet.keyboard-open {
+  padding-bottom: 16px;
 }
 
 .sheet.dragging {
@@ -313,50 +409,52 @@ async function endDrag(event: PointerEvent): Promise<void> {
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 
 .sheet-head h2 {
   margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
+  font-size: 1.125rem;
+  font-weight: 700;
   letter-spacing: -0.3px;
 }
 
 .sheet-head p {
-  margin: 5px 0 0;
+  margin: 3px 0 0;
   color: var(--color-text-secondary);
-  font-size: var(--text-footnote);
-  line-height: 1.5;
+  font-size: var(--text-caption);
+  line-height: 1.45;
 }
 
 .sheet-close {
-  min-width: var(--touch-target);
-  min-height: var(--touch-target);
-  margin: -8px -4px 0 0;
-  padding: 0 8px;
+  min-width: 32px;
+  min-height: 32px;
+  margin: -2px 0 0;
+  padding: 0 10px;
   border: 0;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--color-brand);
-  font-size: 0.875rem;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+  font-weight: 600;
 }
 
 .sheet-close-icon {
   display: block;
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   margin: auto;
 }
 
 .sheet-close:hover:not(:disabled) {
   background: var(--color-brand-soft);
+  color: var(--color-brand);
 }
 
 .sheet-body {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 10px;
 }
 
 @media (min-width: 600px) {

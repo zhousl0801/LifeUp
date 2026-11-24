@@ -4,7 +4,12 @@ let runtime: Promise<ChartRuntime> | null = null
 
 /** 图表运行时按需加载，避免 ECharts 进入首屏包体。 */
 export function loadChartRuntime(): Promise<ChartRuntime> {
-  runtime ??= import('./chartEcharts').then((module) => module.default)
+  runtime ??= import('./chartEcharts')
+    .then((module) => module.default)
+    .catch((error) => {
+      runtime = null
+      throw error
+    })
 
   return runtime
 }

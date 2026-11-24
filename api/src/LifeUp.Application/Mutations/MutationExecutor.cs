@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using LifeUp.Application.Assets;
 using LifeUp.Application.Ledgers;
 using LifeUp.Application.History;
 using LifeUp.Domain.Ledgers;
@@ -24,6 +25,49 @@ public sealed class MutationExecutor
         _dates = dates;
     }
 
+    public Task<AssetOperationResult<TDto>> ExecuteAssetAsync<TDto>(
+        string operation,
+        Guid requestId,
+        object request,
+        Func<Task<AssetOperationResult<TDto>>> execute,
+        CancellationToken cancellationToken,
+        Func<Guid, CancellationToken, Task<object?>>? captureBefore = null)
+        where TDto : class
+    {
+        return ExecuteAsync(
+            operation,
+            requestId,
+            request,
+            execute,
+            result => result.Status is AssetOperationStatus.Created or AssetOperationStatus.Success,
+            result => result with { Status = AssetOperationStatus.Success },
+            AssetOperationResult<TDto>.Conflict,
+            message => AssetOperationResult<TDto>.Invalid([message]),
+            cancellationToken,
+            captureBefore);
+    }
+
+    public Task<EntryOperationResult> ExecuteEntryAsync(
+        string operation,
+        Guid requestId,
+        object request,
+        Func<Task<EntryOperationResult>> execute,
+        CancellationToken cancellationToken,
+        Func<Guid, CancellationToken, Task<object?>>? captureBefore = null)
+    {
+        return ExecuteAsync(
+            operation,
+            requestId,
+            request,
+            execute,
+            result => result.Status is EntryOperationStatus.Created or EntryOperationStatus.Success,
+            result => result with { Status = EntryOperationStatus.Success },
+            EntryOperationResult.Conflict,
+            message => EntryOperationResult.Invalid([message]),
+            cancellationToken,
+            captureBefore);
+    }
+
     public async Task<TResponse> ExecuteAsync<TResponse>(
         string operation,
         Guid requestId,
@@ -33,7 +77,8 @@ public sealed class MutationExecutor
         Func<TResponse, TResponse> replay,
         Func<string, TResponse> conflict,
         Func<string, TResponse> invalid,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<Guid, CancellationToken, Task<object?>>? captureBefore = null)
     {
         if (requestId == Guid.Empty)
         {
@@ -67,7 +112,7 @@ public sealed class MutationExecutor
             return conflict("该历史请求已入账，缺少完整请求快照，请查看原记录，勿重复保存。");
         }
 
-        var beforeJson = await CaptureBeforeAsync(operation, ledger.Id, request, cancellationToken);
+        var beforeJson = await CaptureBeforeAsync(operation, ledger.Id, request, captureBefore, cancellationToken);
         TResponse result;
 
         // 两个并发写入可能从各自的账本快照里拿到同一个业务顺序号。冲突发生在落库之前，
@@ -90,7 +135,7 @@ public sealed class MutationExecutor
                 }
 
                 ledger = refreshed;
-                beforeJson = await CaptureBeforeAsync(operation, ledger.Id, request, cancellationToken);
+                beforeJson = await CaptureBeforeAsync(operation, ledger.Id, request, captureBefore, cancellationToken);
             }
             catch (HistoryValidationException exception)
             {
@@ -126,8 +171,18 @@ public sealed class MutationExecutor
         }
     }
 
-    private async Task<string?> CaptureBeforeAsync(string operation, Guid ledgerId, object request, CancellationToken cancellationToken)
+    private async Task<string?> CaptureBeforeAsync(
+        string operation,
+        Guid ledgerId,
+        object request,
+        Func<Guid, CancellationToken, Task<object?>>? captureBefore,
+        CancellationToken cancellationToken)
     {
+        if (captureBefore is not null)
+        {
+            var captured = await captureBefore(ledgerId, cancellationToken);
+            return captured is null ? null : JsonSerializer.Serialize(captured, JsonOptions);
+        }
         if (operation is "entry.update" or "entry.reverse")
         {
             var id = JsonSerializer.SerializeToElement(request, JsonOptions).GetProperty("entryId").GetGuid();
@@ -158,6 +213,11 @@ public sealed class MutationExecutor
         return null;
     }
 
+    internal static string ComputeFingerprint(object request)
+    {
+        return Fingerprint(request);
+    }
+
     private static string Fingerprint(object request)
     {
         using var stream = new MemoryStream();
@@ -183,6 +243,16 @@ public sealed class MutationExecutor
                 }
 
                 writer.WriteEndObject();
+                break;
+            case JsonValueKind.Array:
+                writer.WriteStartArray();
+
+                foreach (var item in value.EnumerateArray())
+                {
+                    WriteCanonical(writer, item);
+                }
+
+                writer.WriteEndArray();
                 break;
             case JsonValueKind.String:
                 writer.WriteStringValue(value.GetString()?.Trim());

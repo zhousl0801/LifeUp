@@ -1,11 +1,11 @@
-import { computed, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, shallowRef, watch } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 
 export function useUnsavedSheet(
   session: () => string,
   isEditing: () => boolean,
   isSaving: () => boolean,
-  getFields: () => Record<string, string>,
+  getFields: () => Record<string, unknown>,
   close: () => void
 ) {
   let initialFields = getFields()
@@ -18,7 +18,7 @@ export function useUnsavedSheet(
     return isEditing() && Object.entries(getFields()).some(([field, value]) => value !== initialFields[field])
   }
 
-  function updateDefault(field: string, value: string): void {
+  function updateDefault(field: string, value: unknown): void {
     initialFields[field] = value
   }
 
@@ -37,6 +37,12 @@ export function useUnsavedSheet(
     decideDiscard.value = null
     decide?.(discard)
   }
+
+  onBeforeUnmount(() => {
+    if (decideDiscard.value) {
+      resolveDiscard(false)
+    }
+  })
 
   onBeforeRouteLeave(() => {
     if (discardOpen.value || (isEditing() && isSaving())) return false

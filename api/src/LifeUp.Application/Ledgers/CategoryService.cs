@@ -6,6 +6,23 @@ public sealed class CategoryService
 {
     private const string SalaryCategoryKey = "salary";
 
+    // 对应前端随应用发布的 Noto Emoji 资源。
+    private static readonly HashSet<string> s_iconKeys = new(StringComparer.Ordinal)
+    {
+        "1f331", "1f34e", "1f35c", "1f370", "1f37b", "1f37c",
+        "1f37d", "1f381", "1f382", "1f393", "1f3ab", "1f3ac",
+        "1f3ae", "1f3af", "1f3b5", "1f3c6", "1f3e0", "1f3e5",
+        "1f3e6", "1f3e8", "1f3f7", "1f43e", "1f455", "1f45c",
+        "1f45f", "1f484", "1f48a", "1f48e", "1f490", "1f4a1",
+        "1f4a7", "1f4b0", "1f4b3", "1f4b5", "1f4bb", "1f4bc",
+        "1f4c1", "1f4c8", "1f4da", "1f4e6", "1f4f1", "1f4f6",
+        "1f4f7", "1f511", "1f527", "1f5d3", "1f687", "1f68c",
+        "1f695", "1f697", "1f6b2", "1f6cb", "1f6cd", "1f6d2",
+        "1f6e1", "1f916", "1f9b7", "1f9cb", "1f9e0", "1f9e7",
+        "1f9f3", "1f9f4", "1f9f9", "1f9fe", "2615", "26fd",
+        "2708", "2728"
+    };
+
     private readonly ILedgerRepository _ledgerRepository;
     private readonly BusinessDateProvider _dates;
 
@@ -38,6 +55,11 @@ public sealed class CategoryService
         if (ledger is null)
         {
             return CategoryOperationResult.NotFound("账本尚未初始化。");
+        }
+
+        if (request.IconKey is not null && !s_iconKeys.Contains(request.IconKey))
+        {
+            return CategoryOperationResult.Invalid(["请选择有效的分类图标。"]);
         }
 
         string name;
@@ -79,6 +101,11 @@ public sealed class CategoryService
         }
 
         var created = EntryCategory.Create(ledger.Id, request.Kind, name, sortOrder, null, now, parent?.Id, request.IsGroup);
+        if (request.IconKey is not null)
+        {
+            created.SetIcon(request.IconKey, now);
+        }
+
         await _ledgerRepository.AddCategoryAsync(created, cancellationToken);
 
         try
@@ -110,6 +137,11 @@ public sealed class CategoryService
         if (category is null)
         {
             return CategoryOperationResult.NotFound("分类不存在。");
+        }
+
+        if (request.IconKey is not null && !s_iconKeys.Contains(request.IconKey))
+        {
+            return CategoryOperationResult.Invalid(["请选择有效的分类图标。"]);
         }
 
         string name;
@@ -166,6 +198,10 @@ public sealed class CategoryService
         }
 
         category.SetActive(request.IsActive, now);
+        if (request.IconKey is not null)
+        {
+            category.SetIcon(request.IconKey, now);
+        }
 
         if (!string.Equals(previousName, name, StringComparison.Ordinal))
         {
@@ -232,8 +268,8 @@ public sealed class CategoryService
         }
 
         var allCategories = await _ledgerRepository.GetCategoriesAsync(ledger.Id, cancellationToken);
-        if (request.ParentId is Guid parentId && (request.IsGroup || !allCategories.Any(category =>
-            category.Id == parentId && category.IsGroup && category.Kind == request.Kind)))
+        var parent = allCategories.FirstOrDefault(category => category.Id == request.ParentId);
+        if (request.ParentId is not null && (request.IsGroup || parent is not { IsGroup: true } || parent.Kind != request.Kind))
         {
             return CategoryOperationResult.Invalid(["排序范围不是有效的一级分类。"]);
         }
@@ -241,27 +277,70 @@ public sealed class CategoryService
         var categories = allCategories
             .Where(category => category.Kind == request.Kind && category.IsGroup == request.IsGroup
                 && (request.ParentId is null || category.ParentId == request.ParentId))
-            .ToList();
+            .ToDictionary(category => category.Id);
+
+        if (request.MovingId is Guid movingId)
+        {
+            var moving = allCategories.FirstOrDefault(category => category.Id == movingId);
+            if (parent is not { IsActive: true } || moving is null || moving.IsGroup || moving.Kind != request.Kind
+                || request.SourceParentId is null)
+            {
+                return CategoryOperationResult.Invalid(["请选择同类型且启用的一级分类。"]);
+            }
+
+            if (moving.ParentId != request.SourceParentId && moving.ParentId != parent.Id)
+            {
+                return CategoryOperationResult.Conflict("分类归属已变化，请刷新后重试。");
+            }
+
+            categories.TryAdd(moving.Id, moving);
+        }
 
         if (request.Ids.Count != categories.Count
-            || request.Ids.Distinct().Count() != request.Ids.Count
-            || request.Ids.Any(id => categories.All(category => category.Id != id)))
+            || request.Ids.Distinct().Count() != categories.Count
+            || request.Ids.Any(id => !categories.ContainsKey(id)))
         {
-            return CategoryOperationResult.Invalid(["排序必须包含该类型的全部分类且不能重复。"]);
+            return CategoryOperationResult.Invalid(["排序必须包含目标范围内的全部分类且不能重复。"]);
         }
 
         var now = _dates.UtcNow;
-        var byId = categories.ToDictionary(category => category.Id);
+        if (parent is not null)
+        {
+            // 与同组新增、移动和停用共享一级分类的并发版本。
+            var trackedParent = await _ledgerRepository.GetCategoryForUpdateAsync(ledger.Id, parent.Id, cancellationToken);
+            if (trackedParent is null || trackedParent.Version != parent.Version)
+            {
+                return CategoryOperationResult.Conflict("一级分类已变化，请刷新后重试。");
+            }
+
+            trackedParent.SetActive(parent.IsActive, now);
+        }
 
         for (var index = 0; index < request.Ids.Count; index++)
         {
-            var category = byId[request.Ids[index]];
-            var tracked = await _ledgerRepository.GetCategoryForUpdateAsync(ledger.Id, category.Id, cancellationToken);
+            var snapshot = categories[request.Ids[index]];
+            var tracked = await _ledgerRepository.GetCategoryForUpdateAsync(ledger.Id, snapshot.Id, cancellationToken);
+            if (tracked is null || tracked.Version != snapshot.Version)
+            {
+                return CategoryOperationResult.Conflict("分类已变化，请刷新后重试。");
+            }
 
-            tracked?.SetSortOrder(index, now);
+            if (tracked.Id == request.MovingId && parent is not null && tracked.ParentId != parent.Id)
+            {
+                tracked.MoveTo(parent.Id, now);
+            }
+
+            tracked.SetSortOrder(index, now);
         }
 
-        await _ledgerRepository.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _ledgerRepository.SaveChangesAsync(cancellationToken);
+        }
+        catch (ConcurrencyConflictException)
+        {
+            return CategoryOperationResult.Conflict("分类已变化，请刷新后重试。");
+        }
 
         return CategoryOperationResult.Success();
     }
@@ -288,6 +367,7 @@ public sealed class CategoryService
             category.IsActive,
             category.SystemKey,
             category.ParentId,
-            category.IsGroup);
+            category.IsGroup,
+            category.IconKey);
     }
 }

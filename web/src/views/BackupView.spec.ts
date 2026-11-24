@@ -27,6 +27,7 @@ const summary = {
   fundPendingArrival: 0,
   goldValue: 9000,
   goldPendingArrival: 0,
+  stockValue: 12500,
   totalAssets: null,
   isComplete: false,
   entryCount: 2,
@@ -63,17 +64,30 @@ beforeEach(() => {
   document.body.innerHTML = ''
 })
 
-test('export actions call the download endpoints', async () => {
+test('export actions show progress on the active button until the download completes', async () => {
+  let finishDownload!: () => void
+  mocks.downloadDetails.mockImplementationOnce(() => new Promise<void>(resolve => { finishDownload = resolve }))
+  mocks.downloadBackup.mockImplementationOnce(() => new Promise<void>(resolve => { finishDownload = resolve }))
   const view = mount(BackupView)
-  await flushPromises()
+  const [details, backup] = view.findAll('.backup-actions button')
 
-  await view.findAll('button').find((button) => button.text() === '导出明细 CSV')!.trigger('click')
-  await flushPromises()
+  await details!.trigger('click')
   expect(mocks.downloadDetails).toHaveBeenCalledWith('', '')
-
-  await view.findAll('button').find((button) => button.text() === '下载完整备份')!.trigger('click')
+  expect(details!.text()).toBe('导出中…')
+  expect(details!.attributes('aria-busy')).toBe('true')
+  expect(backup!.attributes('disabled')).toBeDefined()
+  finishDownload()
   await flushPromises()
+  expect(details!.text()).toBe('导出明细 CSV')
+
+  await backup!.trigger('click')
   expect(mocks.downloadBackup).toHaveBeenCalledTimes(1)
+  expect(backup!.text()).toBe('下载中…')
+  expect(backup!.attributes('aria-busy')).toBe('true')
+  expect(details!.attributes('disabled')).toBeDefined()
+  finishDownload()
+  await flushPromises()
+  expect(backup!.text()).toBe('下载完整备份')
   view.unmount()
 })
 
@@ -89,6 +103,8 @@ test('valid backup shows both summaries and requires confirmation before replaci
   expect(view.text()).toContain('恢复将替换当前账本')
   expect(view.text()).toContain('执行期次')
   expect(view.text()).toContain('2 个')
+  expect(view.text()).toContain('股票')
+  expect(view.text()).toContain('¥12,500.00')
 
   const restoreButton = view.findAll('button').find((button) => button.text() === '确认恢复并替换当前账本')!
   expect(restoreButton.attributes('disabled')).toBeDefined()

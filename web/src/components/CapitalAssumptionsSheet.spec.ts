@@ -362,4 +362,30 @@ describe('CapitalAssumptionsSheet', () => {
 
     expect(view!.emitted('close')).toHaveLength(1)
   })
+
+  it('prompts before discarding a salary profile follow switch and cancels pending preview on save', async () => {
+    vi.useFakeTimers()
+    mountSheet({
+      settings: { ...settings, useSalaryProfile: false },
+      hasSalaryProfile: true
+    })
+    await flushPromises()
+
+    findButton('改用工资档案').click()
+    await nextTick()
+
+    document.querySelector<HTMLButtonElement>('button[aria-label="关闭"]')!.click()
+    expect(await bodySnapshot()).toContain('放弃修改？')
+
+    findButton('继续编辑').click()
+    await nextTick()
+
+    findButton('保存并重新计算').click()
+    await nextTick()
+    const previewsBeforeAdvance = view!.emitted('preview')?.length ?? 0
+
+    vi.advanceTimersByTime(300)
+    await flushPromises()
+    expect(view!.emitted('preview')?.length ?? 0).toBe(previewsBeforeAdvance)
+  })
 })

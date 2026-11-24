@@ -1,8 +1,6 @@
 import type { CapitalProjectionPoint } from '../types/capital'
 import { chartFontSize, chartTheme } from './chartTheme'
-import { formatMaskedMoney, formatMoney } from './format'
-
-const ReturnColor = '#25C6DA'
+import { MaskedMoney, formatMoney } from './format'
 
 export interface CapitalChartInput {
   points: CapitalProjectionPoint[]
@@ -33,7 +31,7 @@ export function buildCapitalChartOption(input: CapitalChartInput) {
     totals.push(point.capital)
   }
 
-  const amount = (value: number) => input.amountsMasked ? formatMaskedMoney(value) : `¥${formatMoney(value)}`
+  const amount = (value: number) => input.amountsMasked ? MaskedMoney : `¥${formatMoney(value)}`
   const targetLabel = input.targetAmount !== null
     ? input.amountsMasked ? '••••' : formatWan(input.targetAmount)
     : ''
@@ -45,7 +43,9 @@ export function buildCapitalChartOption(input: CapitalChartInput) {
     tooltip: {
       trigger: 'axis',
       confine: true,
+      backgroundColor: theme.tooltipBg,
       borderWidth: 0,
+      textStyle: { color: theme.tooltipText, fontSize: chartFontSize(12) },
       axisPointer: { type: 'line', lineStyle: { color: theme.pointer, type: 'dashed' } },
       formatter: (params: { dataIndex?: number }[]) => {
         const index = params[0]?.dataIndex
@@ -89,7 +89,7 @@ export function buildCapitalChartOption(input: CapitalChartInput) {
         data: net,
         symbol: 'none',
         lineStyle: { width: 0 },
-        areaStyle: { color: 'rgba(91, 91, 215, 0.14)' },
+        areaStyle: { color: theme.areaStrong },
         itemStyle: { color: theme.brand }
       },
       {
@@ -99,8 +99,8 @@ export function buildCapitalChartOption(input: CapitalChartInput) {
         data: returns,
         symbol: 'none',
         lineStyle: { width: 0 },
-        areaStyle: { color: 'rgba(37, 198, 218, 0.42)' },
-        itemStyle: { color: ReturnColor }
+        areaStyle: { color: theme.propertyArea },
+        itemStyle: { color: theme.property }
       },
       {
         name: '总资本',
@@ -139,7 +139,9 @@ export function buildMonthlyChartOption(input: CapitalChartInput) {
     tooltip: {
       trigger: 'axis',
       confine: true,
+      backgroundColor: theme.tooltipBg,
       borderWidth: 0,
+      textStyle: { color: theme.tooltipText, fontSize: chartFontSize(12) },
       axisPointer: { type: 'shadow' },
       formatter: (params: { dataIndex?: number }[]) => {
         const index = params[0]?.dataIndex
@@ -150,7 +152,7 @@ export function buildMonthlyChartOption(input: CapitalChartInput) {
         }
 
         const amount = (value: number) => input.amountsMasked
-          ? formatMaskedMoney(value)
+          ? MaskedMoney
           : `¥${formatMoney(value)}`
 
         return `${Number(point.month.slice(5))}月<br/>净积累 ${amount(point.netAccumulation)}<br/>投资收益 ${amount(point.return)}`
@@ -181,7 +183,7 @@ export function buildMonthlyChartOption(input: CapitalChartInput) {
         type: 'bar',
         stack: 'monthly',
         data: points.map((point) => point.return),
-        itemStyle: { color: ReturnColor },
+        itemStyle: { color: theme.property },
         barMaxWidth: 18
       }
     ]

@@ -23,8 +23,6 @@ const readCacheLimit = 50
 const requestTimeoutMs = 15_000
 const readCache = new Map<string, { at: number; data: unknown }>()
 
-export const activeRequestCount = ref(0)
-
 const inFlightReads = new Map<string, Promise<unknown>>()
 let cacheGeneration = 0
 
@@ -34,8 +32,12 @@ export function clearReadCache(): void {
   readCache.clear()
 }
 
-function isCacheableRead(init?: RequestInit): boolean {
-  return (init?.method?.toUpperCase() ?? 'GET') === 'GET' && !init?.body
+export interface ApiRequestInit extends RequestInit {
+  skipCacheInvalidation?: boolean
+}
+
+function isCacheableRead(init?: ApiRequestInit): boolean {
+  return (init?.method?.toUpperCase() ?? 'GET') === 'GET' && !init?.body && !init?.headers
 }
 
 function readCached<T>(key: string): T | undefined {
@@ -65,13 +67,18 @@ function writeCached(key: string, data: unknown): void {
   readCache.set(key, { at: Date.now(), data: structuredClone(data) })
 }
 
-export async function readOnlyRequest<T>(path: string, init?: RequestInit): Promise<T> {
+export async function readOnlyRequest<T>(path: string, init?: ApiRequestInit): Promise<T> {
   // Only default reads share work; custom headers and cancellation keep independent semantics.
   if (init !== undefined) return performRequest<T>(path, init)
   const key = `${baseUrl}${path}`
+  const cached = readCached<T>(key)
+  if (cached !== undefined) {
+    return cached
+  }
+
   let pending = inFlightReads.get(key)
   if (!pending) {
-    pending = performRequest<T>(path)
+    pending = performRequest<T>(path, undefined, true)
     inFlightReads.set(key, pending)
   }
   try {
@@ -81,12 +88,12 @@ export async function readOnlyRequest<T>(path: string, init?: RequestInit): Prom
   }
 }
 
-async function performRequest<T>(path: string, init?: RequestInit): Promise<T> {
+async function performRequest<T>(path: string, init?: ApiRequestInit, skipCacheRead = false): Promise<T> {
   const generation = cacheGeneration
   const cacheable = isCacheableRead(init)
   const cacheKey = `${baseUrl}${path}`
 
-  if (cacheable) {
+  if (cacheable && !skipCacheRead) {
     const cached = readCached<T>(cacheKey)
 
     if (cached !== undefined) {
@@ -100,16 +107,29 @@ async function performRequest<T>(path: string, init?: RequestInit): Promise<T> {
     headers.set('Content-Type', 'application/json')
   }
 
-  activeRequestCount.value++
   const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), requestTimeoutMs)
+  let timedOut = false
+  const timeout = window.setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, requestTimeoutMs)
+  const externalSignal = init?.signal
+  const onExternalAbort = () => controller.abort()
+
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort()
+    } else {
+      externalSignal.addEventListener('abort', onExternalAbort, { once: true })
+    }
+  }
 
   try {
     const response = await fetch(`${baseUrl}${path}`, {
       ...init,
       credentials: 'include',
       headers,
-      signal: init?.signal ?? controller.signal
+      signal: controller.signal
     })
 
     if (!response.ok) {
@@ -125,7 +145,7 @@ async function performRequest<T>(path: string, init?: RequestInit): Promise<T> {
       throw new ApiError(response.status, message)
     }
 
-    if (!cacheable) {
+    if (!cacheable && !init?.skipCacheInvalidation) {
       clearReadCache()
     }
 
@@ -142,13 +162,17 @@ async function performRequest<T>(path: string, init?: RequestInit): Promise<T> {
     return data
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new ApiError(0, '请求超时，请检查网络后重试。')
+      if (timedOut && !externalSignal?.aborted) {
+        throw new ApiError(0, '请求超时，请检查网络后重试。')
+      }
+
+      throw error
     }
 
     throw error
   } finally {
     window.clearTimeout(timeout)
-    activeRequestCount.value--
+    externalSignal?.removeEventListener('abort', onExternalAbort)
   }
 }
 
@@ -167,12 +191,32 @@ const inFlightMutations = new Map<string, number>()
 export function readPendingMutations(): PendingMutation[] {
   const result: PendingMutation[] = []
 
-  for (let index = 0; index < localStorage.length; index++) {
-    const key = localStorage.key(index)
-
-    if (key?.startsWith(PendingPrefix)) {
-      result.push(JSON.parse(localStorage.getItem(key)!) as PendingMutation)
+  try {
+    const keys: string[] = []
+    for (let index = 0; index < localStorage.length; index++) {
+      const key = localStorage.key(index)
+      if (key?.startsWith(PendingPrefix)) {
+        keys.push(key)
+      }
     }
+
+    for (const key of keys) {
+      const raw = localStorage.getItem(key)
+      if (!raw) continue
+
+      try {
+        const parsed = JSON.parse(raw) as PendingMutation
+        if (parsed && typeof parsed.requestId === 'string' && typeof parsed.path === 'string') {
+          result.push(parsed)
+        } else {
+          localStorage.removeItem(key)
+        }
+      } catch {
+        localStorage.removeItem(key)
+      }
+    }
+  } catch {
+    // Ignore storage read errors in restricted browsing contexts.
   }
 
   pendingMutationCount.value = result.filter((request) => !inFlightMutations.has(request.requestId)).length
@@ -189,7 +233,11 @@ function remember(request: PendingMutation): void {
 }
 
 function forget(requestId: string): void {
-  localStorage.removeItem(`${PendingPrefix}${requestId}`)
+  try {
+    localStorage.removeItem(`${PendingPrefix}${requestId}`)
+  } catch {
+    // Ignore storage removal errors.
+  }
   readPendingMutations()
 }
 
@@ -215,10 +263,17 @@ export async function recoverMutation(request: PendingMutation, retry: boolean):
   }
 }
 
-export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+export async function apiRequest<T>(path: string, init?: ApiRequestInit): Promise<T> {
   const body = typeof init?.body === 'string' ? init.body : undefined
   const method = init?.method?.toUpperCase() ?? 'GET'
-  const parsed = body ? JSON.parse(body) as { requestId?: string; change?: { requestId?: string } } : undefined
+  let parsed: { requestId?: string; change?: { requestId?: string } } | undefined
+  if (body) {
+    try {
+      parsed = JSON.parse(body) as { requestId?: string; change?: { requestId?: string } }
+    } catch {
+      parsed = undefined
+    }
+  }
   const requestId = method !== 'GET' ? (parsed?.requestId ?? parsed?.change?.requestId) : undefined
 
   if (!requestId) {
@@ -249,6 +304,7 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
       try {
         const result = await lookupMutation<T>(requestId)
         forget(requestId)
+        clearReadCache()
         return result
       } catch {
         throw new ApiError(0, '保存结果待核实，原内容已保留；请查询结果或重试原请求，勿重新记账。')
@@ -259,6 +315,52 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
     if (remaining) inFlightMutations.set(requestId, remaining)
     else inFlightMutations.delete(requestId)
     readPendingMutations()
+  }
+}
+
+export async function apiDownload(path: string, fallbackName: string): Promise<void> {
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), requestTimeoutMs)
+
+  try {
+    const response = await fetch(`${baseUrl}${path}`, {
+      credentials: 'include',
+      signal: controller.signal
+    })
+
+    if (!response.ok) {
+      const problem = await readProblem(response)
+      const firstFieldError = problem?.errors
+        ? Object.values(problem.errors).flat()[0]
+        : undefined
+      const message = firstFieldError
+        ?? problem?.detail
+        ?? problem?.title
+        ?? `请求失败（HTTP ${response.status}）`
+
+      throw new ApiError(response.status, message)
+    }
+
+    const blob = await response.blob()
+    const disposition = response.headers.get('Content-Disposition') ?? ''
+    const match = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(disposition)
+    const fileName = match?.[1] ? decodeURIComponent(match[1].replaceAll('"', '')) : fallbackName
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = fileName
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new ApiError(0, '请求超时，请检查网络后重试。')
+    }
+
+    throw error
+  } finally {
+    window.clearTimeout(timeout)
   }
 }
 

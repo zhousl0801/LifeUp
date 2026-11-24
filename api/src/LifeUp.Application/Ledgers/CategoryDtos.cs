@@ -10,13 +10,20 @@ public sealed record EntryCategoryDto(
     bool IsActive,
     string? SystemKey,
     Guid? ParentId = null,
-    bool IsGroup = false);
+    bool IsGroup = false,
+    string? IconKey = null);
 
-public sealed record CreateCategoryRequest(LedgerEntryKind Kind, string Name, Guid? ParentId = null, bool IsGroup = false);
+public sealed record CreateCategoryRequest(LedgerEntryKind Kind, string Name, Guid? ParentId = null, bool IsGroup = false, string? IconKey = null);
 
-public sealed record UpdateCategoryRequest(string Name, bool IsActive, Guid? ParentId = null);
+public sealed record UpdateCategoryRequest(string Name, bool IsActive, Guid? ParentId = null, string? IconKey = null);
 
-public sealed record ReorderCategoriesRequest(LedgerEntryKind Kind, IReadOnlyList<Guid> Ids, Guid? ParentId = null, bool IsGroup = false);
+public sealed record ReorderCategoriesRequest(
+    LedgerEntryKind Kind,
+    IReadOnlyList<Guid> Ids,
+    Guid? ParentId = null,
+    bool IsGroup = false,
+    Guid? MovingId = null,
+    Guid? SourceParentId = null);
 
 public enum CategoryOperationStatus
 {

@@ -1,5 +1,5 @@
 export type EntryKind = 'income' | 'expense'
-export type EntrySource = 'manual' | 'automatic' | 'import'
+export type EntrySource = 'manual' | 'automatic' | 'import' | 'monthlyImport'
 export type EntryStatus = 'active' | 'reversed'
 export type EntryPeriod = 'day' | 'month' | 'year'
 
@@ -38,6 +38,7 @@ export interface EntryStatsPoint {
   category?: string | null
   income: number
   expense: number
+  iconKey?: string | null
 }
 
 export interface EntryStatsCategory {
@@ -45,6 +46,34 @@ export interface EntryStatsCategory {
   amount: number
   count: number
   share: number
+  previousAmount?: number | null
+  iconKey?: string | null
+  parentGroup?: string | null
+}
+
+export interface EntryStatsComparison {
+  comparable: boolean
+  label: string
+  previousFrom: string
+  previousTo: string
+  previousIncome: number
+  previousExpense: number
+  previousSurplus: number
+  incomeDelta: number | null
+  incomeDeltaPercent: number | null
+  expenseDelta: number | null
+  expenseDeltaPercent: number | null
+  surplusDelta: number | null
+}
+
+export interface EntryStatsTopEntry {
+  id: string
+  kind: EntryKind
+  businessDate: string
+  category: string
+  iconKey?: string | null
+  note: string | null
+  amount: number
 }
 
 export interface EntryStats {
@@ -62,6 +91,9 @@ export interface EntryStats {
   expenseCategories: EntryStatsCategory[]
   incomeGroups?: EntryStatsCategory[]
   expenseGroups?: EntryStatsCategory[]
+  comparison?: EntryStatsComparison | null
+  topExpenses?: EntryStatsTopEntry[] | null
+  topIncomes?: EntryStatsTopEntry[] | null
   note: string | null
 }
 

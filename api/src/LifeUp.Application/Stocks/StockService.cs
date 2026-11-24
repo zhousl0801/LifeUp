@@ -40,20 +40,23 @@ public sealed class StockService
             return null;
         }
 
-        var positions = await _ledgerRepository.GetStockPositionsAsync(ledger.Id, cancellationToken);
-        var transactions = await _ledgerRepository.GetAssetTransactionsAsync(
-            ledger.Id,
-            AssetType.Stock,
-            null,
-            null,
-            200,
-            cancellationToken);
+        var replayData = await _ledgerRepository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
+        var positions = replayData.Stocks
+            .OrderBy(position => position.Market)
+            .ThenBy(position => position.Code)
+            .ThenBy(position => position.Id)
+            .ToList();
+        var transactions = replayData.Transactions
+            .Where(transaction => !transaction.IsReversed && transaction.AssetType == AssetType.Stock)
+            .OrderByDescending(transaction => transaction.BusinessDate)
+            .ThenByDescending(transaction => transaction.CreatedAt)
+            .Take(200)
+            .ToList();
         var positionNames = positions.ToDictionary(position => position.Id, position => position.Name);
         var activities = transactions
             .Where(transaction => transaction.Kind != AssetTransactionKind.StockQuote)
             .Select(transaction => MapActivity(transaction, positionNames))
             .ToList();
-        var replayData = await _ledgerRepository.GetReplayDataReadOnlyAsync(ledger.Id, cancellationToken);
         var replay = new LedgerReplayCalculator().Calculate(
             replayData,
             BusinessFact.From(replayData),
@@ -633,16 +636,23 @@ public sealed class StockService
         catch (Exception exception) when (exception is QuoteUnavailableException or HttpRequestException or TaskCanceledException
             or ArgumentException or InvalidOperationException or HistoryValidationException)
         {
-            position.RecordQuoteSyncAttempt(now, null, Shorten(exception.Message));
+            // 先丢弃本次可能已暂存的行情交易与观察记录，避免失败状态下误提交脏数据。
+            _ledgerRepository.DiscardChanges();
+            var trackedPosition = await _ledgerRepository.GetStockPositionForUpdateAsync(ledger.Id, positionId, cancellationToken);
 
-            try
+            if (trackedPosition is not null)
             {
-                await _ledgerRepository.SaveChangesAsync(cancellationToken);
-            }
-            catch (ConcurrencyConflictException)
-            {
-                _ledgerRepository.DiscardChanges();
-                return AssetOperationResult<StockQuoteRefreshDto>.Conflict("数据已被其他操作修改，请刷新后重试。");
+                trackedPosition.RecordQuoteSyncAttempt(now, null, Shorten(exception.Message));
+
+                try
+                {
+                    await _ledgerRepository.SaveChangesAsync(cancellationToken);
+                }
+                catch (ConcurrencyConflictException)
+                {
+                    _ledgerRepository.DiscardChanges();
+                    return AssetOperationResult<StockQuoteRefreshDto>.Conflict("数据已被其他操作修改，请刷新后重试。");
+                }
             }
 
             return AssetOperationResult<StockQuoteRefreshDto>.Unavailable(exception.Message);

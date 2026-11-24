@@ -10,6 +10,8 @@ export interface MonthSummary {
   expense: number
   surplus: number
   hasRecords: boolean
+  providentDeposit?: number
+  providentWithdrawal?: number
 }
 
 export interface LedgerOverview {
@@ -39,6 +41,15 @@ export interface AssetChange {
   assetType: AssetKey
   change: number | null
   isNew: boolean
+  baselineAmount?: number | null
+}
+
+export interface PriorFundDisclosure {
+  date: string
+  profit: number
+  covered: number
+  total: number
+  complete: boolean
 }
 
 export interface MonthChange {
@@ -58,6 +69,29 @@ export interface MonthChange {
   marketValueChange: number | null
   netDeposit: number | null
   hasComparableData: boolean
+  dayBreakdown?: DayChangeBreakdown | null
+  priorFundDisclosure?: PriorFundDisclosure | null
+}
+
+export interface DayChangeBreakdown {
+  cashIncome: number
+  cashExpense: number
+  providentDeposit: number
+  fund: DayInvestmentChange | null
+  stock: DayInvestmentChange | null
+  gold: DayInvestmentChange | null
+  cashAdjustment: number
+  holdingAdjustment: number
+  otherDifference: number
+}
+
+export interface DayInvestmentChange {
+  profit: number
+  previousValue: number
+  currentValue: number
+  cashTransfer: number
+  openingValue: number
+  adjustment: number
 }
 
 export interface UpdateAssetCoverageInput {

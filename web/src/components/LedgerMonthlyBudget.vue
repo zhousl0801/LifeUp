@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import Decimal from 'decimal.js'
 import { fetchMonthlyBudget, updateMonthlyBudget } from '../api/ledger'
 import { getApiErrorMessage } from '../api/client'
@@ -8,7 +8,7 @@ import { formatMoney, parseAmount, sumAmounts } from '../utils/format'
 import BottomSheet from './BottomSheet.vue'
 import LoadingButton from './LoadingButton.vue'
 
-const props = defineProps<{ month: string; today: string; expense: number | null }>()
+const props = defineProps<{ month: string; today: string; expense: number | null; compact?: boolean }>()
 const budget = ref<number | null>(null)
 const loading = ref(true)
 const saving = ref(false)
@@ -36,16 +36,25 @@ const compactMoney = new Intl.NumberFormat('zh-CN', { notation: 'compact', maxim
 const ringAmount = computed(() => budget.value !== null && budget.value >= 100000
   ? '¥' + compactMoney.format(budget.value)
   : budgetAmount.value)
+let loadSequence = 0
 
 async function load(): Promise<void> {
+  const sequence = ++loadSequence
   loading.value = true
   loadError.value = ''
   try {
-    budget.value = (await fetchMonthlyBudget(props.month)).amount
+    const result = await fetchMonthlyBudget(props.month)
+    if (sequence === loadSequence) {
+      budget.value = result.amount
+    }
   } catch (error) {
-    loadError.value = getApiErrorMessage(error, '预算暂时无法读取。')
+    if (sequence === loadSequence) {
+      loadError.value = getApiErrorMessage(error, '预算暂时无法读取。')
+    }
   } finally {
-    loading.value = false
+    if (sequence === loadSequence) {
+      loading.value = false
+    }
   }
 }
 
@@ -79,11 +88,61 @@ function submit(): void {
   void save(parsed.value)
 }
 
-onMounted(load)
+watch(
+  () => props.month,
+  () => {
+    void load()
+  },
+  { immediate: true }
+)
+
+onBeforeUnmount(() => {
+  loadSequence++
+})
 </script>
 
 <template>
-  <div class="monthly-budget">
+  <div v-if="compact" class="monthly-budget-compact">
+    <div v-if="loadError" class="budget-compact-error">
+      <small>{{ loadError }}</small>
+      <button type="button" class="budget-compact-link" @click="load">重试</button>
+    </div>
+    <template v-else-if="!loading">
+      <button
+        v-if="budget !== null"
+        type="button"
+        class="budget-compact-bar"
+        :class="{ over: remaining !== null && remaining < 0 }"
+        :aria-label="`更改月度预算，当前 ${budgetAmount}${progressLabel ? '，已用 ' + progressLabel : ''}`"
+        @click="edit"
+      >
+        <span class="budget-compact-track">
+          <span class="budget-compact-fill" :style="{ width: `${Math.min(percentage ?? 0, 100)}%` }" />
+        </span>
+        <span class="budget-compact-text">
+          <span>预算已用 {{ progressLabel || '0%' }}</span>
+          <small v-if="remaining !== null">{{ remaining < 0 ? '超支' : '剩' }} ¥{{ formatMoney(Math.abs(remaining)) }} ›</small>
+        </span>
+      </button>
+      <button v-else type="button" class="budget-compact-set" @click="edit">设置本月预算 ›</button>
+    </template>
+
+    <BottomSheet :open="open" :title="monthLabel + '预算'" subtitle="只应用于这个月。"
+      close-icon :close-disabled="saving" @close="open = false">
+      <form class="budget-form" @submit.prevent="submit">
+        <label for="monthly-budget-amount">预算金额（元）</label>
+        <input id="monthly-budget-amount" v-model="draft" type="text" inputmode="decimal"
+          maxlength="18" placeholder="输入这个月的预算" :disabled="saving" />
+        <p v-if="formError" role="alert">{{ formError }}</p>
+        <div class="budget-form-actions" :class="{ 'can-clear': budget !== null }">
+          <button v-if="budget !== null" type="button" class="secondary-button" :disabled="saving" @click="save(null)">取消预算</button>
+          <LoadingButton type="submit" class="primary-button" :loading="saving">保存</LoadingButton>
+        </div>
+      </form>
+    </BottomSheet>
+  </div>
+
+  <div v-else class="monthly-budget">
     <div class="budget-copy">
       <slot />
       <small v-if="remaining !== null" class="budget-remaining" :class="{ over: remaining < 0 }">
@@ -156,12 +215,49 @@ onMounted(load)
   min-height: var(--touch-target); padding: 0 6px; border: 0; border-radius: var(--radius-control);
   color: var(--color-brand); background: transparent; font-size: var(--text-footnote);
 }
-.budget-form { display: grid; gap: 8px; }
-.budget-form input {
-  box-sizing: border-box; width: 100%; min-height: var(--touch-target); padding: 0 12px;
-  border: 0; border-radius: var(--radius-control); background: var(--color-bg-subtle); color: var(--color-text-primary);
+.budget-form {
+  display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); align-items: center; gap: 10px 12px;
 }
-.budget-form p { margin: 0; color: var(--color-danger); }
-.budget-form-actions { display: grid; gap: 8px; }
-.budget-form-actions.can-clear { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.budget-form label {
+  padding: 12px 0 12px 14px; border-radius: 16px 0 0 16px; background: var(--color-bg-surface);
+  color: var(--color-text-primary); font-size: 0.875rem; font-weight: 500;
+}
+.budget-form input {
+  appearance: none; -webkit-appearance: none; box-sizing: border-box; width: 100%; min-height: 46px;
+  margin-left: -12px; padding: 0 14px 0 12px; border: 0; border-radius: 0 16px 16px 0;
+  background: var(--color-bg-surface); color: var(--color-text-primary);
+  font-size: 0.9375rem; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right;
+}
+.budget-form input:focus-visible { outline: none; box-shadow: none; }
+.budget-form p { grid-column: 1 / -1; margin: 0; color: var(--color-danger); font-size: var(--text-footnote); }
+.budget-form-actions { grid-column: 1 / -1; display: grid; gap: 8px; }
+.budget-form-actions.can-clear { grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.monthly-budget-compact { margin-top: 12px; }
+.budget-compact-error {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  color: var(--color-text-secondary); font-size: var(--text-caption);
+}
+.budget-compact-link, .budget-compact-set {
+  border: 0; padding: 4px 0; background: transparent;
+  color: var(--color-brand); font-size: var(--text-caption); font-weight: 600;
+}
+.budget-compact-bar {
+  display: grid; gap: 6px; width: 100%; padding: 0; border: 0; background: transparent; text-align: left;
+}
+.budget-compact-track {
+  display: block; width: 100%; height: 6px; overflow: hidden;
+  border-radius: var(--radius-pill); background: var(--color-bg-subtle);
+}
+.budget-compact-fill {
+  display: block; height: 100%; border-radius: var(--radius-pill);
+  background: var(--ledger-accent, var(--color-brand));
+  transition: width var(--motion-base) var(--ease-standard);
+}
+.budget-compact-bar.over .budget-compact-fill { background: var(--color-danger); }
+.budget-compact-text {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  color: var(--color-text-secondary); font-size: var(--text-caption); font-variant-numeric: tabular-nums;
+}
+.budget-compact-bar.over .budget-compact-text small { color: var(--color-danger); font-weight: 600; }
 </style>

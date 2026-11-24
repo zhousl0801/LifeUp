@@ -85,7 +85,7 @@ async function saveSalary(next: SalaryProfile): Promise<void> {
     const result = await saveSalaryProfile({ ...next, requestId: createRequestId() })
     profile.value = result.profile
     sheetOpen.value = false
-    toast.success('工资档案已保存，计划和预测已同步。')
+    toast.success('工资档案已保存')
     await load()
   } catch (saveError) {
     serverError.value = getApiErrorMessage(saveError, '保存工资档案失败，请重试。')
@@ -106,7 +106,7 @@ async function disableSalary(): Promise<void> {
     const result = await disableSalaryProfile(createRequestId())
     profile.value = result.profile
     sheetOpen.value = false
-    toast.success('工资档案已停用，计划金额恢复可编辑。')
+    toast.success('工资档案已停用')
     await load()
   } catch (disableError) {
     serverError.value = getApiErrorMessage(disableError, '停用工资档案失败，请重试。')

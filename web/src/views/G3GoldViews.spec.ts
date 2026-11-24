@@ -8,6 +8,7 @@ const today = todayInBusinessTimeZone()
 
 const mocks = vi.hoisted(() => ({
   overview: vi.fn(),
+  dayChange: vi.fn(),
   buy: vi.fn(),
   sell: vi.fn(),
   arrive: vi.fn(),
@@ -28,6 +29,12 @@ vi.mock('../api/gold', () => ({
   arriveGoldSell: mocks.arrive,
   saveGoldHolding: mocks.holding,
   refreshGoldQuote: mocks.refresh
+}))
+
+vi.mock('../api/ledger', () => ({
+  fetchDayChange: mocks.dayChange,
+  fetchLedger: vi.fn(),
+  updateAssetCoverage: vi.fn()
 }))
 
 const overview = {
@@ -58,6 +65,7 @@ beforeEach(() => {
   clear()
   vi.clearAllMocks()
   mocks.overview.mockResolvedValue(structuredClone(overview))
+  mocks.dayChange.mockResolvedValue({ to: today, dayBreakdown: null })
   document.body.innerHTML = ''
 })
 
@@ -87,6 +95,30 @@ test('gold activity row shows action, cost per gram, time, amount and status', a
   expect(row.text()).toContain('−1,088.00元')
   expect(row.text()).toContain('已成交')
   expect(row.find('.activity-time').text()).toMatch(/\d{2}:\d{2}:\d{2}/)
+  view.unmount()
+})
+
+test('gold hero shows the quote and the three shared return metrics', async () => {
+  mocks.overview.mockResolvedValue({ ...overview, quoteSource: 'sge_delayed' })
+  const quoteRefresh = { updated: false, quote: 900, quoteDate: today }
+  mocks.refresh.mockResolvedValueOnce(quoteRefresh).mockResolvedValueOnce(quoteRefresh)
+  mocks.dayChange.mockResolvedValue({
+    to: today,
+    dayBreakdown: { gold: { profit: -180, previousValue: 24000 } }
+  })
+  const view = mount(GoldView)
+  await flushPromises()
+
+  expect(view.get('.gold-hero .hero-meta').text()).toBe('Au99.99: 900.00¥/g')
+  const metrics = view.findAll('.hero-metrics > div')
+  expect(metrics.map(metric => metric.get('span').text())).toEqual(['今日盈亏', '总收益', '总收益率'])
+  expect(metrics[0]!.get('b').text()).toBe('−180.00')
+  expect(metrics[0]!.get('small').text()).toBe('−0.75%')
+  expect(metrics[1]!.get('b').text()).toBe('+1,400.00')
+  expect(metrics[2]!.get('b').text()).toBe('+5.47%')
+  await view.get('.gold-header button[aria-label="同步行情"]').trigger('click')
+  await flushPromises()
+  expect(mocks.refresh).toHaveBeenCalledTimes(2)
   view.unmount()
 })
 
@@ -152,7 +184,7 @@ test('gold sale uses grams and quote and records received cash by default', asyn
   })
   expect(mocks.sell.mock.calls[0]![0]).not.toHaveProperty('settlement')
   expect(mocks.sell.mock.calls[0]![0]).not.toHaveProperty('relatedCashAdjustmentId')
-  expect(messages.value.at(-1)?.text ?? '').toContain('当前现金 ¥10,898.00')
+  expect(messages.value.at(-1)?.text).toBe('已卖出 1.0000 克')
   view.unmount()
 })
 
@@ -240,7 +272,7 @@ test('manual refresh is disabled while the page refreshes the quote on enter', a
   const view = mount(GoldView, { attachTo: document.body })
   await flushPromises()
 
-  const refreshButton = view.findAll('button').find((button) => button.text().includes('刷新'))!
+  const refreshButton = view.get('.gold-header button[aria-label="正在同步行情"]')
   expect(refreshButton.attributes('disabled')).toBeDefined()
   expect(mocks.refresh).toHaveBeenCalledTimes(1)
 
@@ -338,8 +370,7 @@ test('holding form takes cost per gram and converts it to total cost', async () 
   const view = mount(GoldView, { attachTo: document.body })
   await flushPromises()
 
-  expect(view.find('.gold-hero').text()).toContain('成本均价')
-  expect(view.find('.gold-hero').text()).toContain('¥853.33 / 克')
+  expect(view.get('.position-row .position-code-line').text()).toContain('成本 ¥853.33 / 克')
   expect(view.find('.gold-hero').text()).toContain('总收益率')
 
   await view.findAll('button').find((button) => button.text() === '录入 / 核对')!.trigger('click')

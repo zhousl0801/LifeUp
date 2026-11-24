@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { ECharts } from 'echarts/core'
+import { computed, ref } from 'vue'
 import type { EChartsOption } from 'echarts'
-import { loadChartRuntime } from '../utils/chartRuntime'
-import { buildAssetTrend, buildTrendOption, trendAmountLabel } from '../utils/trend'
-import { resolvedTheme } from '../utils/theme'
-import type { AssetTrend, AssetTrendPoint } from '../types/trend'
+import { useEChart } from '../composables/useEChart'
+import { todayInBusinessTimeZone } from '../utils/format'
+import { buildAssetTrend, buildTrendOption, buildTrendPlaceholderOption, trendAmountLabel } from '../utils/trend'
+import type { AssetTrend, AssetTrendPoint, TrendRange } from '../types/trend'
 
 const props = defineProps<{
-  trend: AssetTrend
+  trend: AssetTrend | null
+  placeholderRange?: TrendRange
+  placeholderEndDate?: string
   variant?: 'default' | 'hero'
   amountsMasked?: boolean
 }>()
@@ -16,69 +17,57 @@ const props = defineProps<{
 const emit = defineEmits<{ select: [point: AssetTrendPoint] }>()
 
 const container = ref<HTMLElement | null>(null)
-const series = computed(() => buildAssetTrend(props.trend))
+const series = computed(() => props.trend ? buildAssetTrend(props.trend) : null)
 const chartLabel = computed(() => {
+  if (!props.trend || !series.value) {
+    return '正在读取资产趋势图'
+  }
+
   const latest = series.value.latest
   const label = latest?.source.totalAssets == null ? '已记录资产' : '总资产'
   return `资产趋势图，${props.trend.from} 至 ${props.trend.to}；最新${label} ${trendAmountLabel(latest, props.amountsMasked)}`
 })
-let chart: ECharts | null = null
-let disposed = false
 
-function resize(): void {
-  chart?.resize()
-}
-
-function render(): void {
-  chart?.setOption(
-    buildTrendOption(props.trend, series.value, props.variant ?? 'default', props.amountsMasked) as EChartsOption,
-    { notMerge: true }
-  )
-}
-
-onMounted(() => {
-  window.addEventListener('resize', resize)
-
-  void loadChartRuntime().then((echarts) => {
-    if (disposed || !container.value) {
-      return
+useEChart(
+  container,
+  () => {
+    if (!props.trend || !series.value) {
+      return buildTrendPlaceholderOption(
+        props.placeholderRange ?? 'week',
+        props.placeholderEndDate ?? todayInBusinessTimeZone(),
+        props.variant ?? 'default'
+      ) as EChartsOption
     }
 
-    chart = echarts.init(container.value, undefined, { renderer: 'canvas' })
-    render()
-    chart.on('updateAxisPointer', (event: unknown) => {
-      const payload = event as { axesInfo?: { axisDim: string; value: number | string }[] }
-      const value = payload.axesInfo?.find((axis) => axis.axisDim === 'x')?.value
-      const point = typeof value === 'number' && Number.isInteger(value)
-        ? props.trend.points[value]
-        : props.trend.points.find((item) => item.date === value)
-
-      if (point) emit('select', point)
-    })
-  })
-})
-
-watch(
-  () => props.trend,
-  () => {
-    render()
+    return buildTrendOption(props.trend, series.value, props.variant ?? 'default', props.amountsMasked) as EChartsOption
   },
-  { deep: true }
+  {
+    watchSources: () => [
+      props.trend,
+      props.trend?.points,
+      props.trend?.points.length,
+      props.placeholderRange,
+      props.placeholderEndDate,
+      props.variant,
+      props.amountsMasked
+    ],
+    resizeOnUpdate: true,
+    setOptionOpts: { notMerge: false, replaceMerge: ['yAxis'] },
+    onInit(chart) {
+      chart.on('updateAxisPointer', (event: unknown) => {
+        if (!props.trend) return
+
+        const payload = event as { axesInfo?: { axisDim: string; value: number | string }[] }
+        const value = payload.axesInfo?.find((axis) => axis.axisDim === 'x')?.value
+        const point = typeof value === 'number' && Number.isInteger(value)
+          ? props.trend.points[value]
+          : props.trend.points.find((item) => item.date === value)
+
+        if (point) emit('select', point)
+      })
+    }
+  }
 )
-
-watch(
-  () => [props.variant, props.amountsMasked],
-  () => render()
-)
-
-watch(resolvedTheme, () => render())
-
-onBeforeUnmount(() => {
-  disposed = true
-  window.removeEventListener('resize', resize)
-  chart?.dispose()
-  chart = null
-})
 </script>
 
 <template>

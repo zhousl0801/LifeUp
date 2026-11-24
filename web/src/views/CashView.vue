@@ -6,7 +6,7 @@ import { fetchCashOverview, reconcileCash } from '../api/cash'
 import { ApiError, getApiErrorMessage } from '../api/client'
 import { toast } from '../composables/useMessage'
 import AppNav from '../components/AppNav.vue'
-import AnimatedMoney from '../components/AnimatedMoney.vue'
+import MoneyAmount from '../components/MoneyAmount.vue'
 import BackButton from '../components/BackButton.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import LoadingButton from '../components/LoadingButton.vue'
@@ -232,9 +232,7 @@ async function submitReconcile(): Promise<void> {
     })
 
     isReconcileOpen.value = false
-    toast.success(result.isBalanced
-      ? '核对一致，无需调整。'
-      : `余额已调整为 ¥${formatMoney(result.cashBalance)}，生活收支保持不变。`)
+    toast.success(result.isBalanced ? '余额核对一致' : '余额已调整')
     await loadCash()
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
@@ -256,7 +254,7 @@ async function submitReconcile(): Promise<void> {
 
 <template>
   <main class="page cash-page with-nav">
-    <header class="cash-header">
+    <header class="cash-header asset-page-header">
       <BackButton @back="navigateBack(router)" />
       <h1>现金</h1>
       <button type="button" class="reconcile-link" @click="openReconcile">核对余额</button>
@@ -276,7 +274,7 @@ async function submitReconcile(): Promise<void> {
           可用现金
           <span class="hero-tag">统一余额</span>
         </p>
-        <h2 class="hero-balance"><span>¥</span><AnimatedMoney :value="overview.balance" prefix="" /></h2>
+        <h2 class="hero-balance"><span>¥</span><MoneyAmount :value="overview.balance" prefix="" /></h2>
         <div class="hero-metrics">
           <div>
             <span>本月现金流入</span>
@@ -427,7 +425,7 @@ async function submitReconcile(): Promise<void> {
 .reconcile-fields {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 0;
 }
 
 .cash-page {
@@ -553,28 +551,8 @@ async function submitReconcile(): Promise<void> {
 .cash-actions button {
   flex: 1;
   min-height: 48px;
-  border: 0;
-  border-radius: var(--radius-pill);
   font-size: 0.9375rem;
   font-weight: 600;
-}
-
-.action-primary {
-  background: var(--color-brand);
-  color: var(--color-on-brand);
-}
-
-.action-primary:hover {
-  background: var(--color-brand-hover);
-}
-
-.action-secondary {
-  background: var(--color-bg-subtle);
-  color: var(--color-brand);
-}
-
-.action-secondary:hover {
-  background: var(--color-brand-soft);
 }
 
 .section-head {
@@ -750,64 +728,104 @@ async function submitReconcile(): Promise<void> {
   text-align: center;
 }
 
-.balance-row,
-.difference-row {
+.balance-row {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
   gap: 12px;
-  padding: 11px 12px;
-  border-radius: var(--radius-control);
-  background: var(--color-bg-subtle);
+  margin-bottom: 10px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-brand) 7%, var(--color-bg-surface));
   color: var(--color-text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--text-caption);
 }
 
-.balance-row b,
-.difference-row b {
-  color: var(--color-text-primary);
-  font-size: 0.9375rem;
-  font-weight: 500;
+.balance-row b {
+  color: var(--color-brand);
+  font-size: 0.875rem;
+  font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
 
 .field {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  color: var(--color-text-secondary);
-  font-size: 0.75rem;
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 46px;
+  padding: 8px 14px;
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border-subtle);
+  color: var(--color-text-primary);
+  font-size: 0.875rem;
+}
+
+.reconcile-fields > .field:first-of-type {
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+}
+
+.field > span {
+  font-weight: 500;
 }
 
 .field input {
+  appearance: none;
+  -webkit-appearance: none;
   box-sizing: border-box;
   width: 100%;
-  min-height: 48px;
-  padding: 0 14px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-control);
-  background: var(--color-bg-subtle);
+  min-width: 0;
+  min-height: 30px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
   color: var(--color-text-primary);
-  font-size: 1rem;
-}
-
-.field input:hover {
-  border-color: var(--color-border-default);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .field input:focus-visible {
-  border-color: var(--color-border-focus);
+  outline: none;
+  box-shadow: none;
+}
+
+.field:focus-within {
+  background: color-mix(in srgb, var(--color-brand) 4%, var(--color-bg-surface));
+}
+
+.difference-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  min-height: 46px;
+  margin-bottom: 10px;
+  padding: 8px 14px;
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
   background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.difference-row b {
+  color: var(--color-text-primary);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .sheet-note {
-  margin: 0;
-  padding: 10px 12px;
-  border-radius: var(--radius-tag);
-  background: var(--color-bg-subtle);
+  margin: 0 0 10px;
+  padding: 2px 6px;
+  background: transparent;
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
-  line-height: 1.7;
+  line-height: 1.55;
 }
 
 .form-error {

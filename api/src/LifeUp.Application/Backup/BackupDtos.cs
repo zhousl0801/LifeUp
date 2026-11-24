@@ -17,7 +17,8 @@ public sealed record BackupSummaryDto(
     int PlanCount,
     int PlanOccurrenceCount,
     int MutationReceiptCount,
-    int PriceObservationCount);
+    int PriceObservationCount,
+    decimal? StockValue = null);
 
 public sealed record BackupValidationDto(
     bool IsValid,

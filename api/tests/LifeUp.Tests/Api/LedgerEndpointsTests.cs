@@ -89,6 +89,10 @@ public sealed class LedgerEndpointsTests
         Assert.NotNull(change);
         Assert.Equal(new DateOnly(2026, 10, 20), change.From);
         Assert.Equal(new DateOnly(2026, 10, 20), change.To);
+        Assert.NotNull(change.DayBreakdown);
+        Assert.Equal(0m, change.DayBreakdown.CashIncome);
+        Assert.Equal(0m, change.DayBreakdown.CashExpense);
+        Assert.Null(change.DayBreakdown.Stock);
     }
 
     [Fact]

@@ -63,5 +63,5 @@ test('masks amounts when requested', () => {
   })
 
   expect(view.text()).not.toContain('384,050.00')
-  expect(view.text()).toContain('¥3••••')
+  expect(view.text()).toContain('¥••••')
 })

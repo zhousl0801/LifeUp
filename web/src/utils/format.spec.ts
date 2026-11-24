@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   amountTone,
+  calculatePercent,
+  divideUnitPrice,
   formatBusinessDate,
   formatBusinessTime,
   formatMoney,
+  formatPercent,
   formatQuantity,
   formatSignedMoney,
   formatUnitPrice,
@@ -130,6 +133,20 @@ describe('formatUnitPrice', () => {
   expect(formatUnitPrice(1500)).toBe('1,500.00')
   expect(formatUnitPrice(0)).toBe('0.00')
   expect(formatUnitPrice(null)).toBe('—')
+  expect(formatUnitPrice(Number.NaN)).toBe('—')
+  })
+})
+
+describe('calculatePercent, formatPercent and divideUnitPrice', () => {
+  it('computes percentages and unit prices with Decimal precision', () => {
+    expect(calculatePercent(15, 200)).toBe(7.5)
+    expect(calculatePercent(10, 0)).toBeNull()
+    expect(formatPercent(7.5)).toBe('+7.50%')
+    expect(formatPercent(-1.2)).toBe('−1.20%')
+    expect(formatPercent(0)).toBe('0.00%')
+    expect(formatPercent(null, '—')).toBe('—')
+    expect(divideUnitPrice(1000, 3)).toBe('333.3333')
+    expect(divideUnitPrice(1000, 0)).toBe('')
   })
 })
 

@@ -8,8 +8,9 @@ namespace LifeUp.Application.Plans;
 /// </summary>
 public sealed class TradingCalendar
 {
+    private const int MaximumNextTradingDaySearchDays = 366;
     private static readonly (string Code, string Name)[] Markets = [("CN", "中国"), ("US", "美国"), ("HK", "香港")];
-    private readonly IReadOnlyList<MarketCalendarYear> _versions;
+    private readonly Dictionary<(string Market, int Year), IReadOnlyList<IndexedCalendarYear>> _versionsByMarketYear;
 
     public static TradingCalendar Default { get; } = Load();
 
@@ -24,23 +25,42 @@ public sealed class TradingCalendar
             throw new ArgumentException("市场日历数据无效或生效日期重复。", nameof(versions));
         }
 
-        _versions = versions;
+        _versionsByMarketYear = versions
+            .GroupBy(version => (version.Market, version.Year))
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<IndexedCalendarYear>)group
+                    .OrderByDescending(version => version.EffectiveFrom)
+                    .Select(version => new IndexedCalendarYear(
+                        version,
+                        version.ClosedDates.ToHashSet(),
+                        version.HalfDays.ToHashSet()))
+                    .ToList());
     }
 
     public TradingDayDto GetDay(DateOnly date)
     {
         var weekend = date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
-        var markets = Markets.Select(market =>
-        {
-            var calendar = _versions.Where(version => version.Market == market.Code
-                && version.Year == date.Year && version.EffectiveFrom <= date)
-                .OrderByDescending(version => version.EffectiveFrom).FirstOrDefault();
-            var open = !weekend && !(calendar?.ClosedDates.Contains(date) ?? false);
+        var markets = new List<MarketDayDto>(Markets.Length);
 
-            return new MarketDayDto(market.Code, market.Name, date.Year, open,
-                open && (calendar?.HalfDays.Contains(date) ?? false), calendar is null,
-                calendar?.Version, calendar?.SourceUrl, calendar?.PublishedOn, calendar?.VerifiedOn);
-        }).ToList();
+        foreach (var market in Markets)
+        {
+            var indexed = FindEffectiveCalendar(market.Code, date);
+            var calendar = indexed?.Source;
+            var open = !weekend && !(indexed?.ClosedDates.Contains(date) ?? false);
+
+            markets.Add(new MarketDayDto(
+                market.Code,
+                market.Name,
+                date.Year,
+                open,
+                open && (indexed?.HalfDays.Contains(date) ?? false),
+                calendar is null,
+                calendar?.Version,
+                calendar?.SourceUrl,
+                calendar?.PublishedOn,
+                calendar?.VerifiedOn));
+        }
 
         return new TradingDayDto(date, markets.All(market => market.IsOpen), markets);
     }
@@ -54,13 +74,47 @@ public sealed class TradingCalendar
     {
         var date = after.AddDays(1);
 
-        while (!IsTradingDay(date, scope))
+        for (var step = 0; step < MaximumNextTradingDaySearchDays; step++)
         {
+            if (IsTradingDay(date, scope))
+            {
+                return date;
+            }
+
+            if (date == DateOnly.MaxValue)
+            {
+                break;
+            }
+
             date = date.AddDays(1);
         }
 
-        return date;
+        throw new InvalidOperationException($"在 {after:yyyy-MM-dd} 之后的 {MaximumNextTradingDaySearchDays} 天内未找到可用交易日。");
     }
+
+    private IndexedCalendarYear? FindEffectiveCalendar(string marketCode, DateOnly date)
+    {
+        if (!_versionsByMarketYear.TryGetValue((marketCode, date.Year), out var versions))
+        {
+            return null;
+        }
+
+        // 已按 EffectiveFrom 降序排列，首条满足 EffectiveFrom <= date 即为生效版本。
+        foreach (var version in versions)
+        {
+            if (version.Source.EffectiveFrom <= date)
+            {
+                return version;
+            }
+        }
+
+        return null;
+    }
+
+    private sealed record IndexedCalendarYear(
+        MarketCalendarYear Source,
+        HashSet<DateOnly> ClosedDates,
+        HashSet<DateOnly> HalfDays);
 
     public bool IsTradingDay(DateOnly date, AutoPlanTradingScope scope)
     {

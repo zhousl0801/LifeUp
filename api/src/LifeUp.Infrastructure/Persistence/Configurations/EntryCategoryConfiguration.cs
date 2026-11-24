@@ -39,6 +39,12 @@ internal sealed class EntryCategoryConfiguration : IEntityTypeConfiguration<Entr
             .HasMaxLength(EntryCategory.MaximumNameLength)
             .IsRequired();
 
+        builder.Property(category => category.IconKey)
+            .HasColumnName("icon_key")
+            .HasMaxLength(EntryCategory.MaximumIconKeyLength)
+            .HasComment("Noto Emoji 图标标识")
+            .IsRequired(false);
+
         builder.Property(category => category.SortOrder)
             .HasColumnName("sort_order")
             .IsRequired();

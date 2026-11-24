@@ -31,6 +31,7 @@ public sealed class LedgerEntriesController : ControllerBase
         [FromQuery] string? search = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 100,
+        [FromQuery] string? sort = null,
         CancellationToken cancellationToken = default)
     {
         var result = await _ledgerEntryService.GetPeriodAsync(
@@ -41,7 +42,8 @@ public sealed class LedgerEntriesController : ControllerBase
             search,
             cancellationToken,
             page,
-            pageSize);
+            pageSize,
+            sort);
 
         if (result is null)
         {
@@ -102,6 +104,28 @@ public sealed class LedgerEntriesController : ControllerBase
         var result = await _ledgerEntryService.CreateAsync(request, cancellationToken);
 
         return ToActionResult(result);
+    }
+
+    [HttpPost("historical-expenses")]
+    public async Task<IActionResult> ImportHistoricalExpenses(
+        [FromBody] HistoricalExpenseImportRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _ledgerEntryService.ImportHistoricalExpensesAsync(request, cancellationToken);
+
+        return result.Status switch
+        {
+            EntryOperationStatus.Success => Ok(result),
+            EntryOperationStatus.NotFound => LedgerNotFound(),
+            EntryOperationStatus.Invalid => ValidationProblem(BuildModelState(result.Errors)),
+            EntryOperationStatus.Conflict => Conflict(new ProblemDetails
+            {
+                Title = "导入冲突",
+                Detail = result.Errors[0],
+                Status = StatusCodes.Status409Conflict
+            }),
+            _ => throw new InvalidOperationException("未知的历史支出导入结果。")
+        };
     }
 
     [HttpPut("{entryId:guid}")]

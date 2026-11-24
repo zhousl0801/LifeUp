@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { navigateBack } from '../utils/navigation'
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   deletePlan,
@@ -15,13 +15,14 @@ import {
   savePlan,
   skipOccurrence
 } from '../api/plans'
-import { createFundPosition, fetchFundOverview, searchFunds } from '../api/funds'
+import { createFundPosition, fetchFundOverview } from '../api/funds'
 import { fetchSalaryProfile } from '../api/salary'
 import { ApiError, getApiErrorMessage } from '../api/client'
+import { useFundSearch } from '../composables/useFundSearch'
 import { toast } from '../composables/useMessage'
 import AppIcon from '../components/AppIcon.vue'
 import AppNav from '../components/AppNav.vue'
-import AnimatedMoney from '../components/AnimatedMoney.vue'
+import MoneyAmount from '../components/MoneyAmount.vue'
 import BackButton from '../components/BackButton.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import BottomSheet from '../components/BottomSheet.vue'
@@ -31,6 +32,22 @@ import LoadingState from '../components/LoadingState.vue'
 import PlanCalendar from '../components/PlanCalendar.vue'
 import { createRequestId } from '../utils/request'
 import { fundPlanDisplayName as fundDisplayName } from '../utils/plan'
+import {
+  fundCode,
+  fundGroupKey,
+  fundGroupMetaLine,
+  fundMetaLine,
+  groupSummary,
+  incomeSummary,
+  nextDueText as formatNextDueText,
+  providentSummary,
+  scheduleText,
+  shareClassLabel,
+  statusClass,
+  statusLabel,
+  weekdayLabels,
+  type FundPlanGroup
+} from '../utils/planFormatting'
 import {
   formatBusinessDate,
   formatMoney,
@@ -42,7 +59,6 @@ import type { FundPosition, FundSearchResult } from '../types/fund'
 import type { SalaryProfile } from '../types/salary'
 import type {
   AutoPlan,
-  OccurrenceStatus,
   PlanCycle,
   PlanOccurrence,
   PlanOverview,
@@ -107,12 +123,14 @@ const form = reactive({
   startDate: today,
   fundPositionId: ''
 })
-const fundSearch = ref('')
-const fundSearchResults = ref<FundSearchResult[]>([])
-const fundSearching = ref(false)
-const fundSearchError = ref('')
+const {
+  fundSearch,
+  fundSearchResults,
+  fundSearching,
+  fundSearchError,
+  resetFundSearch: clearSearchState
+} = useFundSearch()
 const selectedFundTarget = ref<FundSearchResult | null>(null)
-let fundSearchTimer: ReturnType<typeof setTimeout> | null = null
 
 const fundChoices = computed(() => {
   const choices = new Map<string, FundPosition & { sourceIds: string[] }>()
@@ -144,18 +162,6 @@ interface PlanGroup {
   newType: PlanType
   plans: AutoPlan[]
   summary: string
-}
-
-interface FundPlanGroup {
-  key: string
-  name: string
-  plans: AutoPlan[]
-  single: AutoPlan | null
-  codes: string[]
-  shareClasses: string[]
-  activeCount: number
-  activeAmount: number
-  nextDueDate: string | null
 }
 
 const planGroups = computed<PlanGroup[]>(() => {
@@ -252,8 +258,6 @@ function isManagedPlan(plan: AutoPlan): boolean {
 function canAddPlan(group: PlanGroup): boolean {
   return !(group.key === 'income' && salaryProfile.value !== null)
 }
-
-const weekdayLabels = ['一', '二', '三', '四', '五', '六', '日']
 
 // 新增从哪个分组进来，决定表单展示哪些字段：基金只填基金信息，公积金只能选缴存 / 提取。
 const entryGroup = ref<PlanGroup['key'] | null>(null)
@@ -362,39 +366,12 @@ function applyDefaultTradingScope(): void {
   form.tradingScope = defaultTradingScope()
 }
 
-watch(fundSearch, (value) => {
-  fundSearchError.value = ''
-
-  if (fundSearchTimer) {
-    clearTimeout(fundSearchTimer)
-    fundSearchTimer = null
-  }
-
-  const query = value.trim()
-
-  if (!query) {
-    fundSearchResults.value = []
-    return
-  }
-
-  fundSearchTimer = setTimeout(() => {
-    void runFundSearch(query)
-  }, 300)
-})
-
 onMounted(() => {
   if (route.query.new === 'providentDeposit' || route.query.new === 'salaryIncome') {
     openNew(route.query.new)
   }
   void load()
   void loadCalendar()
-})
-
-onBeforeUnmount(() => {
-  if (fundSearchTimer) {
-    clearTimeout(fundSearchTimer)
-    fundSearchTimer = null
-  }
 })
 
 async function load(): Promise<void> {
@@ -607,7 +584,7 @@ async function submit(): Promise<void> {
     }
 
     await savePlan(input)
-    toast.success(editingPlan.value ? '计划已更新，后续期次按新配置生成。' : '计划已保存。')
+    toast.success(editingPlan.value ? '计划已更新' : '计划已保存')
 
     if (entryGroup.value) {
       expandedGroups[entryGroup.value] = true
@@ -623,24 +600,14 @@ async function submit(): Promise<void> {
 }
 
 function resetFundSearch(): void {
-  if (fundSearchTimer) {
-    clearTimeout(fundSearchTimer)
-    fundSearchTimer = null
-  }
-
-  fundSearch.value = ''
-  fundSearchResults.value = []
-  fundSearchError.value = ''
-  fundSearching.value = false
+  clearSearchState()
   selectedFundTarget.value = null
 }
 
 function chooseFundTarget(result: FundSearchResult): void {
   selectedFundTarget.value = result
   form.fundPositionId = ''
-  fundSearch.value = ''
-  fundSearchResults.value = []
-  fundSearchError.value = ''
+  clearSearchState()
 
   if (form.cycle === 'tradingDay') {
     applyDefaultTradingScope()
@@ -657,33 +624,11 @@ function onFundSelectChange(): void {
 
 function clearFundTarget(): void {
   selectedFundTarget.value = null
-  fundSearch.value = ''
-  fundSearchResults.value = []
-  fundSearchError.value = ''
+  resetFundSearch()
 }
 
 function normalizeIdentity(value: string | null | undefined): string {
   return (value ?? '').normalize('NFKC').replace(/\s/g, '').toUpperCase()
-}
-
-async function runFundSearch(query: string): Promise<void> {
-  fundSearching.value = true
-
-  try {
-    const results = await searchFunds(query)
-
-    if (fundSearch.value.trim() === query) {
-      fundSearchResults.value = results
-      fundSearchError.value = results.length ? '' : '没有找到匹配的基金，请换一个名称或代码。'
-    }
-  } catch (error) {
-    if (fundSearch.value.trim() === query) {
-      fundSearchResults.value = []
-      fundSearchError.value = getApiErrorMessage(error, '基金搜索暂时不可用，请稍后重试。')
-    }
-  } finally {
-    fundSearching.value = false
-  }
 }
 
 async function ensurePositionForTarget(target: FundSearchResult): Promise<void> {
@@ -720,10 +665,10 @@ async function togglePlan(plan: AutoPlan): Promise<void> {
   try {
     if (plan.isActive) {
       await pausePlan(plan.id, createRequestId())
-      toast.success('计划已暂停；已有期次保留，暂停期间不追补。')
+      toast.success('计划已暂停')
     } else {
       await resumePlan(plan.id, createRequestId())
-      toast.success('计划已恢复，从下一期继续。')
+      toast.success('计划已恢复')
     }
 
     await load()
@@ -752,7 +697,7 @@ async function confirmPlanRemoval(): Promise<void> {
   try {
     await deletePlan(plan.id, createRequestId())
     pendingPlanRemoval.value = null
-    toast.success('计划已删除；已记账的收支记录会保留。')
+    toast.success('计划已删除')
     await load()
   } catch (error) {
     actionError.value = getApiErrorMessage(error, '删除计划失败，请重试。')
@@ -769,10 +714,10 @@ async function handleOccurrence(occurrenceId: string, action: 'retry' | 'skip'):
   try {
     if (action === 'retry') {
       await retryOccurrence(occurrenceId, createRequestId())
-      toast.success('已重新排队；余额补足后点击“立即执行”或等待后台任务。')
+      toast.success('已重新排队')
     } else {
       await skipOccurrence(occurrenceId, createRequestId())
-      toast.success('本期已跳过，不会再次生成。')
+      toast.success('本期已跳过')
     }
 
     await load()
@@ -792,7 +737,7 @@ async function recordCurrentOccurrence(occurrenceId: string): Promise<void> {
   try {
     const result = await recordOccurrence(occurrenceId, createRequestId())
     if (result.recorded) {
-      toast.success('本期期次已补记到账本。')
+      toast.success('本期已补记')
     } else {
       actionError.value = result.error ?? '本期仍待处理，请检查账本余额和关联资料。'
     }
@@ -812,9 +757,8 @@ async function runNow(): Promise<void> {
 
   try {
     const result = await runPlans()
-    const summary = `执行完成：新建 ${result.createdOccurrences}，已记账 ${result.completed}，待处理 ${result.waiting}，失败 ${result.failed}。`
-    if (result.failed > 0) toast.info(summary)
-    else toast.success(summary)
+    if (result.failed > 0) toast.info(`执行完成，${result.failed} 项失败`)
+    else toast.success(result.completed > 0 ? `已执行 ${result.completed} 项计划` : '执行完成')
     await load()
   } catch (error) {
     actionError.value = getApiErrorMessage(error, '立即执行失败，请重试。')
@@ -871,91 +815,6 @@ function shiftCalendar(offset: number): void {
   void loadCalendar(next.getUTCFullYear(), next.getUTCMonth() + 1)
 }
 
-function groupSummary(plans: AutoPlan[], amountLabel: string): string {
-  if (!plans.length) {
-    return '暂无计划'
-  }
-
-  const activePlans = plans.filter(plan => plan.isActive)
-
-  if (!activePlans.length) {
-    return `已全部暂停 · ${plans.length} 个计划`
-  }
-
-  const paused = plans.length - activePlans.length
-  const amount = sumAmounts(activePlans.map(plan => plan.amount))
-
-  return `${activePlans.length} 个启用 · ${amountLabel} ¥${formatMoney(amount)}${paused ? ` · ${paused} 个暂停` : ''}`
-}
-
-function incomeSummary(plans: AutoPlan[]): string {
-  if (!plans.length) {
-    return '暂无计划'
-  }
-
-  const activePlans = plans.filter(plan => plan.isActive)
-
-  if (!activePlans.length) {
-    return `已全部暂停 · ${plans.length} 个计划`
-  }
-
-  const salary = sumAmounts(activePlans.filter(plan => plan.type === 'salaryIncome').map(plan => plan.amount))
-  const bonus = sumAmounts(activePlans.filter(plan => plan.type === 'bonusIncome').map(plan => plan.amount))
-  const parts: string[] = []
-
-  if (salary > 0) {
-    parts.push(`工资 ¥${formatMoney(salary)}/月`)
-  }
-
-  if (bonus > 0) {
-    parts.push(`年终奖 ¥${formatMoney(bonus)}/年`)
-  }
-
-  const paused = plans.length - activePlans.length
-
-  if (!parts.length) {
-    return paused ? `已全部暂停 · ${paused} 个计划` : '暂无启用计划'
-  }
-
-  return `${parts.join(' · ')}${paused ? ` · ${paused} 个暂停` : ''}`
-}
-
-function providentSummary(plans: AutoPlan[]): string {
-  if (!plans.length) {
-    return '暂无计划'
-  }
-
-  const activePlans = plans.filter(plan => plan.isActive)
-  const deposits = sumAmounts(activePlans.filter(plan => plan.type === 'providentDeposit').map(plan => plan.amount))
-  const withdrawals = sumAmounts(activePlans.filter(plan => plan.type === 'providentWithdrawal').map(plan => plan.amount))
-  const parts: string[] = []
-
-  if (deposits > 0) {
-    parts.push(`缴存 ¥${formatMoney(deposits)}`)
-  }
-
-  if (withdrawals > 0) {
-    parts.push(`提取 ¥${formatMoney(withdrawals)}`)
-  }
-
-  const paused = plans.length - activePlans.length
-
-  if (!parts.length) {
-    return paused ? `已全部暂停 · ${paused} 个计划` : '缴存与提取'
-  }
-
-  return `${parts.join(' · ')}${paused ? ` · ${paused} 个暂停` : ''}`
-}
-
-function fundGroupKey(plan: AutoPlan): string {
-  return fundDisplayName(plan).normalize('NFKC').replace(/\s/g, '').toUpperCase()
-}
-
-function fundCode(plan: AutoPlan): string | null {
-  const code = plan.fundTarget?.code?.trim()
-  return code ? code : null
-}
-
 function planDisplayName(planId: string, fallback: string): string {
   const plan = overview.value?.plans.find(item => item.id === planId)
 
@@ -966,84 +825,12 @@ function planDisplayName(planId: string, fallback: string): string {
   return plan.type === 'fundSip' ? fundDisplayName(plan) : fallback
 }
 
-function fundMetaLine(plan: AutoPlan): string {
-  return [fundCode(plan), shareClassLabel(plan), scheduleText(plan)]
-    .filter((part): part is string => Boolean(part))
-    .join(' · ')
-}
-
-function fundGroupMetaLine(group: FundPlanGroup): string {
-  return [
-    group.codes.join(' / '),
-    group.shareClasses.join(' / '),
-    `${group.plans.length} 个计划`
-  ].filter(Boolean).join(' · ')
-}
-
-function shareClassLabel(plan: AutoPlan): string {
-  const shareClass = plan.fundTarget?.shareClass?.trim()
-
-  if (shareClass) {
-    return /^[A-Za-z]$/.test(shareClass) ? `${shareClass.toUpperCase()} 类` : shareClass
-  }
-
-  const match = (plan.fundPositionName ?? plan.name).match(/\s([A-Za-z])(?:\s*类)?(?:\s*[·]|$)/)
-  return match ? `${match[1]!.toUpperCase()} 类` : '未标类别'
-}
-
 function nextDueText(plan: AutoPlan): string {
-  if (!plan.isActive) {
-    return '已暂停'
-  }
-
-  return plan.nextDueDate ? `下一期 ${shortDate(plan.nextDueDate)}` : '下一期待生成'
-}
-
-function shortDate(value: string): string {
-  return value.startsWith(`${today.slice(0, 4)}-`)
-    ? `${Number(value.slice(5, 7))}月${Number(value.slice(8, 10))}日`
-    : formatBusinessDate(value)
+  return formatNextDueText(plan, today)
 }
 
 function typeLabel(type: PlanType): string {
   return typeOptions.find((option) => option.value === type)?.label ?? type
-}
-
-function scheduleText(plan: AutoPlan): string {
-  const time = plan.time.slice(0, 5)
-
-  if (plan.cycle === 'tradingDay') {
-    return `${plan.tradingScope === 'china' ? '中国交易日' : '三地交易日'} ${time}`
-  }
-
-  if (plan.cycle === 'weekly') {
-    return `每周${weekdayLabels[(plan.dayOfWeek ?? 1) - 1]} ${time}`
-  }
-
-  if (plan.cycle === 'yearly') {
-    return `每年 ${plan.monthOfYear ?? 1} 月 ${plan.dayOfMonth} 日 ${time}`
-  }
-
-  return `每月 ${plan.dayOfMonth} 日 ${time}`
-}
-
-function statusLabel(status: OccurrenceStatus): string {
-  switch (status) {
-    case 'completed':
-      return '已记账'
-    case 'waiting':
-      return '待处理'
-    case 'failed':
-      return '执行失败'
-    case 'skipped':
-      return '已跳过'
-    default:
-      return '待执行'
-  }
-}
-
-function statusClass(status: OccurrenceStatus): string {
-  return `status-${status}`
 }
 
 function goBack(): void {
@@ -1186,7 +973,7 @@ function goBack(): void {
                       <strong>{{ fund.name }}</strong>
                       <small>{{ fundMetaLine(fund.single) }}</small>
                     </div>
-                    <span class="plan-amount"><AnimatedMoney :value="fund.single.amount" /></span>
+                    <span class="plan-amount"><MoneyAmount :value="fund.single.amount" /></span>
                   </header>
                   <p class="plan-meta">
                     开始 {{ formatBusinessDate(fund.single.startDate) }}
@@ -1232,7 +1019,7 @@ function goBack(): void {
                   </span>
                   <small>{{ typeLabel(plan.type) }} · {{ scheduleText(plan) }}</small>
                 </div>
-                <span class="plan-amount"><AnimatedMoney :value="plan.amount" /></span>
+                <span class="plan-amount"><MoneyAmount :value="plan.amount" /></span>
               </header>
               <p class="plan-meta">
                 开始 {{ formatBusinessDate(plan.startDate) }}
@@ -1505,7 +1292,7 @@ function goBack(): void {
 
         <label v-if="form.type !== 'fundSip' || form.cycle === 'monthly'" class="form-field">
           <span>每月日期</span>
-          <input v-model="form.dayOfMonth" type="number" min="1" max="31" />
+          <input v-model="form.dayOfMonth" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" autocomplete="off" placeholder="15" />
           <small>当月没有该日期时按当月最后一天执行。</small>
         </label>
 

@@ -132,3 +132,38 @@ test('cache invalidation prevents an older read from caching stale data', async 
   expect(await apiRequest('/api/test/stale')).toEqual({ amount: 200 })
   expect(fetch).toHaveBeenCalledTimes(2)
 })
+
+test('corrupted pending localStorage item is cleaned up without crashing reads or writes', async () => {
+  localStorage.setItem('lifeup.pending.corrupted', '{invalid-json')
+  expect(readPendingMutations()).toEqual([])
+  expect(localStorage.getItem('lifeup.pending.corrupted')).toBeNull()
+})
+
+test('caller-initiated AbortSignal cancellation is not misreported as a timeout', async () => {
+  const controller = new AbortController()
+  vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => new Promise((_resolve, reject) => {
+    init?.signal?.addEventListener('abort', () => {
+      reject(new DOMException('The operation was aborted.', 'AbortError'))
+    })
+  }))
+
+  const pending = apiRequest('/api/test/abort', { signal: controller.signal })
+  controller.abort()
+
+  await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+})
+
+test('automatic lookup recovery invalidates the read cache', async () => {
+  vi.spyOn(globalThis, 'fetch')
+    .mockResolvedValueOnce(new Response(JSON.stringify({ amount: 100 }), { status: 200 }))
+    .mockRejectedValueOnce(new TypeError('response lost'))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ result: { balance: 200 } }), { status: 200 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ amount: 200 }), { status: 200 }))
+
+  expect(await apiRequest<{ amount: number }>('/api/ledger')).toEqual({ amount: 100 })
+  await apiRequest('/api/ledger/provident/deposits', {
+    method: 'POST',
+    body: JSON.stringify({ amount: 100, requestId: 'auto-recover-cache-clear' })
+  })
+  expect(await apiRequest<{ amount: number }>('/api/ledger')).toEqual({ amount: 200 })
+})

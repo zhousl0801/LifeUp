@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { buildAssetTrend, buildTrendOption, trendAxisLabel, trendTooltip } from './trend'
+import { buildAssetTrend, buildTrendOption, buildTrendPlaceholderOption, trendAxisLabel, trendTooltip } from './trend'
 import type { AssetTrend, AssetTrendPoint } from '../types/trend'
 
 function point(overrides: Partial<AssetTrendPoint>): AssetTrendPoint {
@@ -44,11 +44,31 @@ test('uses the complete daily total and the recorded subtotal on incomplete date
   expect(option.series[0]!.markPoint.data).toEqual([
     expect.objectContaining({ coord: ['2026-10-03', 1400], symbol: 'circle', symbolSize: 12 })
   ])
-  expect(trendTooltip(series.points[1]!, true)).toContain('¥1••••')
+  expect(trendTooltip(series.points[1]!, true)).toContain('¥••••')
   expect(option.series[0]!.markPoint.label.show).toBe(false)
   expect(trendTooltip(series.points[2]!)).toContain('已记录资产 ¥1,400.00')
   expect(trendTooltip(series.points[2]!)).not.toContain('新增')
   expect(trendTooltip(series.points[3]!)).toContain('总资产 ¥1,450.00')
   expect(trendAxisLabel('2026-10-02', 'month')).toBe('10-02')
   expect(trendAxisLabel('2026-10-02', 'all')).toBe('2026-10')
+  expect(option.series[0]!.id).toBe('asset-total')
+  expect(option.series[0]!.showSymbol).toBe(false)
+  expect(option.tooltip.show).toBe(true)
+  expect(option.animationDurationUpdate).toBeGreaterThan(0)
+})
+
+test('builds a bottom baseline with visible dots while trend data is loading', () => {
+  const option = buildTrendPlaceholderOption('week', '2026-10-07', 'hero')
+  expect(option.animation).toBe(false)
+  expect(option.tooltip.show).toBe(false)
+  expect(option.xAxis.data).toEqual([
+    '2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04', '2026-10-05', '2026-10-06', '2026-10-07'
+  ])
+  expect(option.yAxis).toMatchObject({ min: 0, max: 1 })
+  expect(option.series[0]).toMatchObject({
+    id: 'asset-total',
+    data: [0, 0, 0, 0, 0, 0, 0],
+    showSymbol: true,
+    silent: true
+  })
 })

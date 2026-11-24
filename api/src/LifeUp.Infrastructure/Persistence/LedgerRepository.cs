@@ -19,6 +19,8 @@ public sealed class LedgerRepository : ILedgerRepository
         _replayCache = replayCache ?? new ReplayDataCache();
     }
 
+    public long CacheVersion => _replayCache.Version;
+
     public async Task<IReadOnlyList<HistoryAuditDto>> GetHistoryAuditAsync(Guid ledgerId, CancellationToken cancellationToken)
     {
         return await _dbContext.MutationReceipts.AsNoTracking().Where(receipt => receipt.LedgerId == ledgerId && receipt.Operation == "history.change")
@@ -144,7 +146,17 @@ public sealed class LedgerRepository : ILedgerRepository
             groups.Sum(group => group.Count));
     }
 
-    public async Task<EntryPage> GetEntryPageAsync(Guid ledgerId, DateOnly from, DateOnly to, LedgerEntryKind? kind, string? category, string? search, int page, int pageSize, CancellationToken cancellationToken)
+    public async Task<EntryPage> GetEntryPageAsync(
+        Guid ledgerId,
+        DateOnly from,
+        DateOnly to,
+        LedgerEntryKind? kind,
+        string? category,
+        string? search,
+        int page,
+        int pageSize,
+        string? sort = null,
+        CancellationToken cancellationToken = default)
     {
         var query = _dbContext.LedgerEntries.AsNoTracking()
             .Where(entry => entry.LedgerId == ledgerId && entry.Status == LedgerEntryStatus.Active && entry.BusinessDate >= from && entry.BusinessDate <= to);
@@ -167,7 +179,10 @@ public sealed class LedgerRepository : ILedgerRepository
         }
 
         var count = await query.CountAsync(cancellationToken);
-        var entries = await query.OrderByDescending(entry => entry.BusinessDate).ThenByDescending(entry => entry.CreatedAt).ThenBy(entry => entry.Id)
+        var ordered = string.Equals(sort, "amountDesc", StringComparison.OrdinalIgnoreCase)
+            ? query.OrderByDescending(entry => entry.Amount).ThenByDescending(entry => entry.BusinessDate).ThenBy(entry => entry.Id)
+            : query.OrderByDescending(entry => entry.BusinessDate).ThenByDescending(entry => entry.CreatedAt).ThenBy(entry => entry.Id);
+        var entries = await ordered
             .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
         return new EntryPage(entries, count);
     }
@@ -320,13 +335,25 @@ public sealed class LedgerRepository : ILedgerRepository
         string newName,
         CancellationToken cancellationToken)
     {
+        var normalized = EntryCategory.NormalizeName(newName);
+
+        if (_dbContext.Database.IsRelational())
+        {
+            await _dbContext.LedgerEntries
+                .Where(entry => entry.LedgerId == ledgerId && entry.Kind == kind && entry.Category == oldName)
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(entry => entry.Category, normalized),
+                    cancellationToken);
+            return;
+        }
+
         var entries = await _dbContext.LedgerEntries
             .Where(entry => entry.LedgerId == ledgerId && entry.Kind == kind && entry.Category == oldName)
             .ToListAsync(cancellationToken);
 
         foreach (var entry in entries)
         {
-            entry.ApplyCategoryRename(newName);
+            entry.ApplyCategoryRename(normalized);
         }
     }
 

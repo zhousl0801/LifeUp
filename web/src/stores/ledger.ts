@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { ref, computed } from 'vue'
 import { ApiError, getApiErrorMessage } from '../api/client'
 import { fetchLedger, initializeLedger } from '../api/ledger'
 import type { InitializeLedgerInput, LedgerOverview } from '../types/ledger'
+import type { AssetTrend, TrendRange } from '../types/trend'
 
 export type LedgerLoadStatus = 'ready' | 'missing' | 'error'
 
@@ -13,6 +14,17 @@ export const useLedgerStore = defineStore('ledger', () => {
   const errorMessage = ref<string | null>(null)
   const lastLoadStatus = ref<LedgerLoadStatus | null>(null)
   const isInitialized = computed(() => overview.value !== null)
+  const trendRange = ref<TrendRange>('week')
+  const trendCache = ref<Partial<Record<TrendRange, AssetTrend>>>({})
+
+  function setTrend(range: TrendRange, trend: AssetTrend): void {
+    trendRange.value = range
+    trendCache.value[range] = trend
+  }
+
+  function clearTrendCache(): void {
+    trendCache.value = {}
+  }
 
   async function load(): Promise<LedgerLoadStatus> {
     isLoading.value = true
@@ -26,6 +38,7 @@ export const useLedgerStore = defineStore('ledger', () => {
       overview.value = null
 
       if (error instanceof ApiError && error.status === 404) {
+        clearTrendCache()
         lastLoadStatus.value = 'missing'
         return 'missing'
       }
@@ -43,7 +56,10 @@ export const useLedgerStore = defineStore('ledger', () => {
 
     try {
       const result = await initializeLedger(input)
+      clearTrendCache()
       overview.value = result
+      errorMessage.value = null
+      lastLoadStatus.value = 'ready'
       return result
     } finally {
       isSaving.value = false
@@ -57,6 +73,10 @@ export const useLedgerStore = defineStore('ledger', () => {
     errorMessage,
     lastLoadStatus,
     isInitialized,
+    trendRange,
+    trendCache,
+    setTrend,
+    clearTrendCache,
     load,
     initialize
   }

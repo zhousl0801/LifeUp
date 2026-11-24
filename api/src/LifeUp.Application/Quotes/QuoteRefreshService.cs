@@ -50,8 +50,29 @@ public sealed class QuoteRefreshService
         _stockQuoteProvider = stockQuoteProvider;
     }
 
-    public async Task<QuoteRefreshRunDto?> RefreshAsync(
+    public Task<QuoteRefreshRunDto?> RefreshAsync(
         QuoteRefreshScope scope,
+        string trigger,
+        int retryCount,
+        TimeSpan retryDelay,
+        CancellationToken cancellationToken)
+    {
+        return RefreshAsync(
+            includeFunds: scope is QuoteRefreshScope.All or QuoteRefreshScope.Funds,
+            includeGold: scope is QuoteRefreshScope.All or QuoteRefreshScope.Gold,
+            includeStocks: scope is QuoteRefreshScope.All or QuoteRefreshScope.Stocks,
+            scope,
+            trigger,
+            retryCount,
+            retryDelay,
+            cancellationToken);
+    }
+
+    public async Task<QuoteRefreshRunDto?> RefreshAsync(
+        bool includeFunds,
+        bool includeGold,
+        bool includeStocks,
+        QuoteRefreshScope reportedScope,
         string trigger,
         int retryCount,
         TimeSpan retryDelay,
@@ -75,13 +96,13 @@ public sealed class QuoteRefreshService
 
         try
         {
-            IReadOnlyList<FundPosition> positions = scope is QuoteRefreshScope.All or QuoteRefreshScope.Funds
+            IReadOnlyList<FundPosition> positions = includeFunds
                 ? await _ledgerRepository.GetFundPositionsAsync(ledger.Id, cancellationToken)
                 : [];
-            var gold = scope is QuoteRefreshScope.All or QuoteRefreshScope.Gold
-                ? await _ledgerRepository.GetGoldHoldingForUpdateAsync(ledger.Id, cancellationToken)
+            var gold = includeGold
+                ? await _ledgerRepository.GetGoldHoldingAsync(ledger.Id, cancellationToken)
                 : null;
-            var stocks = scope is QuoteRefreshScope.All or QuoteRefreshScope.Stocks
+            var stocks = includeStocks
                 ? await _ledgerRepository.GetStockPositionsAsync(ledger.Id, cancellationToken)
                 : [];
 
@@ -103,7 +124,7 @@ public sealed class QuoteRefreshService
 
             _logger.LogInformation(
                 "行情批量刷新开始：范围 {Scope}，触发 {Trigger}，基金 {FundCount} 只，积存金 {HasGold}，股票 {StockCount} 只。",
-                scope,
+                reportedScope,
                 trigger,
                 positions.Count,
                 gold is not null,
@@ -114,12 +135,16 @@ public sealed class QuoteRefreshService
                 var prefetchedQuote = string.IsNullOrWhiteSpace(position.Code)
                     ? null
                     : fundQuotes.GetValueOrDefault(position.Code);
-                var (result, attempts) = await RefreshFundWithRetryAsync(
-                    position,
+                var (result, attempts) = await RefreshWithRetryAsync(
+                    $"基金「{position.DisplayName}」",
+                    usePrefetched => _fundService.RefreshQuoteAsync(
+                        position.Id,
+                        cancellationToken,
+                        confirmDueBuys: false,
+                        usePrefetched ? prefetchedQuote : null),
                     retryCount,
                     retryDelay,
-                    cancellationToken,
-                    prefetchedQuote);
+                    cancellationToken);
                 var success = result.Status is AssetOperationStatus.Success or AssetOperationStatus.Created;
                 var error = success ? null : string.Join(" ", result.Errors);
                 var item = new QuoteRefreshItemDto(
@@ -146,11 +171,14 @@ public sealed class QuoteRefreshService
 
             if (gold is not null)
             {
-                var (result, attempts) = await RefreshGoldWithRetryAsync(
+                var (result, attempts) = await RefreshWithRetryAsync(
+                    "积存金报价",
+                    usePrefetched => _goldService.RefreshQuoteAsync(
+                        cancellationToken,
+                        usePrefetched ? goldQuote : null),
                     retryCount,
                     retryDelay,
-                    cancellationToken,
-                    goldQuote);
+                    cancellationToken);
                 var success = result.Status is AssetOperationStatus.Success or AssetOperationStatus.Created;
                 var error = success ? null : string.Join(" ", result.Errors);
                 var item = new QuoteRefreshItemDto(
@@ -178,12 +206,15 @@ public sealed class QuoteRefreshService
             foreach (var stock in stocks)
             {
                 var prefetchedQuote = stockQuotes.GetValueOrDefault((stock.Market, stock.Code));
-                var (result, attempts) = await RefreshStockWithRetryAsync(
-                    stock.Id,
+                var (result, attempts) = await RefreshWithRetryAsync(
+                    $"股票「{stock.DisplayName}」",
+                    usePrefetched => _stockService.RefreshQuoteAsync(
+                        stock.Id,
+                        cancellationToken,
+                        usePrefetched ? prefetchedQuote : null),
                     retryCount,
                     retryDelay,
-                    cancellationToken,
-                    prefetchedQuote);
+                    cancellationToken);
                 var success = result.Status is AssetOperationStatus.Success or AssetOperationStatus.Created;
                 var error = success ? null : string.Join(" ", result.Errors);
                 var item = new QuoteRefreshItemDto(
@@ -208,7 +239,7 @@ public sealed class QuoteRefreshService
                 }
             }
 
-            if (scope is QuoteRefreshScope.All or QuoteRefreshScope.Funds)
+            if (includeFunds)
             {
                 var confirmedBuys = await _fundService.ConfirmDueBuysAsync(cancellationToken);
                 if (confirmedBuys > 0)
@@ -218,7 +249,7 @@ public sealed class QuoteRefreshService
             }
 
             var completedAt = _dates.UtcNow;
-            var run = BuildRun(trigger, scope, startedAt, completedAt, items, errors);
+            var run = BuildRun(trigger, reportedScope, startedAt, completedAt, items, errors);
             _monitor.Complete(run);
 
             if (run.FundFailed + run.GoldFailed + run.StockFailed > 0)
@@ -252,7 +283,7 @@ public sealed class QuoteRefreshService
             var completedAt = _dates.UtcNow;
             var run = BuildRun(
                 trigger,
-                scope,
+                reportedScope,
                 startedAt,
                 completedAt,
                 items,
@@ -264,7 +295,7 @@ public sealed class QuoteRefreshService
                 throw;
             }
 
-            _logger.LogError(exception, "行情批量刷新失败：范围 {Scope}，触发 {Trigger}。", scope, trigger);
+            _logger.LogError(exception, "行情批量刷新失败：范围 {Scope}，触发 {Trigger}。", reportedScope, trigger);
             throw;
         }
     }
@@ -466,32 +497,30 @@ public sealed class QuoteRefreshService
         }
     }
 
-    private async Task<(AssetOperationResult<FundQuoteRefreshDto> Result, int Attempts)> RefreshFundWithRetryAsync(
-        FundPosition position,
+    private async Task<(AssetOperationResult<T> Result, int Attempts)> RefreshWithRetryAsync<T>(
+        string label,
+        Func<bool, Task<AssetOperationResult<T>>> refresh,
         int retryCount,
         TimeSpan retryDelay,
-        CancellationToken cancellationToken,
-        ExternalFundQuote? prefetchedQuote = null)
+        CancellationToken cancellationToken)
+        where T : class
     {
         var attempts = 0;
         var maxAttempts = Math.Clamp(retryCount, 0, 5) + 1;
+        var usePrefetched = true;
 
         while (true)
         {
             attempts++;
-            AssetOperationResult<FundQuoteRefreshDto> result;
+            AssetOperationResult<T> result;
 
             try
             {
-                result = await _fundService.RefreshQuoteAsync(
-                    position.Id,
-                    cancellationToken,
-                    confirmDueBuys: false,
-                    prefetchedQuote);
+                result = await refresh(usePrefetched);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                result = AssetOperationResult<FundQuoteRefreshDto>.Unavailable(exception.Message);
+                result = AssetOperationResult<T>.Unavailable(exception.Message);
             }
 
             if (result.Status is AssetOperationStatus.Success or AssetOperationStatus.Created)
@@ -504,9 +533,15 @@ public sealed class QuoteRefreshService
             if ((result.Status is AssetOperationStatus.Unavailable or AssetOperationStatus.Conflict)
                 && attempts < maxAttempts)
             {
+                // 仅在数据不可用时放弃预取结果并触发实时重拉；并发冲突可继续复用有效预取值。
+                if (result.Status == AssetOperationStatus.Unavailable)
+                {
+                    usePrefetched = false;
+                }
+
                 _logger.LogWarning(
-                    "基金「{Name}」第 {Attempt}/{MaxAttempts} 次刷新失败，将重试：{Error}",
-                    position.DisplayName,
+                    "{Label} 第 {Attempt}/{MaxAttempts} 次刷新失败，将重试：{Error}",
+                    label,
                     attempts,
                     maxAttempts,
                     error);
@@ -520,123 +555,8 @@ public sealed class QuoteRefreshService
             }
 
             _logger.LogWarning(
-                "基金「{Name}」刷新失败，已尝试 {Attempt} 次：{Error}",
-                position.DisplayName,
-                attempts,
-                error);
-
-            return (result, attempts);
-        }
-    }
-
-    private async Task<(AssetOperationResult<GoldQuoteRefreshDto> Result, int Attempts)> RefreshGoldWithRetryAsync(
-        int retryCount,
-        TimeSpan retryDelay,
-        CancellationToken cancellationToken,
-        ExternalGoldQuote? prefetchedQuote = null)
-    {
-        var attempts = 0;
-        var maxAttempts = Math.Clamp(retryCount, 0, 5) + 1;
-
-        while (true)
-        {
-            attempts++;
-            AssetOperationResult<GoldQuoteRefreshDto> result;
-
-            try
-            {
-                result = await _goldService.RefreshQuoteAsync(cancellationToken, prefetchedQuote);
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-                result = AssetOperationResult<GoldQuoteRefreshDto>.Unavailable(exception.Message);
-            }
-
-            if (result.Status is AssetOperationStatus.Success or AssetOperationStatus.Created)
-            {
-                return (result, attempts);
-            }
-
-            var error = string.Join(" ", result.Errors);
-
-            if ((result.Status is AssetOperationStatus.Unavailable or AssetOperationStatus.Conflict)
-                && attempts < maxAttempts)
-            {
-                _logger.LogWarning(
-                    "积存金报价第 {Attempt}/{MaxAttempts} 次刷新失败，将重试：{Error}",
-                    attempts,
-                    maxAttempts,
-                    error);
-
-                if (retryDelay > TimeSpan.Zero)
-                {
-                    await Task.Delay(retryDelay, cancellationToken);
-                }
-
-                continue;
-            }
-
-            _logger.LogWarning(
-                "积存金报价刷新失败，已尝试 {Attempt} 次：{Error}",
-                attempts,
-                error);
-
-            return (result, attempts);
-        }
-    }
-
-    private async Task<(AssetOperationResult<StockQuoteRefreshDto> Result, int Attempts)> RefreshStockWithRetryAsync(
-        Guid positionId,
-        int retryCount,
-        TimeSpan retryDelay,
-        CancellationToken cancellationToken,
-        ExternalStockQuote? prefetchedQuote = null)
-    {
-        var attempts = 0;
-        var maxAttempts = Math.Clamp(retryCount, 0, 5) + 1;
-
-        while (true)
-        {
-            attempts++;
-            AssetOperationResult<StockQuoteRefreshDto> result;
-
-            try
-            {
-                result = await _stockService.RefreshQuoteAsync(positionId, cancellationToken, prefetchedQuote);
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-                result = AssetOperationResult<StockQuoteRefreshDto>.Unavailable(exception.Message);
-            }
-
-            if (result.Status is AssetOperationStatus.Success or AssetOperationStatus.Created)
-            {
-                return (result, attempts);
-            }
-
-            var error = string.Join(" ", result.Errors);
-
-            if ((result.Status is AssetOperationStatus.Unavailable or AssetOperationStatus.Conflict)
-                && attempts < maxAttempts)
-            {
-                _logger.LogWarning(
-                    "股票持仓 {PositionId} 第 {Attempt}/{MaxAttempts} 次刷新失败，将重试：{Error}",
-                    positionId,
-                    attempts,
-                    maxAttempts,
-                    error);
-
-                if (retryDelay > TimeSpan.Zero)
-                {
-                    await Task.Delay(retryDelay, cancellationToken);
-                }
-
-                continue;
-            }
-
-            _logger.LogWarning(
-                "股票持仓 {PositionId} 刷新失败，已尝试 {Attempt} 次：{Error}",
-                positionId,
+                "{Label} 刷新失败，已尝试 {Attempt} 次：{Error}",
+                label,
                 attempts,
                 error);
 

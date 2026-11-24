@@ -46,12 +46,12 @@ public sealed class EastmoneyStockQuoteProvider : IStockQuoteProvider
                 throw new QuoteUnavailableException("股票行情服务未返回有效记录。");
             }
 
-            var precision = ReadInt(data, "f59") is int scale && scale is >= 0 and <= 6 ? scale : 2;
-            var price = ReadScaledDecimal(data, "f43", precision);
-            var previousClose = ReadScaledDecimal(data, "f60", precision);
-            var name = ReadString(data, "f58") ?? normalizedCode;
-            var quoteCode = ReadString(data, "f57") ?? normalizedCode;
-            var timestamp = ReadLong(data, "f86");
+            var precision = EastmoneyJsonReader.ReadInt(data, "f59") is int scale && scale is >= 0 and <= 6 ? scale : 2;
+            var price = EastmoneyJsonReader.ReadScaledDecimal(data, "f43", precision);
+            var previousClose = EastmoneyJsonReader.ReadScaledDecimal(data, "f60", precision);
+            var name = EastmoneyJsonReader.ReadString(data, "f58") ?? normalizedCode;
+            var quoteCode = EastmoneyJsonReader.ReadString(data, "f57") ?? normalizedCode;
+            var timestamp = EastmoneyJsonReader.ReadLong(data, "f86");
             var priceDate = timestamp is > 0
                 ? DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(timestamp.Value).ToOffset(TimeSpan.FromHours(8)).Date)
                 : DateOnly.FromDateTime(DateTime.UtcNow.AddHours(8));
@@ -129,11 +129,11 @@ public sealed class EastmoneyStockQuoteProvider : IStockQuoteProvider
                     continue;
                 }
 
-                var code = ReadString(item, "Code");
-                var name = ReadString(item, "Name");
-                var quoteId = ReadString(item, "QuoteID") ?? ReadString(item, "ID");
-                var securityType = ReadString(item, "SecurityTypeName") ?? string.Empty;
-                var classify = ReadString(item, "Classify") ?? string.Empty;
+                var code = EastmoneyJsonReader.ReadString(item, "Code");
+                var name = EastmoneyJsonReader.ReadString(item, "Name");
+                var quoteId = EastmoneyJsonReader.ReadString(item, "QuoteID") ?? EastmoneyJsonReader.ReadString(item, "ID");
+                var securityType = EastmoneyJsonReader.ReadString(item, "SecurityTypeName") ?? string.Empty;
+                var classify = EastmoneyJsonReader.ReadString(item, "Classify") ?? string.Empty;
 
                 if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(name))
                 {
@@ -210,12 +210,7 @@ public sealed class EastmoneyStockQuoteProvider : IStockQuoteProvider
     private IEnumerable<string> QuoteBaseUrls()
     {
         var primary = _httpClient.BaseAddress?.ToString() ?? _options.StockBaseUrl;
-        var candidates = new[] { primary, _options.StockFallbackBaseUrl };
-
-        return candidates
-            .Where(url => !string.IsNullOrWhiteSpace(url))
-            .Select(url => url.EndsWith('/') ? url : $"{url}/")
-            .Distinct(StringComparer.OrdinalIgnoreCase);
+        return EastmoneyJsonReader.NormalizeBaseUrls(primary, _options.StockFallbackBaseUrl);
     }
 
     // 支持范围：沪深北 A 股，以及在沪深两市上市、按股票方式交易的场内基金（ETF、LOF、封闭式基金）。
@@ -308,56 +303,5 @@ public sealed class EastmoneyStockQuoteProvider : IStockQuoteProvider
         }
 
         return StockMarket.Shenzhen;
-    }
-
-    private static decimal? ReadScaledDecimal(JsonElement element, string propertyName, int precision)
-    {
-        if (!element.TryGetProperty(propertyName, out var value))
-        {
-            return null;
-        }
-
-        if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number))
-        {
-            return number / (decimal)Math.Pow(10, precision);
-        }
-
-        if (value.ValueKind == JsonValueKind.String
-            && decimal.TryParse(value.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out number))
-        {
-            return number / (decimal)Math.Pow(10, precision);
-        }
-
-        return null;
-    }
-
-    private static string? ReadString(JsonElement element, string propertyName)
-    {
-        if (!element.TryGetProperty(propertyName, out var value) || value.ValueKind != JsonValueKind.String)
-        {
-            return null;
-        }
-
-        return value.GetString();
-    }
-
-    private static int? ReadInt(JsonElement element, string propertyName)
-    {
-        if (!element.TryGetProperty(propertyName, out var value) || value.ValueKind != JsonValueKind.Number)
-        {
-            return null;
-        }
-
-        return value.TryGetInt32(out var result) ? result : null;
-    }
-
-    private static long? ReadLong(JsonElement element, string propertyName)
-    {
-        if (!element.TryGetProperty(propertyName, out var value) || value.ValueKind != JsonValueKind.Number)
-        {
-            return null;
-        }
-
-        return value.TryGetInt64(out var result) ? result : null;
     }
 }

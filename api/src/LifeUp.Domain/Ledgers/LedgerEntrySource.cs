@@ -4,5 +4,6 @@ public enum LedgerEntrySource
 {
     Manual,
     Automatic,
-    Import
+    Import,
+    MonthlyImport
 }

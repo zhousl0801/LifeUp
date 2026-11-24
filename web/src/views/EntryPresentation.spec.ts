@@ -164,7 +164,8 @@ test('Escape in the category sheet preserves the entry draft', async () => {
 })
 
 test('requires explicit category selection and opens the saved business date', async () => {
-  mocks.create.mockResolvedValue({ entry: { id: 'past-entry', businessDate: '2026-10-31' } })
+  let finishSave!: (value: unknown) => void
+  mocks.create.mockReturnValueOnce(new Promise(resolve => { finishSave = resolve }))
   const view = mount(EntryView, { attachTo: document.body })
   await flushPromises()
   await view.get('.keypad button').trigger('click')
@@ -172,6 +173,10 @@ test('requires explicit category selection and opens the saved business date', a
   await view.get('.category-tile').trigger('click')
   await view.get('input[type="date"]').setValue('2026-10-31')
   await view.get('button.entry-save').trigger('click')
+  expect(view.get('button.entry-save').text()).toBe('保存中…')
+  expect(view.get('button.entry-save').attributes('aria-busy')).toBe('true')
+  expect(view.get('button.entry-save').attributes('disabled')).toBeDefined()
+  finishSave({ entry: { id: 'past-entry', businessDate: '2026-10-31' } })
   await flushPromises()
 
   expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({

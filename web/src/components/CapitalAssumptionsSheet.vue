@@ -2,42 +2,28 @@
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import type {
   CapitalEffectiveInputs,
-  CapitalEffectiveValue,
   CapitalGoalSettings,
   CapitalOverview,
   CapitalSuggestions
 } from '../types/capital'
 import { useUnsavedSheet } from '../composables/useUnsavedSheet'
-import { formatMoney, formatSignedMoney, parseAmount, parseSignedAmount } from '../utils/format'
+import {
+  amountHint,
+  fieldKeys,
+  formatNet,
+  formatRate,
+  investmentPresets,
+  parseInput,
+  percentHint,
+  toAssumptionsForm,
+  toAssumptionsSettings,
+  validateAssumptionsFields,
+  type FieldKey
+} from '../utils/capitalAssumptionsForm'
+import { formatMoney, parseAmount } from '../utils/format'
 import BottomSheet from './BottomSheet.vue'
 import ConfirmSheet from './ConfirmSheet.vue'
 import LoadingButton from './LoadingButton.vue'
-
-type FieldKey =
-  | 'targetAmount'
-  | 'monthlyIncome'
-  | 'monthlyExpense'
-  | 'monthlyProvidentDeposit'
-  | 'incomeGrowthPercent'
-  | 'expenseGrowthPercent'
-  | 'investmentAnnualReturnPercent'
-  | 'providentAnnualReturnPercent'
-  | 'annualBonus'
-  | 'bonusPayoutMonth'
-
-const amountFields: FieldKey[] = ['monthlyIncome', 'monthlyExpense', 'monthlyProvidentDeposit', 'annualBonus']
-const monthFields: FieldKey[] = ['bonusPayoutMonth']
-const percentFields: FieldKey[] = [
-  'incomeGrowthPercent',
-  'expenseGrowthPercent',
-  'investmentAnnualReturnPercent',
-  'providentAnnualReturnPercent'
-]
-const fieldKeys: FieldKey[] = ['targetAmount', ...amountFields, ...monthFields, ...percentFields]
-const investmentPresets = [
-  { label: '纳指100 20年 ≈13%', value: 13 },
-  { label: '标普500 20年 ≈10%', value: 10 }
-]
 
 const props = defineProps<{
   open: boolean
@@ -72,12 +58,33 @@ const errors = reactive<Partial<Record<FieldKey, string>>>({})
 const sessionKey = ref(0)
 const followProfile = ref(false)
 let previewTimer: ReturnType<typeof setTimeout> | null = null
+let skipNextPreviewSchedule = false
+
+function clearPreviewTimer(): void {
+  if (previewTimer) {
+    clearTimeout(previewTimer)
+    previewTimer = null
+  }
+}
+
+function assignFieldsSilently(next: Partial<Record<FieldKey, string>>): void {
+  const changed = Object.entries(next).some(([key, value]) => fields[key as FieldKey] !== value)
+  if (!changed) {
+    return
+  }
+
+  skipNextPreviewSchedule = true
+  Object.assign(fields, next)
+  void Promise.resolve().then(() => {
+    skipNextPreviewSchedule = false
+  })
+}
 
 const { discardOpen, requestClose, resolveDiscard } = useUnsavedSheet(
   () => String(sessionKey.value),
   () => props.open,
   () => props.saving,
-  () => ({ ...fields }),
+  () => ({ ...fields, followProfile: String(followProfile.value) }),
   () => emit('close')
 )
 
@@ -110,18 +117,16 @@ const previewBlended = computed(() => props.preview?.projection.blendedAnnualRet
 watch(
   () => props.open,
   (open) => {
+    clearPreviewTimer()
     if (open) {
       followProfile.value = props.hasSalaryProfile
         && (props.settings.useSalaryProfile
           || (props.settings.monthlyIncome === null
             && props.settings.monthlyProvidentDeposit === null
             && (props.settings.annualBonus ?? null) === null))
-      Object.assign(fields, toForm(props.settings))
+      assignFieldsSilently(toAssumptionsForm(props.settings))
       clearErrors()
       sessionKey.value++
-    } else if (previewTimer) {
-      clearTimeout(previewTimer)
-      previewTimer = null
     }
   },
   { immediate: true }
@@ -130,7 +135,7 @@ watch(
 watch(
   fields,
   () => {
-    if (!props.open) {
+    if (!props.open || skipNextPreviewSchedule) {
       return
     }
 
@@ -141,74 +146,12 @@ watch(
 )
 
 onBeforeUnmount(() => {
-  if (previewTimer) {
-    clearTimeout(previewTimer)
-  }
+  clearPreviewTimer()
 })
-
-function toForm(settings: CapitalGoalSettings): Record<FieldKey, string> {
-  const value = (number: number | null) => (number === null ? '' : String(number))
-
-  return {
-    targetAmount: formatWan(settings.targetAmount),
-    monthlyIncome: value(settings.monthlyIncome),
-    monthlyExpense: value(settings.monthlyExpense),
-    monthlyProvidentDeposit: value(settings.monthlyProvidentDeposit),
-    incomeGrowthPercent: value(settings.incomeGrowthPercent),
-    expenseGrowthPercent: value(settings.expenseGrowthPercent),
-    investmentAnnualReturnPercent: value(settings.investmentAnnualReturnPercent),
-    providentAnnualReturnPercent: value(settings.providentAnnualReturnPercent),
-    annualBonus: value(settings.annualBonus ?? null),
-    bonusPayoutMonth: settings.bonusPayoutMonth == null ? '1' : String(settings.bonusPayoutMonth)
-  }
-}
 
 function validateFields(): void {
   clearErrors()
-
-  const targetText = fields.targetAmount.trim()
-
-  if (targetText && parseTarget(targetText) === null) {
-    errors.targetAmount = '目标金额必须大于零，最多四位小数（万元）。'
-  }
-
-  const followedFields = followProfile.value
-    ? new Set<FieldKey>(['monthlyIncome', 'monthlyProvidentDeposit', 'annualBonus', 'bonusPayoutMonth'])
-    : new Set<FieldKey>()
-
-  for (const key of amountFields) {
-    if (followedFields.has(key)) {
-      continue
-    }
-
-    const text = fields[key].trim()
-
-    if (text && parseAmount(text) === null) {
-      errors[key] = '金额必须不小于零，最多两位小数。'
-    }
-  }
-
-  if (!followedFields.has('bonusPayoutMonth')) {
-    const month = Number(fields.bonusPayoutMonth)
-
-    if (!Number.isInteger(month) || month < 1 || month > 12) {
-      errors.bonusPayoutMonth = '发放月需在 1 到 12 之间。'
-    }
-  }
-
-  for (const key of percentFields) {
-    const text = fields[key].trim()
-
-    if (!text) {
-      continue
-    }
-
-    const value = parseSignedAmount(text)
-
-    if (value === null || value <= -100 || value > 100) {
-      errors[key] = '百分比必须在 -100 到 100 之间，最多两位小数。'
-    }
-  }
+  Object.assign(errors, validateAssumptionsFields(fields, followProfile.value))
 }
 
 function clearErrors(): void {
@@ -222,11 +165,10 @@ function hasErrors(): boolean {
 }
 
 function schedulePreview(): void {
-  if (previewTimer) {
-    clearTimeout(previewTimer)
-  }
+  clearPreviewTimer()
 
   previewTimer = setTimeout(() => {
+    previewTimer = null
     if (props.open && !hasErrors()) {
       emit('preview', toSettings())
     }
@@ -234,19 +176,7 @@ function schedulePreview(): void {
 }
 
 function toSettings(): CapitalGoalSettings {
-  return {
-    targetAmount: parseInput(fields.targetAmount, parseTarget),
-    monthlyIncome: parseInput(fields.monthlyIncome, parseAmount),
-    monthlyExpense: parseInput(fields.monthlyExpense, parseAmount),
-    monthlyProvidentDeposit: parseInput(fields.monthlyProvidentDeposit, parseAmount),
-    incomeGrowthPercent: parseInput(fields.incomeGrowthPercent, parseSignedAmount),
-    expenseGrowthPercent: parseInput(fields.expenseGrowthPercent, parseSignedAmount),
-    investmentAnnualReturnPercent: parseInput(fields.investmentAnnualReturnPercent, parseSignedAmount),
-    providentAnnualReturnPercent: parseInput(fields.providentAnnualReturnPercent, parseSignedAmount),
-    annualBonus: parseInput(fields.annualBonus, parseAmount),
-    bonusPayoutMonth: Number(fields.bonusPayoutMonth),
-    useSalaryProfile: followProfile.value
-  }
+  return toAssumptionsSettings(fields, followProfile.value)
 }
 
 function switchToManual(): void {
@@ -267,43 +197,12 @@ function switchToFollow(): void {
   schedulePreview()
 }
 
-function parseInput(value: string, parser: (input: string) => number | null): number | null {
-  const text = value.trim()
-
-  return text ? parser(text) : null
-}
-
-function parseTarget(value: string): number | null {
-  const text = value.trim()
-
-  if (!/^\d+(?:\.\d{1,4})?$/.test(text)) {
-    return null
-  }
-
-  const wan = Number(text)
-
-  if (!Number.isFinite(wan) || wan <= 0) {
-    return null
-  }
-
-  const yuan = Math.round(wan * 10_000 * 100) / 100
-
-  return yuan <= 1_000_000_000 ? yuan : null
-}
-
-function formatWan(value: number | null): string {
-  if (value === null) {
-    return ''
-  }
-
-  return String(Number((value / 10_000).toFixed(4)))
-}
-
 function save(): void {
   if (props.saving) {
     return
   }
 
+  clearPreviewTimer()
   validateFields()
 
   if (hasErrors()) {
@@ -314,15 +213,18 @@ function save(): void {
 }
 
 function resetAssumptions(): void {
-  fields.monthlyIncome = ''
-  fields.monthlyExpense = ''
-  fields.monthlyProvidentDeposit = ''
-  fields.annualBonus = ''
-  fields.bonusPayoutMonth = '1'
-  fields.incomeGrowthPercent = ''
-  fields.expenseGrowthPercent = ''
-  fields.investmentAnnualReturnPercent = ''
-  fields.providentAnnualReturnPercent = ''
+  clearPreviewTimer()
+  assignFieldsSilently({
+    monthlyIncome: '',
+    monthlyExpense: '',
+    monthlyProvidentDeposit: '',
+    annualBonus: '',
+    bonusPayoutMonth: '1',
+    incomeGrowthPercent: '',
+    expenseGrowthPercent: '',
+    investmentAnnualReturnPercent: '',
+    providentAnnualReturnPercent: ''
+  })
   validateFields()
 
   if (!hasErrors()) {
@@ -343,38 +245,6 @@ function applySuggestion(
 
 function applyPreset(value: number): void {
   fields.investmentAnnualReturnPercent = String(value)
-}
-
-function amountHint(value: CapitalEffectiveValue): string {
-  if (value.source === 'user') {
-    return '已设定'
-  }
-
-  if (value.source === 'salary') {
-    return '来自工资档案'
-  }
-
-  if (value.source === 'history') {
-    return `最近均值 ${formatMoney(value.value)}`
-  }
-
-  return '暂无历史，按 0'
-}
-
-function percentHint(value: CapitalEffectiveValue): string {
-  if (value.source === 'user') {
-    return '已设定'
-  }
-
-  return `默认 ${formatRate(value.value)}`
-}
-
-function formatRate(value: number | null): string {
-  return value === null ? '—' : `${value.toFixed(1)}%`
-}
-
-function formatNet(value: number | null): string {
-  return value === null ? '—' : formatSignedMoney(value)
 }
 </script>
 
@@ -419,7 +289,7 @@ function formatNet(value: number | null): string {
       <div v-else-if="settings.useSalaryProfile" class="field full follow-banner warning">
         <div>
           <b>工资档案已停用</b>
-          <small>请改为手动，或到自动计划页重新建立工资档案。</small>
+          <small>请改为手动，或到「我的 → 个人信息」重新建立工资档案。</small>
         </div>
       </div>
 
@@ -629,14 +499,37 @@ function formatNet(value: number | null): string {
 
 <style scoped>
 .form {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
 .field {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   min-width: 0;
+  min-height: 46px;
+  padding: 8px 14px;
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border-subtle);
+  transition: background-color 0.15s ease;
+}
+
+.field:focus-within {
+  background: color-mix(in srgb, var(--color-brand) 4%, var(--color-bg-surface));
+}
+
+.form > .field:not(.field + *) {
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+}
+
+.form > .field:not(:has(+ .field)) {
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
+  border-bottom: 0;
+  margin-bottom: 10px;
 }
 
 .field.full {
@@ -644,61 +537,81 @@ function formatNet(value: number | null): string {
 }
 
 .field-control {
-  display: block;
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
 }
 
 .field-control > span:not(.input-unit) {
-  display: block;
-  margin-bottom: 5px;
-  color: var(--color-text-secondary);
-  font-size: 12px;
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
 }
 
-.field input {
+.field input,
+.field select {
+  appearance: none;
+  -webkit-appearance: none;
   width: 100%;
-  height: 44px;
+  min-width: 0;
+  min-height: 30px;
   box-sizing: border-box;
-  padding: 0 12px;
+  padding: 2px 0;
   border: 0;
-  border-radius: var(--radius-control);
+  border-radius: 0;
   outline: none;
-  background: var(--color-bg-subtle);
+  background: transparent;
   color: var(--color-text-primary);
   font: inherit;
-  font-size: 15px;
+  font-size: 0.9375rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  text-align: right;
+  text-align-last: right;
 }
 
-.field input:focus {
-  box-shadow: 0 0 0 2px var(--color-focus-ring);
+.field select {
+  padding-right: 16px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238A8E9E' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right center;
+  background-size: 12px 12px;
+}
+
+.field input:focus,
+.field select:focus {
+  box-shadow: none;
 }
 
 .input-unit {
   position: relative;
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .input-unit input {
-  padding-right: 48px;
+  padding-right: 0;
 }
 
 .input-unit .unit {
-  position: absolute;
-  top: 50%;
-  right: 12px;
-  transform: translateY(-50%);
+  position: static;
+  transform: none;
   color: var(--color-text-secondary);
   font-size: 12px;
   font-style: normal;
   font-weight: 500;
   pointer-events: none;
+  flex-shrink: 0;
 }
 
 .hint,
 .field-error {
   display: block;
-  margin-top: 4px;
+  margin-top: 2px;
   font-size: 11px;
   font-weight: 400;
   line-height: 1.4;
@@ -716,9 +629,10 @@ function formatNet(value: number | null): string {
 .preset {
   display: inline-flex;
   align-items: center;
-  min-height: 32px;
-  margin-top: 5px;
-  padding: 4px 9px;
+  align-self: flex-start;
+  min-height: 28px;
+  margin-top: 4px;
+  padding: 2px 9px;
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-pill);
   background: var(--color-bg-subtle);
@@ -737,7 +651,7 @@ function formatNet(value: number | null): string {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 5px;
+  margin-top: 4px;
 }
 
 .presets .preset {
@@ -748,11 +662,10 @@ function formatNet(value: number | null): string {
   display: flex;
   align-items: center;
   gap: 8px;
-  grid-column: 1 / -1;
-  margin-top: 2px;
-  padding: 11px 12px;
-  border-radius: var(--radius-control);
-  background: var(--color-brand-soft);
+  margin-bottom: 10px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-brand) 7%, var(--color-bg-surface));
   color: var(--color-text-secondary);
   font-size: 12px;
 }
@@ -765,18 +678,16 @@ function formatNet(value: number | null): string {
 }
 
 .form-error {
-  grid-column: 1 / -1;
-  margin: 0;
+  margin: 0 0 10px;
   color: var(--color-error);
   font-size: 12px;
 }
 
 .actions {
   display: grid;
-  grid-column: 1 / -1;
   grid-template-columns: 1fr 1.4fr;
   gap: 10px;
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 .ghost,
@@ -789,7 +700,7 @@ function formatNet(value: number | null): string {
 }
 
 .ghost {
-  background: var(--color-bg-subtle);
+  background: var(--color-bg-surface);
   color: var(--color-text-primary);
 }
 
@@ -803,9 +714,10 @@ function formatNet(value: number | null): string {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 12px 14px;
-  border-radius: var(--radius-card);
-  background: var(--color-brand-soft);
+  margin-bottom: 10px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-brand) 8%, var(--color-bg-surface));
 }
 
 .follow-banner > div {
@@ -824,17 +736,27 @@ function formatNet(value: number | null): string {
 }
 
 .follow-banner.warning {
-  background: var(--color-bg-subtle);
+  background: var(--color-bg-surface);
 }
 
 .readonly-control {
-  display: grid;
-  gap: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.readonly-control > span {
+  color: var(--color-text-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
 }
 
 .readonly-control b {
-  font-size: var(--text-subhead);
+  margin-left: auto;
+  font-size: 0.9375rem;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .source-badge {
@@ -847,9 +769,12 @@ function formatNet(value: number | null): string {
 }
 
 .bonus-hint {
-  margin: 0;
+  margin: 0 0 10px;
+  padding: 2px 6px;
+  background: transparent;
+  border: 0;
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
-  line-height: 1.6;
+  line-height: 1.55;
 }
 </style>

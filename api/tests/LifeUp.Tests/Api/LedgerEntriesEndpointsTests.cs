@@ -12,6 +12,36 @@ public sealed class LedgerEntriesEndpointsTests
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
 
     [Fact]
+    public async Task ImportHistoricalExpenses_AppearsInMonthAndYearBeforeLedgerStart()
+    {
+        using var factory = new LifeUpApiFactory();
+        using var client = factory.CreateClient();
+        await InitializeLedgerAsync(client, 1000m);
+
+        var response = await client.PostAsJsonAsync("/api/ledger/entries/historical-expenses", new
+        {
+            RequestId = Guid.NewGuid(),
+            Rows = new[]
+            {
+                new { Month = "2021-05-01", Category = "水果", Amount = 2100.25m },
+                new { Month = "2021-06-01", Category = "水果", Amount = 49.75m }
+            }
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var monthly = await client.GetFromJsonAsync<EntryStatsDto>(
+            "/api/ledger/entries/stats?period=month&anchor=2021-05-01", JsonOptions);
+        var annual = await client.GetFromJsonAsync<EntryStatsDto>(
+            "/api/ledger/entries/stats?period=year&anchor=2021-05-01", JsonOptions);
+        var manual = await CreateEntryAsync(client, Expense(100m));
+
+        Assert.Equal(2100.25m, monthly!.Expense);
+        Assert.Equal(2150m, annual!.Expense);
+        Assert.Equal("水果", Assert.Single(annual.ExpenseCategories).Category);
+        Assert.Equal(900m, manual.CashBalance);
+    }
+
+    [Fact]
     public async Task CreateExpense_ThenGetPeriod_ReturnsSummaryAndEntry()
     {
         using var factory = new LifeUpApiFactory();

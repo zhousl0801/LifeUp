@@ -47,7 +47,7 @@ async function exportDetails(): Promise<void> {
 
   try {
     await downloadDetails(exportFrom.value, exportTo.value)
-    toast.success('明细 CSV 已生成，浏览器已开始下载。')
+    toast.success('明细 CSV 已导出')
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '导出明细失败，请重试。'
   } finally {
@@ -63,7 +63,7 @@ async function exportBackup(): Promise<void> {
 
   try {
     await downloadBackup()
-    toast.success('完整备份已生成，浏览器已开始下载。')
+    toast.success('完整备份已导出')
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '下载备份失败，请重试。'
   } finally {
@@ -113,7 +113,7 @@ async function validateSelected(): Promise<void> {
   try {
     validation.value = await validateBackup(backup.value)
     if (validation.value.isValid) {
-      toast.success('备份校验通过，请核对摘要后确认恢复。')
+      toast.success('备份校验通过')
     } else {
       errorMessage.value = '备份校验未通过，未修改当前账本。'
     }
@@ -141,9 +141,7 @@ async function restore(): Promise<void> {
       current.validationToken,
       current.willReplace
     )
-    toast.success(restoreResult.value.replacedExisting
-      ? '恢复完成，当前账本已按备份替换。'
-      : '恢复完成，已建立账本。')
+    toast.success('账本已恢复')
     validation.value = null
     backup.value = null
     confirmReplace.value = false
@@ -165,6 +163,7 @@ function summaryItems(summary: BackupSummary): { label: string; value: string }[
     { label: '现金', value: `¥${formatMoney(summary.cashBalance)}` },
     { label: '公积金', value: summary.providentBalance === null ? '未录入' : `¥${formatMoney(summary.providentBalance)}` },
     { label: '基金', value: `¥${formatMoney(addAmounts(summary.fundValue, summary.fundPending, summary.fundPendingArrival))}` },
+    { label: '股票', value: summary.stockValue === null ? '未录入' : `¥${formatMoney(summary.stockValue)}` },
     { label: '贵金属', value: summary.goldValue === null ? '未录入' : `¥${formatMoney(addAmounts(summary.goldValue, summary.goldPendingArrival))}` },
     { label: '总资产', value: summary.totalAssets === null ? '依据不足' : `¥${formatMoney(summary.totalAssets)}` },
     { label: '起始日期', value: formatBusinessDate(summary.startDate) }
@@ -313,7 +312,7 @@ function summaryItems(summary: BackupSummary): { label: string; value: string }[
 
         <LoadingButton
           v-if="validation.isValid"
-          class="restore-button"
+          class="danger-button restore-button"
           :loading="isRestoring"
           :disabled="!canRestore"
           loading-label="正在恢复…"
@@ -372,6 +371,16 @@ function summaryItems(summary: BackupSummary): { label: string; value: string }[
   gap: 10px;
 }
 
+.backup-card > .form-row {
+  margin-top: 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 14px;
+}
+
+.backup-card > .form-row > .form-field {
+  background: var(--color-bg-subtle);
+}
+
 .backup-card h2 {
   margin: 0;
   font-size: 0.875rem;
@@ -392,27 +401,8 @@ function summaryItems(summary: BackupSummary): { label: string; value: string }[
 .backup-actions button {
   flex: 1;
   min-height: var(--touch-target);
-  border-radius: var(--radius-control);
   font-size: var(--text-footnote);
-}
-
-.action-primary {
-  border: 1px solid var(--color-brand);
-  background: var(--color-brand);
-  color: var(--color-on-brand);
-}
-
-.action-secondary {
-  border: 1px solid var(--color-border-control);
-  background: var(--color-bg-surface);
-  color: var(--color-brand);
-}
-
-.backup-actions button:disabled,
-.restore-button:disabled {
-  border-color: var(--color-border-disabled);
-  background: var(--color-bg-disabled);
-  color: var(--color-text-disabled);
+  font-weight: 600;
 }
 
 .helper-note,
@@ -551,12 +541,7 @@ function summaryItems(summary: BackupSummary): { label: string; value: string }[
   width: 100%;
   min-height: var(--touch-target);
   margin-top: 12px;
-  border: 1px solid var(--color-finance-loss);
-  border-radius: var(--radius-control);
-  background: var(--color-bg-surface);
-  color: var(--color-finance-loss);
   font-size: var(--text-footnote);
-  font-weight: 600;
 }
 
 .success-card .home-link {

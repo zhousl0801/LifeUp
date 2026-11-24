@@ -8,17 +8,16 @@ import { toast } from '../composables/useMessage'
 import AppNav from '../components/AppNav.vue'
 import AppIcon from '../components/AppIcon.vue'
 import CategoryIcon from '../components/CategoryIcon.vue'
-import AnimatedMoney from '../components/AnimatedMoney.vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import LedgerCalendar from '../components/LedgerCalendar.vue'
 import LedgerMonthlyBudget from '../components/LedgerMonthlyBudget.vue'
-import LedgerStatsChart from '../components/LedgerStatsChart.vue'
+import LedgerStatsPanel from '../components/LedgerStatsPanel.vue'
+import type { StatsChartMode } from '../components/LedgerStatsChart.vue'
 import { ExpenseCategories, IncomeCategories } from '../constants/categories'
 import type { EntryCategory } from '../types/category'
 import { formatBusinessDateWithWeekday, formatMoney, sumAmounts, todayInBusinessTimeZone } from '../utils/format'
-import { groupEntryStats } from '../utils/entryStatsGroups'
 import { takeLedgerReturn } from '../utils/ledgerReturn'
 import { formatPeriodLabel, periodStart, shiftAnchor } from '../utils/period'
 import type { EntryKind, EntryPeriod, EntryPeriodSummary, EntryStats, LedgerEntry } from '../types/entry'
@@ -31,7 +30,8 @@ interface LedgerContext {
   kind: 'all' | EntryKind
   category: string
   search: string
-  statsKind: EntryKind
+  statsKind: StatsChartMode
+  statsByGroup: boolean
   page: number
   scrollTop: number
   visibleRow?: { id: string; top: number }
@@ -50,15 +50,24 @@ const periodOptions: Array<{ value: EntryPeriod; label: string }> = [
   { value: 'month', label: '月' },
   { value: 'year', label: '年' }
 ]
+const chartPeriodOptions: Array<{ value: EntryPeriod; label: string }> = [
+  { value: 'month', label: '月' },
+  { value: 'year', label: '年' }
+]
 
-const period = ref<EntryPeriod>(savedContext?.period ?? 'month')
+const initialView = savedContext?.view ?? 'calendar'
+const period = ref<EntryPeriod>(
+  initialView === 'chart' && savedContext?.period === 'day'
+    ? 'month'
+    : (savedContext?.period ?? 'month')
+)
 const anchor = ref(savedContext?.anchor ?? ledgerDate(route.query.date) ?? today)
-const view = ref<'calendar' | 'list' | 'chart'>(savedContext?.view ?? 'calendar')
+const view = ref<'calendar' | 'list' | 'chart'>(initialView)
 const selectedDate = ref(savedContext?.selectedDate ?? anchor.value)
 const displayExpense = computed(() =>
   period.value === 'month' || view.value !== 'list' ? stats.value?.expense ?? null : summary.value?.expense ?? null)
-const statsKind = ref<EntryKind>(savedContext?.statsKind ?? 'expense')
-const statsByGroup = ref(false)
+const statsKind = ref<StatsChartMode>(savedContext?.statsKind ?? 'expense')
+const statsByGroup = ref(savedContext?.statsByGroup ?? false)
 const stats = ref<EntryStats | null>(null)
 const statsLoading = ref(false)
 const statsError = ref('')
@@ -66,13 +75,16 @@ const kindFilter = ref<'all' | EntryKind>(savedContext?.kind ?? 'all')
 const categoryFilter = ref(savedContext?.category ?? '')
 const search = ref(savedContext?.search ?? '')
 const pageElement = ref<HTMLElement | null>(null)
-const noticeEntry = ref<LedgerEntry | null>(null)
 const highlightedEntry = ref('')
 let focusEntry = !savedContext && typeof route.query.focus === 'string' ? route.query.focus : ''
 let restorePosition = savedContext
 let restorePages = savedContext?.page ?? 1
 const summary = ref<EntryPeriodSummary | null>(null)
 const categoryItems = ref<EntryCategory[]>([])
+const categoryIconsByKind = computed(() => new Map(
+  categoryItems.value.filter(category => !category.isGroup)
+    .map(category => [`${category.kind}:${category.name}`, category.iconKey])
+))
 const isLoading = ref(false)
 const errorMessage = ref('')
 let searchTimer: number | undefined
@@ -103,32 +115,6 @@ const categoryOptions = computed(() => {
 
   return [...ExpenseCategories, ...IncomeCategories]
 })
-const statsCategories = computed(() => {
-  if (!stats.value) {
-    return []
-  }
-
-  const isIncome = statsKind.value === 'income'
-  const leaves = isIncome ? stats.value.incomeCategories : stats.value.expenseCategories
-  if (!statsByGroup.value) return leaves
-
-  const groups = isIncome ? stats.value.incomeGroups : stats.value.expenseGroups
-  return groups?.length ? groups : groupEntryStats(leaves, categoryItems.value, statsKind.value)
-})
-const statsTotal = computed(() => {
-  if (!stats.value) {
-    return 0
-  }
-
-  return statsKind.value === 'income' ? stats.value.income : stats.value.expense
-})
-const statsAverage = computed(() => {
-  if (!stats.value) {
-    return 0
-  }
-
-  return statsKind.value === 'income' ? stats.value.incomeDailyAverage : stats.value.expenseDailyAverage
-})
 const hasFilters = computed(() =>
   kindFilter.value !== 'all' || categoryFilter.value !== '' || search.value.trim() !== '')
 const groupedEntries = computed(() => {
@@ -150,32 +136,19 @@ const groupedEntries = computed(() => {
 
 if (ledgerChange) {
   const { action, entry } = ledgerChange
-  const matchesMonth = periodStart(entry.businessDate, period.value) === periodStart(anchor.value, period.value)
-  const matchesPeriod = matchesMonth && (view.value !== 'calendar' || selectedDate.value === entry.businessDate)
-  const matchesFilter = matchesFilters(entry)
-
-  if (action === 'create') {
-    if (!matchesMonth) anchor.value = entry.businessDate
-    if (!matchesFilter) clearFilters()
-    if (view.value === 'chart') view.value = 'calendar'
-    selectedDate.value = entry.businessDate
-    focusEntry = entry.id
-    restorePosition = undefined
-    restorePages = 1
-    toast.success(matchesFilter ? '已保存' : '已保存，已清除筛选以显示新账单。')
-  } else if (action === 'reverse') {
-    toast.success('账单已撤销。')
-  } else if (!matchesPeriod || !matchesFilter) {
-    noticeEntry.value = entry
-    toast.success(!matchesPeriod ? '已保存，账单已移至其他周期。' : '已保存，账单不再符合当前筛选。', {
-      action: { label: '查看账单', run: showSavedEntry }
-    })
+  if (action === 'reverse') {
+    toast.success('账单已撤销')
   } else {
-    toast.success('已保存修改。')
-    highlightedEntry.value = entry.id
+    const matchesPeriod = periodStart(entry.businessDate, period.value) === periodStart(anchor.value, period.value)
+      && (view.value !== 'calendar' || selectedDate.value === entry.businessDate)
+    if (matchesPeriod && matchesFilters(entry)) {
+      highlightedEntry.value = entry.id
+    }
+
+    toast.success(action === 'create' ? '已保存' : '已保存修改')
   }
 } else if (focusEntry) {
-  toast.success('已保存。')
+  toast.success('已保存')
 }
 
 onBeforeRouteLeave((to) => {
@@ -190,6 +163,7 @@ onBeforeRouteLeave((to) => {
     category: categoryFilter.value,
     search: search.value,
     statsKind: statsKind.value,
+    statsByGroup: statsByGroup.value,
     page: summary.value?.page ?? 1,
     scrollTop: window.scrollY,
     visibleRow: visibleRow?.dataset.entryId
@@ -211,23 +185,6 @@ function matchesFilters(entry: LedgerEntry): boolean {
     && (!term || category.includes(term) || Boolean(entry.note?.toLowerCase().includes(term)))
 }
 
-function showSavedEntry(): void {
-  const entry = noticeEntry.value
-  if (!entry) return
-
-  const queryChanges = hasFilters.value || period.value !== 'month' || anchor.value !== entry.businessDate
-    || view.value !== 'calendar' || selectedDate.value !== entry.businessDate
-  clearFilters()
-  period.value = 'month'
-  anchor.value = entry.businessDate
-  selectedDate.value = entry.businessDate
-  view.value = 'calendar'
-  toast.info('已定位到修改后的账单。')
-  noticeEntry.value = null
-  focusEntry = entry.id
-  if (!queryChanges) void loadEntries()
-}
-
 watch(() => route.query, (query, previous) => {
   if (route.name !== 'ledger' || (query.date === previous.date && query.focus === previous.focus)) return
 
@@ -240,15 +197,15 @@ watch(() => route.query, (query, previous) => {
   view.value = 'calendar'
   clearFilters()
   highlightedEntry.value = ''
-  noticeEntry.value = null
   focusEntry = typeof query.focus === 'string' ? query.focus : ''
   if (focusEntry) {
-    toast.success('已保存。')
+    toast.success('已保存')
   }
   if (!queryChanges) void loadEntries()
 })
 
 watch([period, anchor, kindFilter, categoryFilter, view, selectedDate], () => {
+  window.clearTimeout(searchTimer)
   void loadEntries()
 })
 
@@ -276,6 +233,8 @@ function switchView(next: 'calendar' | 'list' | 'chart'): void {
     period.value = 'month'
     clearFilters()
     if (selectedDate.value.slice(0, 7) !== anchor.value.slice(0, 7)) selectedDate.value = anchor.value
+  } else if (next === 'chart' && period.value === 'day') {
+    period.value = 'month'
   }
   view.value = next
 }
@@ -283,7 +242,6 @@ function switchView(next: 'calendar' | 'list' | 'chart'): void {
 async function loadStats(): Promise<void> {
   const sequence = ++statsSequence
   statsLoading.value = true
-  stats.value = null
   statsError.value = ''
 
   try {
@@ -296,11 +254,20 @@ async function loadStats(): Promise<void> {
   } finally {
     if (sequence === statsSequence) statsLoading.value = false
   }
+
+  if (sequence === statsSequence && stats.value && view.value === 'chart' && restorePosition?.view === 'chart') {
+    const { scrollTop } = restorePosition
+    restorePosition = undefined
+    await nextTick()
+    if (sequence === statsSequence && view.value === 'chart') {
+      window.scrollTo({ top: scrollTop })
+    }
+  }
 }
 
-function selectStatsCategory(category: string): void {
-  kindFilter.value = statsKind.value
-  categoryFilter.value = category
+function selectStatsCategory(payload: { kind: EntryKind; category: string }): void {
+  kindFilter.value = payload.kind
+  categoryFilter.value = payload.category
   view.value = 'list'
 }
 
@@ -314,6 +281,8 @@ async function loadCategories(): Promise<void> {
 
 onBeforeUnmount(() => {
   window.clearTimeout(searchTimer)
+  loadSequence++
+  statsSequence++
 })
 
 async function loadEntries(append: boolean = false): Promise<void> {
@@ -336,8 +305,13 @@ async function loadEntries(append: boolean = false): Promise<void> {
 
     const entries = append ? [...(summary.value?.entries ?? []), ...result.entries] : [...result.entries]
     let needsFocus = focusEntry && !entries.some(entry => entry.id === focusEntry)
+    const maxFocusPages = Math.max(restorePages, 20)
 
-    while (result.entries.length && entries.length < result.totalCount && (result.page < restorePages || needsFocus)) {
+    while (
+      result.entries.length
+      && entries.length < result.totalCount
+      && (result.page < restorePages || (needsFocus && result.page < maxFocusPages))
+    ) {
       result = await fetchEntryPeriod({ ...query, page: result.page + 1 })
       if (sequence !== loadSequence) return
       entries.push(...result.entries)
@@ -347,9 +321,9 @@ async function loadEntries(append: boolean = false): Promise<void> {
     summary.value = { ...result, entries }
     restorePages = 1
     const target = focusEntry
-    const position = restorePosition
+    const position = view.value === 'chart' ? undefined : restorePosition
     focusEntry = ''
-    restorePosition = undefined
+    if (position) restorePosition = undefined
     await nextTick()
     if (sequence !== loadSequence) return
 
@@ -396,6 +370,7 @@ function setKind(kind: 'all' | EntryKind): void {
 }
 
 function clearFilters(): void {
+  window.clearTimeout(searchTimer)
   kindFilter.value = 'all'
   categoryFilter.value = ''
   search.value = ''
@@ -440,8 +415,8 @@ function openEntry(entryId?: string): void {
       <RouterLink class="round-tool ledger-settings" :to="{ name: 'categories' }" aria-label="分类设置"><AppIcon name="settings" /></RouterLink>
     </header>
 
-    <section class="ledger-hero">
-      <LedgerMonthlyBudget v-if="period === 'month'" :key="anchor.slice(0, 7)"
+    <section v-if="view !== 'chart'" class="ledger-hero">
+      <LedgerMonthlyBudget v-if="period === 'month'"
         :month="anchor.slice(0, 7)" :today="today" :expense="displayExpense">
         <span class="ledger-hero-label">▣ 本月支出</span>
         <strong class="ledger-hero-amount">¥{{ formatMoney(displayExpense) }}</strong>
@@ -452,12 +427,24 @@ function openEntry(entryId?: string): void {
       </div>
     </section>
 
-    <section class="ledger-calendar-card">
+    <section v-if="view === 'chart'" class="chart-toolbar-card">
+      <div class="period-tabs" role="group" aria-label="图表周期">
+        <button v-for="item in chartPeriodOptions" :key="item.value" type="button"
+          :class="{ active: period === item.value }" @click="setPeriod(item.value)">{{ item.label }}</button>
+      </div>
+      <div class="toolbar-views">
+        <button type="button" class="round-tool" aria-label="收支图表" :aria-pressed="true" @click="switchView('chart')"><AppIcon name="chart" /></button>
+        <button type="button" class="round-tool" aria-label="账单列表" :aria-pressed="false" @click="switchView('list')"><AppIcon name="list" /></button>
+        <button type="button" class="round-tool" aria-label="收支日历" :aria-pressed="false" @click="switchView('calendar')"><AppIcon name="calendar" /></button>
+      </div>
+    </section>
+
+    <section v-else class="ledger-calendar-card">
       <header class="calendar-heading">
-        <strong><AppIcon :name="view === 'chart' ? 'chart' : view === 'list' ? 'list' : 'calendar'" />
-          {{ view === 'chart' ? '收支图表' : view === 'list' ? '账单列表' : '收支日历' }}
+        <strong><AppIcon :name="view === 'list' ? 'list' : 'calendar'" />
+          {{ view === 'list' ? '账单列表' : '收支日历' }}
         </strong>
-        <button type="button" class="round-tool" aria-label="收支图表" :aria-pressed="view === 'chart'" @click="switchView('chart')"><AppIcon name="chart" /></button>
+        <button type="button" class="round-tool" aria-label="收支图表" :aria-pressed="false" @click="switchView('chart')"><AppIcon name="chart" /></button>
         <button type="button" class="round-tool" aria-label="账单列表" :aria-pressed="view === 'list'" @click="switchView('list')"><AppIcon name="list" /></button>
         <button type="button" class="round-tool" aria-label="收支日历" :aria-pressed="view === 'calendar'" @click="switchView('calendar')"><AppIcon name="calendar" /></button>
       </header>
@@ -545,7 +532,7 @@ function openEntry(entryId?: string): void {
             :style="{ '--stagger': Math.min(index, 8) }"
             @click="openEntry(entry.id)"
           >
-            <span class="entry-mark"><CategoryIcon :name="entry.category" /></span>
+            <span class="entry-mark"><CategoryIcon :name="entry.category" :icon-key="categoryIconsByKind.get(`${entry.kind}:${entry.category}`)" /></span>
             <span class="entry-copy">
               <span class="entry-title">{{ entry.note?.trim() || entry.category }}</span>
               <small v-if="(entry.note?.trim() && entry.note.trim() !== entry.category) || entry.source === 'automatic'">
@@ -577,88 +564,33 @@ function openEntry(entryId?: string): void {
     </template>
 
     <template v-else>
-      <div class="stats-direction" role="tablist" aria-label="图表方向">
-        <button type="button" :class="{ active: statsKind === 'expense' }" @click="statsKind = 'expense'">支出</button>
-        <button type="button" :class="{ active: statsKind === 'income' }" @click="statsKind = 'income'">收入</button>
-      </div>
-
-      <div class="stats-direction" role="group" aria-label="分类汇总层级">
-        <button type="button" :class="{ active: statsByGroup }" @click="statsByGroup = true">一级分类</button>
-        <button type="button" :class="{ active: !statsByGroup }" @click="statsByGroup = false">二级分类</button>
-      </div>
-
       <LoadingState v-if="statsLoading && !stats" variant="chart" compact label="正在读取图表" />
-      <section v-else-if="statsError" class="state">
+      <section v-else-if="statsError && !stats" class="state">
         <p>{{ statsError }}</p>
         <LoadingButton class="secondary-button" :loading="statsLoading" loading-label="加载中…" @click="loadStats">重新加载</LoadingButton>
       </section>
 
-      <template v-else-if="stats">
-        <section class="stats-panel">
-          <div class="stats-head">
-            <h2>{{ statsKind === 'income' ? '收入' : '支出' }}</h2>
-            <b><AnimatedMoney :value="statsTotal" /></b>
-          </div>
-          <p class="stats-meta">
-            日均 ¥{{ formatMoney(statsAverage) }} · 覆盖 {{ stats.coveredDays }} 天 · {{ periodLabel }}
-          </p>
-          <p v-if="stats.note" class="stats-note">{{ stats.note }}</p>
-        </section>
-
-        <section class="chart-card">
-          <div class="stats-head">
-            <h2>{{ statsKind === 'income' ? '收入趋势' : '支出趋势' }}</h2>
-            <span class="tiny">{{ stats.period === 'day' ? '当天' : stats.period === 'month' ? '按日' : '按月' }}</span>
-          </div>
-          <p v-if="stats.period === 'day'" class="state-inline">日视图只显示当天合计，切换月或年可查看趋势。</p>
-          <LedgerStatsChart
-            v-else-if="stats.points.length"
-            :points="stats.points"
-            :direction="statsKind"
-            :period="stats.period"
-            :total="statsTotal"
-          />
-          <p v-else class="state-inline">该周期还没有记录。</p>
-        </section>
-
-        <section class="ranking-panel" :class="{ income: statsKind === 'income' }">
-          <div class="stats-head">
-            <h2>分类排行</h2>
-            <span class="tiny">{{ statsCategories.length }} 类</span>
-          </div>
-          <button
-            v-for="category in statsCategories"
-            :key="category.category"
-            type="button"
-            class="rank-row"
-            :disabled="statsByGroup" @click="selectStatsCategory(category.category)"
-          >
-            <span class="rank-top">
-              <span>{{ category.category }}</span>
-              <b>¥{{ formatMoney(category.amount) }}</b>
-            </span>
-            <span class="rank-bar"><span :style="{ width: `${Math.max(category.share, 1)}%` }" /></span>
-            <small>{{ category.count }} 笔 · {{ category.share.toFixed(2) }}%</small>
-          </button>
-          <p v-if="!statsCategories.length" class="state-inline">该周期还没有{{ statsKind === 'income' ? '收入' : '支出' }}记录。</p>
-        </section>
-      </template>
+      <LedgerStatsPanel
+        v-else-if="stats"
+        v-model:mode="statsKind"
+        v-model:by-group="statsByGroup"
+        :stats="stats"
+        :loading="statsLoading"
+        :period="period"
+        :anchor="anchor"
+        :today="today"
+        :period-label="periodLabel"
+        :categories="categoryItems"
+        :category-icons-by-kind="categoryIconsByKind"
+        @open-entry="openEntry"
+        @filter-list="selectStatsCategory"
+      />
     </template>
     <AppNav />
   </main>
 </template>
 
 <style scoped>
-.ledger-page {
-  padding-bottom: calc(97px + env(safe-area-inset-bottom));
-}
-
-.summary-scope {
-  margin: 0 0 8px;
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-}
-
 .filter-label {
   max-width: 52%;
   overflow: hidden;
@@ -667,13 +599,8 @@ function openEntry(entryId?: string): void {
 }
 
 .ledger-page {
-  --ledger-accent: #086ee4;
-  background: radial-gradient(ellipse at top left, #f0cfa95c, transparent 40%),
-    radial-gradient(ellipse at top right, #eeafba75, transparent 40%), var(--color-bg-page);
-}
-:global([data-color-scheme='dark']) .ledger-page {
-  background: radial-gradient(ellipse at top right, #602f4d55, transparent 43%), var(--color-bg-page);
-  --ledger-accent: #2579d8;
+  --ledger-accent: var(--color-brand);
+  background: var(--color-bg-page);
 }
 .ledger-heading, .calendar-heading { display: flex; align-items: center; gap: 8px; }
 .ledger-heading { justify-content: space-between; margin-bottom: 14px; }
@@ -686,12 +613,24 @@ function openEntry(entryId?: string): void {
 }
 .round-tool .app-icon, .calendar-heading strong .app-icon { width: 17px; height: 17px; }
 .ledger-settings { background: color-mix(in srgb, var(--color-bg-surface) 68%, transparent); }
-.ledger-hero, .ledger-calendar-card { background: var(--color-bg-surface); border-radius: 24px; padding: 16px; }
+.ledger-hero, .ledger-calendar-card, .chart-toolbar-card { background: var(--color-bg-surface); border-radius: 24px; padding: 16px; }
 .ledger-hero { margin-bottom: 12px; }
 .ledger-hero-copy { display: grid; gap: 5px; }
 .ledger-hero-amount { font-size: clamp(1.5rem, 7vw, 2.15rem); line-height: 1.12; overflow-wrap: anywhere; }
 .ledger-hero-label { font-weight: 650; }
 .ledger-calendar-card { padding: 12px; margin-bottom: 16px; }
+.chart-toolbar-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow-card);
+}
+.toolbar-views { display: flex; align-items: center; gap: 6px; }
+.toolbar-views .round-tool { background: var(--color-bg-subtle); }
+.toolbar-views .round-tool[aria-pressed='true'] { background: color-mix(in srgb, var(--ledger-accent) 15%, var(--color-bg-surface)); }
 .calendar-heading { margin-bottom: 8px; }
 .calendar-heading strong { display: flex; gap: 6px; align-items: center; margin-right: auto; }
 .calendar-heading .round-tool { background: var(--color-bg-subtle); }
@@ -705,32 +644,6 @@ function openEntry(entryId?: string): void {
   color: var(--color-brand);
   font-size: var(--text-footnote);
   font-weight: 600;
-}
-
-.view-tabs {
-  width: 100%;
-  gap: 4px;
-  margin-bottom: 14px;
-  padding: 4px;
-  border-bottom: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-bg-subtle);
-}
-
-.view-tabs button {
-  min-height: 40px;
-  border-radius: var(--radius-pill);
-  font-weight: 600;
-}
-
-.view-tabs button.active {
-  background: var(--color-bg-surface);
-  color: var(--color-brand);
-  box-shadow: 0 2px 10px var(--color-shadow);
-}
-
-.view-tabs button.active::after {
-  display: none;
 }
 
 .filter-disclosure {
@@ -760,70 +673,6 @@ function openEntry(entryId?: string): void {
   font-size: var(--text-footnote);
 }
 
-.stats-direction {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.stats-direction button {
-  min-height: 44px;
-  padding: 0 20px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-bg-surface);
-  color: var(--color-text-secondary);
-  font-size: var(--text-subhead);
-  font-weight: 600;
-  box-shadow: 0 2px 10px var(--color-shadow);
-}
-
-.stats-direction button.active {
-  background: var(--color-brand-soft);
-  color: var(--color-brand);
-  font-weight: 700;
-  box-shadow: none;
-}
-
-.stats-panel,
-.chart-card,
-.ranking-panel {
-  margin-bottom: 14px;
-  padding: 20px;
-  border: 0;
-  border-radius: var(--radius-card);
-  background: var(--color-bg-surface);
-  box-shadow: var(--shadow-card);
-}
-
-.stats-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.stats-head h2 {
-  margin: 0;
-  font-size: 1.125rem;
-  font-weight: 700;
-  letter-spacing: -0.3px;
-}
-
-.stats-head b {
-  font-size: 1.25rem;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  font-variant-numeric: tabular-nums;
-}
-
-.stats-head .tiny {
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-  font-weight: 500;
-}
-
 .ledger-page > .secondary-button {
   display: block;
   width: 100%;
@@ -831,84 +680,11 @@ function openEntry(entryId?: string): void {
   margin-top: 4px;
 }
 
-.stats-meta {
-  margin: 0;
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
-  line-height: 1.7;
-}
-
-.stats-note {
-  margin: 8px 0 0;
-  color: var(--color-warning);
-  font-size: var(--text-caption);
-  line-height: 1.6;
-}
-
 .state-inline {
   margin: 8px 0 4px;
   color: var(--color-text-secondary);
   font-size: var(--text-footnote);
   line-height: 1.7;
-}
-
-.rank-row {
-  display: block;
-  box-sizing: border-box;
-  width: 100%;
-  padding: 12px 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-}
-
-.rank-row + .rank-row {
-  border-top: 1px solid var(--color-border-subtle);
-}
-
-.rank-row:hover {
-  background: var(--color-bg-hover);
-}
-
-.rank-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 10px;
-  font-size: var(--text-footnote);
-  font-weight: 600;
-}
-
-.rank-top b {
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-}
-
-.rank-bar {
-  display: block;
-  height: 5px;
-  margin: 6px 0 4px;
-  overflow: hidden;
-  border-radius: var(--radius-tag);
-  background: var(--color-bg-subtle);
-}
-
-.rank-bar span {
-  display: block;
-  height: 100%;
-  border-radius: var(--radius-tag);
-  background: var(--color-brand);
-}
-
-.ranking-panel.income .rank-bar span {
-  background: var(--color-finance-income);
-}
-
-.rank-row small {
-  color: var(--color-text-secondary);
-  font-size: var(--text-caption);
 }
 
 .period-panel {
@@ -1177,40 +953,5 @@ function openEntry(entryId?: string): void {
   font-weight: 700;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
-}
-
-.empty-state {
-  padding: 36px 16px;
-  border: 1px dashed var(--color-border-default);
-  border-radius: var(--radius-card);
-  text-align: center;
-}
-
-.empty-state p {
-  margin: 0 0 14px;
-  color: var(--color-text-secondary);
-  font-size: 0.75rem;
-}
-
-.empty-state .primary-button {
-  width: 100%;
-}
-
-@media (max-width: 360px) {
-  .period-panel {
-    padding: 16px;
-  }
-
-  .summary-grid {
-    gap: 6px;
-  }
-
-  .summary-grid > div + div {
-    padding-left: 8px;
-  }
-
-  .summary-grid b {
-    font-size: 1rem;
-  }
 }
 </style>
