@@ -23,8 +23,6 @@ const readCacheLimit = 50
 const requestTimeoutMs = 15_000
 const readCache = new Map<string, { at: number; data: unknown }>()
 
-export const activeRequestCount = ref(0)
-
 const inFlightReads = new Map<string, Promise<unknown>>()
 let cacheGeneration = 0
 
@@ -109,7 +107,6 @@ async function performRequest<T>(path: string, init?: ApiRequestInit, skipCacheR
     headers.set('Content-Type', 'application/json')
   }
 
-  activeRequestCount.value++
   const controller = new AbortController()
   let timedOut = false
   const timeout = window.setTimeout(() => {
@@ -176,7 +173,6 @@ async function performRequest<T>(path: string, init?: ApiRequestInit, skipCacheR
   } finally {
     window.clearTimeout(timeout)
     externalSignal?.removeEventListener('abort', onExternalAbort)
-    activeRequestCount.value--
   }
 }
 
@@ -323,7 +319,6 @@ export async function apiRequest<T>(path: string, init?: ApiRequestInit): Promis
 }
 
 export async function apiDownload(path: string, fallbackName: string): Promise<void> {
-  activeRequestCount.value++
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), requestTimeoutMs)
 
@@ -366,7 +361,6 @@ export async function apiDownload(path: string, fallbackName: string): Promise<v
     throw error
   } finally {
     window.clearTimeout(timeout)
-    activeRequestCount.value--
   }
 }
 

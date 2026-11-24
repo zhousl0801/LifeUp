@@ -441,6 +441,7 @@ onBeforeUnmount(() => {
           <CategoryIcon :name="label" :icon-key="key" :size="26" />
         </button>
       </div>
+      <p class="category-status" role="status">{{ saving ? '正在保存图标…' : '' }}</p>
       <p v-if="formError" class="category-error" role="alert">{{ formError }}</p>
     </BottomSheet>
 

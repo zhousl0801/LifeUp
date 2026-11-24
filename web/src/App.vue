@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { shallowRef, watch } from 'vue'
 import AppMessage from './components/AppMessage.vue'
-import LoadingBar from './components/LoadingBar.vue'
 import PendingMutationNotice from './components/PendingMutationNotice.vue'
 import ServiceStartup from './components/ServiceStartup.vue'
 import UpdateBanner from './components/UpdateBanner.vue'
@@ -18,7 +17,6 @@ watch(serviceReady, syncStatusBarColor, { flush: 'post' })
   <UpdateBanner />
   <AppMessage />
   <template v-if="serviceReady">
-    <LoadingBar />
     <PendingMutationNotice />
     <RouterView />
   </template>

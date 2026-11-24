@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, expect, test, vi } from 'vitest'
 import App from './App.vue'
+import { apiRequest } from './api/client'
 
 vi.mock('./components/UpdateBanner.vue', () => ({
   default: { render: () => null }
@@ -36,6 +37,27 @@ test('opens the original page without showing the waiting animation when the ser
   expect(app.find('[data-test="page"]').exists()).toBe(true)
   expect(app.text()).not.toContain('正在连接服务')
   app.unmount()
+})
+
+test('keeps the current page visible without a global loading bar during a slow request', async () => {
+  vi.useFakeTimers()
+  let respond!: (response: Response) => void
+  vi.stubGlobal('fetch', vi.fn()
+    .mockResolvedValueOnce(healthyResponse())
+    .mockImplementationOnce(() => new Promise<Response>(resolve => { respond = resolve })))
+  const app = mountApp()
+  await vi.advanceTimersByTimeAsync(0)
+  const request = apiRequest('/api/test/slow-read')
+  try {
+    await vi.advanceTimersByTimeAsync(500)
+
+    expect(app.find('[data-test="page"]').exists()).toBe(true)
+    expect(app.find('[role="progressbar"][aria-label="正在加载"]').exists()).toBe(false)
+  } finally {
+    respond(Response.json({}))
+    await request
+    app.unmount()
+  }
 })
 
 test('waits through temporary HTTP failures and startup HTML, then opens the original page automatically', async () => {

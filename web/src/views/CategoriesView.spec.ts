@@ -45,7 +45,12 @@ describe('分类管理', () => {
     try {
       await flushPromises()
       await wrapper.get('button[aria-label="更换 房租 的图标"]').trigger('click')
+      let finishSave!: (value: EntryCategory) => void
+      vi.mocked(updateCategory).mockReturnValueOnce(new Promise(resolve => { finishSave = resolve }))
       await wrapper.get('button[aria-label="礼物"]').trigger('click')
+      expect(wrapper.get('.category-icon-grid + [role="status"]').text()).toBe('正在保存图标…')
+      expect(wrapper.get('button[aria-label="礼物"]').attributes('disabled')).toBeDefined()
+      finishSave({ ...categories[2]!, iconKey: '1f381' })
       await flushPromises()
       expect(updateCategory).toHaveBeenLastCalledWith('rent', { name: '房租', isActive: true, iconKey: '1f381' })
 
