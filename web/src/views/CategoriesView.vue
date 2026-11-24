@@ -547,7 +547,10 @@ onBeforeUnmount(() => {
 }
 .category-form input:focus-visible, .category-form select:focus-visible { outline: none; box-shadow: none; }
 .category-form > .move-actions { margin-bottom: 10px; }
-.category-icon-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.category-icon-grid {
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px;
+  max-height: min(55dvh, 420px); overflow-y: auto; overscroll-behavior-y: contain; padding: 2px;
+}
 .category-icon-grid button, .move-actions button {
   display: grid; place-items: center; min-height: 44px; border: 1px solid transparent;
   border-radius: var(--radius-control); color: var(--color-text-primary); background: var(--color-bg-subtle);

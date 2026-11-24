@@ -9,10 +9,18 @@ public sealed class CategoryService
     // 对应前端随应用发布的 Noto Emoji 资源。
     private static readonly HashSet<string> s_iconKeys = new(StringComparer.Ordinal)
     {
-        "1f37d", "1f381", "1f3ae", "1f3e0", "1f3f7", "1f43e",
-        "1f455", "1f45f", "1f48a", "1f4b0", "1f4b5", "1f4bc",
-        "1f4c1", "1f4da", "1f4e6", "1f4f6", "1f5d3", "1f68c",
-        "1f6cb", "1f6cd", "1f6d2", "1f9f3", "1f9f4"
+        "1f331", "1f34e", "1f35c", "1f370", "1f37b", "1f37c",
+        "1f37d", "1f381", "1f382", "1f393", "1f3ab", "1f3ac",
+        "1f3ae", "1f3af", "1f3b5", "1f3c6", "1f3e0", "1f3e5",
+        "1f3e6", "1f3e8", "1f3f7", "1f43e", "1f455", "1f45c",
+        "1f45f", "1f484", "1f48a", "1f48e", "1f490", "1f4a1",
+        "1f4a7", "1f4b0", "1f4b3", "1f4b5", "1f4bb", "1f4bc",
+        "1f4c1", "1f4c8", "1f4da", "1f4e6", "1f4f1", "1f4f6",
+        "1f4f7", "1f511", "1f527", "1f5d3", "1f687", "1f68c",
+        "1f695", "1f697", "1f6b2", "1f6cb", "1f6cd", "1f6d2",
+        "1f6e1", "1f916", "1f9b7", "1f9cb", "1f9e0", "1f9e7",
+        "1f9f3", "1f9f4", "1f9f9", "1f9fe", "2615", "26fd",
+        "2708", "2728"
     };
 
     private readonly ILedgerRepository _ledgerRepository;
