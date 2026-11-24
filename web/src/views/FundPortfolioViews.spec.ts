@@ -347,8 +347,12 @@ test('opening a position carries the prior realized profit typed in the form', a
   const cost = document.querySelector<HTMLInputElement>('.sheet input[placeholder="0.00"]')!
   cost.value = '100'
   cost.dispatchEvent(new Event('input', { bubbles: true }))
-  const prior = document.querySelector<HTMLInputElement>('.sheet input[placeholder="选填，可为负数"]')!
-  prior.value = '-63.13'
+  const prior = document.querySelector<HTMLInputElement>('.sheet input[aria-label="建账前已实现收益（元）"]')!
+  const lossToggle = [...document.querySelectorAll<HTMLButtonElement>('.sheet .sign-toggle button')]
+    .find(button => button.textContent?.includes('亏'))!
+  lossToggle.click()
+  await flushPromises()
+  prior.value = '63.13'
   prior.dispatchEvent(new Event('input', { bubbles: true }))
   await flushPromises()
 

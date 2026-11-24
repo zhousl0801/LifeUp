@@ -157,6 +157,7 @@ const form = reactive({
   confirmationDelayDays: '2',
   businessDate: today,
   priorProfit: '',
+  priorProfitSign: 1 as 1 | -1,
   note: ''
 })
 
@@ -881,6 +882,7 @@ function openSheet(kind: SheetKind, positionId?: string): void {
   form.note = ''
   form.businessDate = today
   form.priorProfit = ''
+  form.priorProfitSign = 1
   form.shares = ''
   form.cost = ''
   form.amount = ''
@@ -992,10 +994,36 @@ async function submit(): Promise<void> {
   }
 }
 
+function setPriorProfitSign(sign: 1 | -1): void {
+  form.priorProfitSign = sign
+  form.priorProfit = form.priorProfit.replace(/^[+-]/, '')
+}
+
+function handlePriorProfitInput(): void {
+  const trimmed = form.priorProfit.trim()
+  if (trimmed.startsWith('-')) {
+    form.priorProfitSign = -1
+    form.priorProfit = trimmed.slice(1)
+  } else if (trimmed.startsWith('+')) {
+    form.priorProfitSign = 1
+    form.priorProfit = trimmed.slice(1)
+  }
+}
+
+function parsePriorProfit(): number | null {
+  const raw = form.priorProfit.trim()
+  if (!raw) return 0
+  const signed = raw.startsWith('-') || raw.startsWith('+')
+    ? raw
+    : `${form.priorProfitSign < 0 ? '-' : ''}${raw}`
+  const parsed = parseSignedAmount(signed)
+  return parsed === 0 ? 0 : parsed
+}
+
 async function submitOpening(forceAdd = false): Promise<void> {
   const shares = parseNonNegativeQuantity(form.shares)
   const cost = parseAmount(form.cost)
-  const priorRealizedProfit = form.priorProfit.trim() ? parseSignedAmount(form.priorProfit) : 0
+  const priorRealizedProfit = parsePriorProfit()
 
   if (!form.name.trim()) {
     formError.value = '请输入基金名称。'
@@ -1786,13 +1814,26 @@ function goBack(): void {
             <small>这笔持仓在这一天成立；补录历史持仓时请选择实际日期。</small>
           </label>
 
-          <label class="form-field">
+          <div class="form-field">
             <span>建账前已实现收益（元）</span>
-            <input v-model="form.priorProfit" type="text" inputmode="decimal" placeholder="选填，可为负数" />
+            <div class="signed-input-row">
+              <div class="sign-toggle" role="group" aria-label="收益正负">
+                <button type="button" :aria-pressed="form.priorProfitSign === 1" @click="setPriorProfitSign(1)">盈 +</button>
+                <button type="button" :aria-pressed="form.priorProfitSign === -1" @click="setPriorProfitSign(-1)">亏 −</button>
+              </div>
+              <input
+                v-model="form.priorProfit"
+                type="text"
+                inputmode="decimal"
+                aria-label="建账前已实现收益（元）"
+                placeholder="选填，默认 0"
+                @input="handlePriorProfitInput"
+              />
+            </div>
             <small>
               按平台上「累计收益 − 持有收益」填写，不填按 0 处理。只影响累计收益，不改持仓成本、份额和现金。
             </small>
-          </label>
+          </div>
         </template>
 
         <template v-else-if="sheet === 'buy'">
@@ -2647,6 +2688,43 @@ function goBack(): void {
 .form-field input[readonly] {
   background: transparent;
   color: var(--color-text-secondary);
+}
+
+.signed-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.signed-input-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.sign-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  padding: 2px;
+  border-radius: var(--radius-control);
+  background: var(--color-bg-subtle);
+}
+
+.sign-toggle button {
+  min-height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: calc(var(--radius-control) - 2px);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sign-toggle button[aria-pressed='true'] {
+  background: var(--color-bg-surface);
+  color: var(--color-brand);
+  box-shadow: 0 1px 2px var(--color-shadow);
 }
 
 .text-button {

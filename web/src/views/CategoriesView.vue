@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { createCategory, fetchCategories, reorderCategories, updateCategory } from '../api/categories'
 import { getApiErrorMessage } from '../api/client'
@@ -41,7 +41,6 @@ const formError = ref('')
 const sheet = ref<'edit' | 'icons' | 'move' | null>(null)
 const editing = ref<EntryCategory | null>(null)
 const moveDestination = ref('')
-const nameInput = ref<HTMLInputElement | null>(null)
 const categoryList = ref<HTMLElement | null>(null)
 const folded = reactive(new Set<string>())
 const form = reactive({ name: '', isGroup: true, parentId: '', isActive: true, iconKey: '' })
@@ -101,7 +100,7 @@ function switchKind(value: EntryKind): void {
   status.value = ''
 }
 
-async function openEditor(item?: EntryCategory, parentId = ''): Promise<void> {
+function openEditor(item?: EntryCategory, parentId = ''): void {
   editing.value = item ?? null
   form.name = item?.name ?? ''
   form.isGroup = item ? Boolean(item.isGroup) : !parentId
@@ -110,10 +109,6 @@ async function openEditor(item?: EntryCategory, parentId = ''): Promise<void> {
   form.iconKey = item ? resolveCategoryIconKey(item.name, item.isGroup, item.iconKey) : ''
   formError.value = ''
   sheet.value = 'edit'
-  await nextTick()
-  await nextTick()
-  nameInput.value?.focus()
-  nameInput.value?.select()
 }
 
 function openIcons(item: EntryCategory): void {
@@ -416,7 +411,7 @@ onBeforeUnmount(() => {
     <BottomSheet :open="sheet === 'edit'" :close-disabled="saving" close-icon
       :title="(editing ? '编辑' : '新增') + (form.isGroup ? '一级分类' : '二级分类')" @close="closeSheet">
       <form class="category-form" @submit.prevent="save">
-        <label>名称 <input ref="nameInput" v-model="form.name" type="text" maxlength="20" required /></label>
+        <label>名称 <input v-model="form.name" type="text" maxlength="20" required /></label>
         <label v-if="!form.isGroup">所属一级分类
           <select v-model="form.parentId" required>
             <option v-for="group in activeGroups" :key="group.id" :value="group.id">{{ group.name }}</option>

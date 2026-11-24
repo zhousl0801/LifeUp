@@ -49,10 +49,65 @@ const sheetId = useId()
 const sheet = ref<HTMLElement | null>(null)
 const dragY = ref(0)
 const dragging = ref(false)
+const keyboardInset = ref(0)
+const viewportHeight = ref<number | null>(null)
 const registration: OpenSheet = { element: () => sheet.value, previousFocus: null }
 let dragStartY: number | null = null
 let dragPointerId: number | null = null
 let wasOpen = false
+let viewportBound = false
+
+function scrollFocusedControlIntoView(): void {
+  const active = document.activeElement
+  if (!(active instanceof HTMLElement) || !sheet.value?.contains(active)) return
+  if (!active.matches('input, textarea, select')) return
+  active.scrollIntoView?.({ block: 'nearest' })
+}
+
+function syncVisualViewport(): void {
+  const viewport = window.visualViewport
+  if (!viewport) {
+    keyboardInset.value = 0
+    viewportHeight.value = null
+    return
+  }
+
+  const layoutHeight = window.innerHeight || document.documentElement.clientHeight
+  const occluded = Math.max(0, Math.round(layoutHeight - viewport.height - viewport.offsetTop))
+  if (occluded > 80) {
+    keyboardInset.value = occluded
+    viewportHeight.value = Math.max(200, Math.floor(viewport.height))
+    void nextTick(scrollFocusedControlIntoView)
+  } else {
+    keyboardInset.value = 0
+    viewportHeight.value = null
+  }
+}
+
+function bindVisualViewport(): void {
+  if (viewportBound || !window.visualViewport) return
+  viewportBound = true
+  window.visualViewport.addEventListener('resize', syncVisualViewport)
+  window.visualViewport.addEventListener('scroll', syncVisualViewport)
+  syncVisualViewport()
+}
+
+function unbindVisualViewport(): void {
+  if (viewportBound && window.visualViewport) {
+    window.visualViewport.removeEventListener('resize', syncVisualViewport)
+    window.visualViewport.removeEventListener('scroll', syncVisualViewport)
+  }
+  viewportBound = false
+  keyboardInset.value = 0
+  viewportHeight.value = null
+}
+
+function handleFocusIn(event: FocusEvent): void {
+  const target = event.target
+  if (!(target instanceof HTMLElement) || !target.matches('input, textarea, select')) return
+  syncVisualViewport()
+  void nextTick(() => target.scrollIntoView?.({ block: 'nearest' }))
+}
 
 watch(
   () => props.open,
@@ -66,11 +121,13 @@ watch(
       openSheets.push(registration)
       registration.previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
       resetDrag()
+      bindVisualViewport()
       await nextTick()
       // 不自动聚焦输入框，避免打开 sheet 就弹出键盘；先把焦点放在对话框本身。
       if (openSheets.at(-1) === registration) sheet.value?.focus({ preventScroll: true })
     } else if (wasOpen) {
       wasOpen = false
+      unbindVisualViewport()
       unregisterSheet()
     }
   },
@@ -83,6 +140,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleKeydown)
+  unbindVisualViewport()
   unregisterSheet()
 })
 
@@ -221,16 +279,25 @@ async function endDrag(event: PointerEvent): Promise<void> {
 <template>
   <Teleport to="body">
     <Transition name="sheet">
-      <div v-if="open" class="sheet-backdrop" @click.self="close">
+      <div
+        v-if="open"
+        class="sheet-backdrop"
+        :style="keyboardInset > 0 ? { paddingBottom: `${keyboardInset}px` } : undefined"
+        @click.self="close"
+      >
         <section
           ref="sheet"
           class="sheet"
-          :class="{ dragging }"
-          :style="{ '--sheet-drag-y': `${dragY}px` }"
+          :class="{ dragging, 'keyboard-open': keyboardInset > 0 }"
+          :style="{
+            '--sheet-drag-y': `${dragY}px`,
+            ...(viewportHeight !== null ? { '--sheet-max-height': `${Math.max(200, viewportHeight - 16)}px` } : {})
+          }"
           role="dialog"
           aria-modal="true"
           :aria-labelledby="sheetId"
           tabindex="-1"
+          @focusin="handleFocusIn"
         >
           <div
             class="sheet-grabber"
@@ -268,6 +335,7 @@ async function endDrag(event: PointerEvent): Promise<void> {
 
 <style scoped>
 .sheet-backdrop {
+  box-sizing: border-box;
   position: fixed;
   inset: 0;
   z-index: 50;
@@ -280,7 +348,7 @@ async function endDrag(event: PointerEvent): Promise<void> {
 .sheet {
   box-sizing: border-box;
   width: min(100%, 430px);
-  max-height: 88dvh;
+  max-height: var(--sheet-max-height, 88dvh);
   overflow-y: auto;
   overscroll-behavior-y: contain;
   padding: 0 var(--page-gutter) calc(20px + env(safe-area-inset-bottom));
@@ -290,6 +358,10 @@ async function endDrag(event: PointerEvent): Promise<void> {
   outline: none;
   transform: translateY(var(--sheet-drag-y, 0px));
   transition: transform var(--motion-sheet) var(--ease-sheet);
+}
+
+.sheet.keyboard-open {
+  padding-bottom: 16px;
 }
 
 .sheet.dragging {

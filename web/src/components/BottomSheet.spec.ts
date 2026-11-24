@@ -71,3 +71,50 @@ test('keeps the page locked until the final stacked sheet closes', async () => {
     vi.unstubAllGlobals()
   }
 })
+
+test('lifts the sheet above the virtual keyboard when visualViewport shrinks', async () => {
+  const listeners = new Map<string, Set<EventListener>>()
+  const visualViewport = {
+    height: 844,
+    offsetTop: 0,
+    addEventListener(type: string, listener: EventListener) {
+      const set = listeners.get(type) ?? new Set()
+      set.add(listener)
+      listeners.set(type, set)
+    },
+    removeEventListener(type: string, listener: EventListener) {
+      listeners.get(type)?.delete(listener)
+    }
+  }
+  vi.stubGlobal('innerHeight', 844)
+  vi.stubGlobal('visualViewport', visualViewport)
+
+  const view = mount(BottomSheet, {
+    props: { open: true, title: '新增二级分类' },
+    slots: { default: '<input type="text" />' },
+    global: { stubs: { teleport: true } }
+  })
+
+  try {
+    await nextTick()
+    expect((view.get('.sheet-backdrop').element as HTMLElement).style.paddingBottom).toBe('')
+
+    visualViewport.height = 520
+    for (const listener of listeners.get('resize') ?? []) listener(new Event('resize'))
+    await nextTick()
+
+    expect((view.get('.sheet-backdrop').element as HTMLElement).style.paddingBottom).toBe('324px')
+    expect(view.get('.sheet').classes()).toContain('keyboard-open')
+    expect((view.get('.sheet').element as HTMLElement).style.getPropertyValue('--sheet-max-height')).toBe('504px')
+
+    visualViewport.height = 844
+    for (const listener of listeners.get('resize') ?? []) listener(new Event('resize'))
+    await nextTick()
+
+    expect((view.get('.sheet-backdrop').element as HTMLElement).style.paddingBottom).toBe('')
+    expect(view.get('.sheet').classes()).not.toContain('keyboard-open')
+  } finally {
+    view.unmount()
+    vi.unstubAllGlobals()
+  }
+})

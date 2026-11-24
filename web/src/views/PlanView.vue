@@ -1292,7 +1292,7 @@ function goBack(): void {
 
         <label v-if="form.type !== 'fundSip' || form.cycle === 'monthly'" class="form-field">
           <span>每月日期</span>
-          <input v-model="form.dayOfMonth" type="number" min="1" max="31" />
+          <input v-model="form.dayOfMonth" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" autocomplete="off" placeholder="15" />
           <small>当月没有该日期时按当月最后一天执行。</small>
         </label>
 

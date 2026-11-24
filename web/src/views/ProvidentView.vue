@@ -501,7 +501,7 @@ function goBack(): void {
                 </label>
                 <label class="form-field">
                   <span>每月日期</span>
-                  <input v-model="form.monthlyDay" type="number" min="1" max="31" @input="formError = ''" />
+                  <input v-model="form.monthlyDay" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" autocomplete="off" placeholder="15" @input="formError = ''" />
                 </label>
               </div>
               <label class="form-field">

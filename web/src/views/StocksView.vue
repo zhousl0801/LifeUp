@@ -1002,7 +1002,7 @@ function goBack(): void {
         <template v-if="sheet === 'buy'">
           <label class="form-field">
             <span>买入数量（股）</span>
-            <input v-model="form.shares" type="text" inputmode="decimal" autocomplete="off" placeholder="100" @input="formError = ''" />
+            <input v-model="form.shares" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="100" @input="formError = ''" />
           </label>
           <label class="form-field">
             <span>成交价（元）</span>
@@ -1026,7 +1026,7 @@ function goBack(): void {
         <template v-else-if="sheet === 'sell'">
           <label class="form-field">
             <span>卖出数量（股）</span>
-            <input v-model="form.shares" type="text" inputmode="decimal" autocomplete="off" :placeholder="`最多 ${formatShares(shareMax)} 股`" @input="formError = ''" />
+            <input v-model="form.shares" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" :placeholder="`最多 ${formatShares(shareMax)} 股`" @input="formError = ''" />
           </label>
           <label class="form-field">
             <span>成交价（元）</span>
@@ -1047,7 +1047,7 @@ function goBack(): void {
         <template v-else-if="sheet === 'holding'">
           <label class="form-field">
             <span>持有数量（股）</span>
-            <input v-model="form.shares" type="text" inputmode="decimal" autocomplete="off" placeholder="0" @input="formError = ''" />
+            <input v-model="form.shares" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="0" @input="formError = ''" />
           </label>
           <label class="form-field">
             <span>成本均价（元 / 股）</span>

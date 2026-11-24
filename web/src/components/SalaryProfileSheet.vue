@@ -217,7 +217,7 @@ function confirmDisableProfile(): void {
         <div class="salary-field">
           <label>
             <span>发薪日</span>
-            <input v-model="fields.payDay" aria-label="发薪日" inputmode="numeric" placeholder="15" autocomplete="off" />
+            <input v-model="fields.payDay" type="text" aria-label="发薪日" inputmode="numeric" pattern="[0-9]*" maxlength="2" placeholder="15" autocomplete="off" />
           </label>
           <small v-if="errors.payDay" class="field-error">{{ errors.payDay }}</small>
         </div>
