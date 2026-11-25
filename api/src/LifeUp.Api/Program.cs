@@ -107,8 +107,11 @@ builder.Services.AddHttpClient<SgeDelayedGoldQuoteProvider>((services, client) =
 builder.Services.AddHttpClient<IcbcGoldQuoteProvider>((services, client) =>
     ConfigureQuoteHttpClient(services, client, options => options.GoldBaseUrl));
 builder.Services.AddScoped<IGoldQuoteProvider, GoldQuoteProvider>();
-builder.Services.AddHttpClient<IStockQuoteProvider, EastmoneyStockQuoteProvider>((services, client) =>
-    ConfigureQuoteHttpClient(services, client, options => options.StockBaseUrl));
+builder.Services.AddHttpClient<TencentStockQuoteProvider>((services, client) =>
+    ConfigureQuoteHttpClient(services, client, options => options.StockTencentBaseUrl));
+builder.Services.AddHttpClient<SinaStockQuoteProvider>((services, client) =>
+    ConfigureQuoteHttpClient(services, client, options => options.StockSinaBaseUrl));
+builder.Services.AddScoped<IStockQuoteProvider, StockQuoteProvider>();
 
 var app = builder.Build();
 

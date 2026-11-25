@@ -16,10 +16,13 @@ public sealed class QuoteProviderOptions
 
     public string GoldSgeFallbackBaseUrl { get; set; } = "https://push2delay.eastmoney.com/";
 
-    public string StockBaseUrl { get; set; } = "https://push2.eastmoney.com/";
+    public string StockTencentBaseUrl { get; set; } = "https://qt.gtimg.cn/";
 
-    // 主站偶发整机空响应（连上后不回包），备用站点字段完全一致，价格可能略有延迟。
-    public string StockFallbackBaseUrl { get; set; } = "https://push2delay.eastmoney.com/";
+    public string StockTencentSearchBaseUrl { get; set; } = "https://smartbox.gtimg.cn/";
+
+    public string StockSinaBaseUrl { get; set; } = "https://hq.sinajs.cn/";
+
+    public string StockSinaSearchBaseUrl { get; set; } = "https://suggest3.sinajs.cn/";
 
     public int TimeoutSeconds { get; set; } = 8;
 }

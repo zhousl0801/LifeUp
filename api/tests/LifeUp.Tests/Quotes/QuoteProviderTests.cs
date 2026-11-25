@@ -232,22 +232,13 @@ public sealed class QuoteProviderTests
     }
 
     [Fact]
-    public async Task EastmoneyStockSearch_IncludesExchangeTradedFundsAndTheirMarket()
+    public async Task TencentStockSearch_IncludesASharesAndEtfsAndExcludesIndices()
     {
         const string payload = """
-            {"QuotationCodeTable":{"Data":[
-              {"Code":"159915","Name":"创业板ETF易方达","Classify":"Fund","SecurityTypeName":"基金","QuoteID":"0.159915"},
-              {"Code":"510300","Name":"沪深300ETF华泰柏瑞","Classify":"Fund","SecurityTypeName":"基金","QuoteID":"1.510300"},
-              {"Code":"601318","Name":"中国平安","Classify":"AStock","SecurityTypeName":"A股","QuoteID":"1.601318"},
-              {"Code":"03147","Name":"X南方中创业","Classify":"HK","SecurityTypeName":"港股","QuoteID":"116.03147"},
-              {"Code":"113050","Name":"南银转债","Classify":"Bond","SecurityTypeName":"可转债","QuoteID":"1.113050"},
-              {"Code":"000001","Name":"上证指数","Classify":"Index","SecurityTypeName":"指数","QuoteID":"1.000001"},
-              {"Code":"000001","Name":"华夏成长混合","Classify":"OTCFUND","SecurityTypeName":"基金","QuoteID":"150.000001"},
-              {"Code":"900901","Name":"云赛B股","Classify":"BStock","SecurityTypeName":"沪B","QuoteID":"1.900901"}
-            ],"Status":0,"Message":"成功"}}
+            v_hint="sz~399006~\u521b\u4e1a\u677f\u6307~cybz~ZS^sz~159915~\u521b\u4e1a\u677fETF\u6613\u65b9\u8fbe~cybetfyfd~ETF^sh~510300~\u6caa\u6df1300ETF\u534e\u6cf0\u67cf\u745e~hs300etf~ETF^sh~601318~\u4e2d\u56fd\u5e73\u5b89~zgpa~GP-A^hk~03147~X\u5357\u65b9~xnf~ETF^sh~900901~\u4e91\u8d5bB\u80a1~ysbg~GP-B^sz~000001~\u534e\u590f\u6210\u957f~hxcz~JJ"
             """;
-        var provider = new EastmoneyStockQuoteProvider(
-            CreateClient(_ => JsonResponse(payload)),
+        var provider = new TencentStockQuoteProvider(
+            CreateClient(_ => TextResponse(payload)),
             Options.Create(new QuoteProviderOptions()));
 
         var results = await provider.SearchAsync("创业板", CancellationToken.None);
@@ -255,6 +246,7 @@ public sealed class QuoteProviderTests
         Assert.Equal(3, results.Count);
         Assert.Equal(StockMarket.Shenzhen, results[0].Market);
         Assert.Equal("159915", results[0].Code);
+        Assert.Equal("创业板ETF易方达", results[0].Name);
         Assert.Equal(StockMarket.Shanghai, results[1].Market);
         Assert.Equal("510300", results[1].Code);
         Assert.Equal(StockMarket.Shanghai, results[2].Market);
@@ -262,22 +254,72 @@ public sealed class QuoteProviderTests
     }
 
     [Fact]
-    public async Task EastmoneyStockQuote_ParsesEtfPricePreviousCloseAndDate()
+    public async Task TencentStockQuote_ParsesEtfPricePreviousCloseAndDate()
     {
-        const string payload = """
-            {"rc":0,"data":{"f43":2447,"f57":"159915","f58":"创业板ETF易方达","f59":3,"f60":2535,"f86":1793342907}}
-            """;
-        var provider = new EastmoneyStockQuoteProvider(
-            CreateClient(_ => JsonResponse(payload)),
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        const string payload =
+            "v_sz159915=\"51~创业板ETF易方达~159915~2.199~2.292~2.247~54509434~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~20261125161418~-0.093~-4.06\";";
+        var gbkBytes = Encoding.GetEncoding("GB18030").GetBytes(payload);
+        var provider = new TencentStockQuoteProvider(
+            CreateClient(_ => new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(gbkBytes)
+            }),
             Options.Create(new QuoteProviderOptions()));
 
         var quote = await provider.GetLatestAsync(StockMarket.Shenzhen, "159915", CancellationToken.None);
 
-        Assert.Equal(2.447m, quote.Price);
-        Assert.Equal(2.535m, quote.PreviousClose);
+        Assert.Equal(2.199m, quote.Price);
+        Assert.Equal(2.292m, quote.PreviousClose);
         Assert.Equal("创业板ETF易方达", quote.Name);
-        Assert.Equal(new DateOnly(2026, 10, 30), quote.PriceDate);
-        Assert.Equal("eastmoney", quote.Source);
+        Assert.Equal(new DateOnly(2026, 11, 25), quote.PriceDate);
+        Assert.Equal("tencent", quote.Source);
+    }
+
+    [Fact]
+    public async Task SinaStockQuote_ParsesEtfPricePreviousCloseAndDateWithReferer()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        const string payload =
+            "var hq_str_sz159915=\"创业板,2.247,2.292,2.199,2.291,2.199,2.198,2.199,5450943445,12208183133.072,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2026-11-25,15:35:00,00\";";
+        Uri? observedReferer = null;
+        var gbkBytes = Encoding.GetEncoding("GB18030").GetBytes(payload);
+        var provider = new SinaStockQuoteProvider(
+            CreateClient(request =>
+            {
+                observedReferer = request.Headers.Referrer;
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new ByteArrayContent(gbkBytes)
+                };
+            }),
+            Options.Create(new QuoteProviderOptions()));
+
+        var quote = await provider.GetLatestAsync(StockMarket.Shenzhen, "159915", CancellationToken.None);
+
+        Assert.Equal(new Uri("https://finance.sina.com.cn/"), observedReferer);
+        Assert.Equal(2.199m, quote.Price);
+        Assert.Equal(2.292m, quote.PreviousClose);
+        Assert.Equal("创业板", quote.Name);
+        Assert.Equal(new DateOnly(2026, 11, 25), quote.PriceDate);
+        Assert.Equal("sina", quote.Source);
+    }
+
+    [Fact]
+    public async Task SinaStockSearch_IncludesASharesEtfsAndBeijingExchange()
+    {
+        const string payload =
+            "var suggestvalue=\"创业板指,11,399006,sz399006,创业板指,,;创业板ETF易方达,22,159915,of159915,创业板ETF易方达,,;纬达光电,11,920001,bj920001,纬达光电,,;沪深300ETF,22,510300,of510300,沪深300ETF,,;华夏成长,23,000001,of000001,华夏成长,,\";";
+        var provider = new SinaStockQuoteProvider(
+            CreateClient(_ => TextResponse(payload)),
+            Options.Create(new QuoteProviderOptions()));
+
+        var results = await provider.SearchAsync("创业板", CancellationToken.None);
+
+        Assert.Equal(3, results.Count);
+        Assert.Equal((StockMarket.Shenzhen, "159915"), (results[0].Market, results[0].Code));
+        Assert.Equal((StockMarket.Beijing, "920001"), (results[1].Market, results[1].Code));
+        Assert.Equal((StockMarket.Shanghai, "510300"), (results[2].Market, results[2].Code));
     }
 
     [Fact]
@@ -364,47 +406,40 @@ public sealed class QuoteProviderTests
     }
 
     [Fact]
-    public async Task EastmoneyStockQuote_FallsBackToSecondaryHostWhenPrimaryFails()
+    public async Task StockQuoteProvider_FallsBackToSinaWhenTencentFails()
     {
-        const string payload = """
-            {"rc":0,"data":{"f43":2447,"f57":"159915","f58":"创业板ETF易方达","f59":3,"f60":2535,"f86":1793342907}}
-            """;
-        var hosts = new List<string>();
-        var client = new HttpClient(new StubHandler(request =>
-        {
-            hosts.Add(request.RequestUri!.Host);
-
-            if (request.RequestUri.Host == "primary.test")
-            {
-                throw new HttpRequestException("An error occurred while sending the request.");
-            }
-
-            return JsonResponse(payload);
-        }))
-        {
-            BaseAddress = new Uri("https://primary.test/")
-        };
-        var provider = new EastmoneyStockQuoteProvider(
-            client,
-            Options.Create(new QuoteProviderOptions { StockFallbackBaseUrl = "https://fallback.test/" }));
+        const string sinaPayload =
+            "var hq_str_sz159915=\"创业板,2.247,2.292,2.199,2.291,2.199,2.198,2.199,5450943445,12208183133.072,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2026-11-25,15:35:00,00\";";
+        var tencentProvider = new TencentStockQuoteProvider(
+            CreateClient(_ => throw new HttpRequestException("tencent unavailable")),
+            Options.Create(new QuoteProviderOptions()));
+        var sinaProvider = new SinaStockQuoteProvider(
+            CreateClient(_ => TextResponse(sinaPayload)),
+            Options.Create(new QuoteProviderOptions()));
+        var provider = new StockQuoteProvider(
+            tencentProvider,
+            sinaProvider,
+            NullLogger<StockQuoteProvider>.Instance);
 
         var quote = await provider.GetLatestAsync(StockMarket.Shenzhen, "159915", CancellationToken.None);
 
-        Assert.Equal(2.447m, quote.Price);
-        Assert.Equal(["primary.test", "fallback.test"], hosts);
+        Assert.Equal(2.199m, quote.Price);
+        Assert.Equal("sina", quote.Source);
     }
 
     [Fact]
-    public async Task EastmoneyStockQuote_WhenAllHostsFail_ThrowsFriendlyUnavailable()
+    public async Task StockQuoteProvider_WhenBothSourcesFail_ThrowsFriendlyUnavailable()
     {
-        var client = new HttpClient(new StubHandler(_ =>
-            throw new HttpRequestException("An error occurred while sending the request.")))
-        {
-            BaseAddress = new Uri("https://primary.test/")
-        };
-        var provider = new EastmoneyStockQuoteProvider(
-            client,
-            Options.Create(new QuoteProviderOptions { StockFallbackBaseUrl = "https://fallback.test/" }));
+        var tencentProvider = new TencentStockQuoteProvider(
+            CreateClient(_ => throw new HttpRequestException("tencent unavailable")),
+            Options.Create(new QuoteProviderOptions()));
+        var sinaProvider = new SinaStockQuoteProvider(
+            CreateClient(_ => throw new HttpRequestException("sina unavailable")),
+            Options.Create(new QuoteProviderOptions()));
+        var provider = new StockQuoteProvider(
+            tencentProvider,
+            sinaProvider,
+            NullLogger<StockQuoteProvider>.Instance);
 
         var exception = await Assert.ThrowsAsync<QuoteUnavailableException>(
             () => provider.GetLatestAsync(StockMarket.Shenzhen, "159915", CancellationToken.None));
@@ -412,11 +447,41 @@ public sealed class QuoteProviderTests
         Assert.Equal("股票行情服务暂时无法连接，请稍后重试。", exception.Message);
     }
 
+    [Fact]
+    public async Task StockQuoteProvider_SearchFallsBackToSinaWhenTencentReturnsEmpty()
+    {
+        const string sinaPayload = "var suggestvalue=\"纬达光电,11,920001,bj920001,纬达光电,,\";";
+        var tencentProvider = new TencentStockQuoteProvider(
+            CreateClient(_ => TextResponse("v_hint=\"N\";")),
+            Options.Create(new QuoteProviderOptions()));
+        var sinaProvider = new SinaStockQuoteProvider(
+            CreateClient(_ => TextResponse(sinaPayload)),
+            Options.Create(new QuoteProviderOptions()));
+        var provider = new StockQuoteProvider(
+            tencentProvider,
+            sinaProvider,
+            NullLogger<StockQuoteProvider>.Instance);
+
+        var results = await provider.SearchAsync("920001", CancellationToken.None);
+
+        Assert.Single(results);
+        Assert.Equal(StockMarket.Beijing, results[0].Market);
+        Assert.Equal("920001", results[0].Code);
+    }
+
     private static HttpClient CreateClient(Func<HttpRequestMessage, HttpResponseMessage> responseFactory)
     {
         return new HttpClient(new StubHandler(responseFactory))
         {
             BaseAddress = new Uri("https://example.test/")
+        };
+    }
+
+    private static HttpResponseMessage TextResponse(string payload)
+    {
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(payload, Encoding.UTF8, "text/plain")
         };
     }
 
