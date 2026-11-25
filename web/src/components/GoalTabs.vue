@@ -10,7 +10,7 @@ const isPlans = computed(() => route.name === 'plans')
 <template>
   <nav class="goal-tabs" aria-label="目标页分段">
     <RouterLink class="goal-tab" :class="{ active: isCapital }" to="/capital">资本积累</RouterLink>
-    <RouterLink class="goal-tab" :class="{ active: isPlans }" to="/plans">自动计划</RouterLink>
+    <RouterLink class="goal-tab" :class="{ active: isPlans }" to="/plans">自动记账</RouterLink>
   </nav>
 </template>
 

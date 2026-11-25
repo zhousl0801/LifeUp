@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useAmountPrivacy } from '../composables/useAmountPrivacy'
 import { amountTone, formatMoney, formatSignedMoney } from '../utils/format'
 
 const props = withDefaults(defineProps<{
@@ -11,15 +12,19 @@ const props = withDefaults(defineProps<{
 }>(), {
   signed: false,
   tone: false,
-  prefix: '¥'
+  prefix: '¥',
+  masked: undefined
 })
 
+const { amountsMasked } = useAmountPrivacy()
+const isMasked = computed(() => props.masked ?? amountsMasked.value)
+
 const text = computed(() => {
-  if (props.masked && props.value != null) return '••••'
+  if (isMasked.value && props.value != null) return '••••'
   return props.signed ? formatSignedMoney(props.value) : formatMoney(props.value)
 })
 const prefix = computed(() => props.signed ? '' : props.prefix)
-const toneClass = computed(() => props.tone && !props.masked ? amountTone(props.value) : '')
+const toneClass = computed(() => props.tone && !isMasked.value ? amountTone(props.value) : '')
 </script>
 
 <template>

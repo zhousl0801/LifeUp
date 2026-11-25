@@ -325,10 +325,10 @@ test('toggles full amount masking from the current capital card', async () => {
   const card = view.get('.hero')
   expect(card.get('.hero-amount').text()).not.toContain('••••')
 
-  await card.get('button[aria-label="隐藏资产金额"]').trigger('click')
+  await card.get('button[aria-label="隐藏所有页面金额"]').trigger('click')
   expect(card.get('.hero-amount').text()).toBe('¥••••')
 
-  await card.get('button[aria-label="显示资产金额"]').trigger('click')
+  await card.get('button[aria-label="显示所有页面金额"]').trigger('click')
   expect(card.get('.hero-amount').text()).not.toContain('••••')
   view.unmount()
 })

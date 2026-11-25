@@ -1,20 +1,24 @@
 <script setup lang="ts">
 import { navigateBack } from '../utils/navigation'
+import { useAmountPrivacy } from '../composables/useAmountPrivacy'
 import { toast } from '../composables/useMessage'
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   downloadBackup,
   downloadDetails,
+  fetchBackupSnapshot,
   restoreBackup,
   validateBackup
 } from '../api/backup'
+import { ApiError } from '../api/client'
 import type { BackupSummary, BackupValidation, RestoreBackupResult } from '../api/backup'
 import BackButton from '../components/BackButton.vue'
 import LoadingButton from '../components/LoadingButton.vue'
-import { addAmounts, formatBusinessDate, formatMoney } from '../utils/format'
+import { addAmounts, formatBusinessDate } from '../utils/format'
 
 const router = useRouter()
+const { maskMoney } = useAmountPrivacy()
 const backup = ref<unknown>(null)
 const fileName = ref('')
 const isReading = ref(false)
@@ -22,9 +26,49 @@ const isValidating = ref(false)
 const isRestoring = ref(false)
 const isExporting = ref(false)
 const exportingKind = ref<'details' | 'backup' | ''>('')
+const PreviousSnapshotKey = 'lifeup.backup.previousSnapshot'
+
+interface StoredPreviousSnapshot {
+  savedAt: string
+  ledgerId: string | null
+  snapshot: unknown
+}
+
 const validation = ref<BackupValidation | null>(null)
 const restoreResult = ref<RestoreBackupResult | null>(null)
+const previousSnapshot = ref<StoredPreviousSnapshot | null>(null)
 const errorMessage = ref('')
+
+function readStoredSnapshot(): StoredPreviousSnapshot | null {
+  try {
+    const raw = sessionStorage.getItem(PreviousSnapshotKey)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as StoredPreviousSnapshot
+    if (parsed && typeof parsed.savedAt === 'string' && 'snapshot' in parsed) {
+      return parsed
+    }
+  } catch {
+    // Ignore storage read errors in restricted contexts.
+  }
+  return null
+}
+
+function saveStoredSnapshot(record: StoredPreviousSnapshot | null): void {
+  previousSnapshot.value = record
+  try {
+    if (record) {
+      sessionStorage.setItem(PreviousSnapshotKey, JSON.stringify(record))
+    } else {
+      sessionStorage.removeItem(PreviousSnapshotKey)
+    }
+  } catch {
+    // Keep in-memory ref even if sessionStorage quota is exceeded.
+  }
+}
+
+onMounted(() => {
+  previousSnapshot.value = readStoredSnapshot()
+})
 const confirmReplace = ref(false)
 const exportFrom = ref('')
 const exportTo = ref('')
@@ -136,6 +180,24 @@ async function restore(): Promise<void> {
   errorMessage.value = ''
 
   try {
+    let snapshotRecord: StoredPreviousSnapshot | null = null
+    if (current.willReplace && typeof fetchBackupSnapshot === 'function') {
+      try {
+        const snapshot = await fetchBackupSnapshot()
+        snapshotRecord = {
+          savedAt: new Date().toISOString(),
+          ledgerId: current.current?.ledgerId ?? null,
+          snapshot
+        }
+        // 在覆盖写入前先持久化旧快照，即使网络超时或切换页面后仍可取回。
+        saveStoredSnapshot(snapshotRecord)
+      } catch {
+        // 无法预取旧快照时不静默跳过，提示用户先手动下载再替换。
+        errorMessage.value = '替换前自动保留当前账本失败，为避免数据丢失已取消本次替换，请先手动下载完整备份后再试。'
+        return
+      }
+    }
+
     restoreResult.value = await restoreBackup(
       backup.value,
       current.validationToken,
@@ -146,27 +208,64 @@ async function restore(): Promise<void> {
     backup.value = null
     confirmReplace.value = false
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '恢复失败，当前账本未修改。'
+    if (error instanceof ApiError && error.status === 0) {
+      errorMessage.value = '暂时无法确认恢复结果，请先返回总览核对当前账本，避免重复覆盖。替换前的旧账本快照已保留在下方。'
+    } else {
+      // 服务端明确返回失败时当前账本未被覆盖，清理本次预存快照避免误导。
+      if (current.willReplace) {
+        saveStoredSnapshot(null)
+      }
+      errorMessage.value = error instanceof Error ? error.message : '恢复失败，当前账本未修改。'
+    }
   } finally {
     isRestoring.value = false
   }
 }
 
+function downloadPreviousSnapshot(): void {
+  if (!previousSnapshot.value) return
+  const blob = new Blob([JSON.stringify(previousSnapshot.value.snapshot, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `lifeup-before-restore-${previousSnapshot.value.savedAt.slice(0, 10)}.json`
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+async function rollbackToPrevious(): Promise<void> {
+  if (!previousSnapshot.value) return
+  backup.value = previousSnapshot.value.snapshot
+  fileName.value = '替换前的账本快照'
+  await validateSelected()
+}
+
+function clearPreviousSnapshot(): void {
+  saveStoredSnapshot(null)
+}
+
 function summaryItems(summary: BackupSummary): { label: string; value: string }[] {
   return [
-    { label: '收支记录', value: `${summary.entryCount} 条` },
+    { label: '账单记录', value: `${summary.entryCount} 条` },
     { label: '资产记录', value: `${summary.assetTransactionCount} 条` },
-    { label: '自动计划', value: `${summary.planCount} 个` },
+    { label: '自动记账', value: `${summary.planCount} 个` },
     { label: '执行期次', value: `${summary.planOccurrenceCount} 个` },
-    { label: '请求回执', value: `${summary.mutationReceiptCount} 条` },
-    { label: '行情观测', value: `${summary.priceObservationCount} 条` },
-    { label: '现金', value: `¥${formatMoney(summary.cashBalance)}` },
-    { label: '公积金', value: summary.providentBalance === null ? '未录入' : `¥${formatMoney(summary.providentBalance)}` },
-    { label: '基金', value: `¥${formatMoney(addAmounts(summary.fundValue, summary.fundPending, summary.fundPendingArrival))}` },
-    { label: '股票', value: summary.stockValue === null ? '未录入' : `¥${formatMoney(summary.stockValue)}` },
-    { label: '贵金属', value: summary.goldValue === null ? '未录入' : `¥${formatMoney(addAmounts(summary.goldValue, summary.goldPendingArrival))}` },
-    { label: '总资产', value: summary.totalAssets === null ? '依据不足' : `¥${formatMoney(summary.totalAssets)}` },
+    { label: '现金', value: maskMoney(summary.cashBalance) },
+    { label: '公积金', value: summary.providentBalance === null ? '未录入' : maskMoney(summary.providentBalance) },
+    { label: '基金', value: maskMoney(addAmounts(summary.fundValue, summary.fundPending, summary.fundPendingArrival)) },
+    { label: '股票', value: summary.stockValue === null ? '未录入' : maskMoney(summary.stockValue) },
+    { label: '贵金属', value: summary.goldValue === null ? '未录入' : maskMoney(addAmounts(summary.goldValue, summary.goldPendingArrival)) },
+    { label: '总资产', value: summary.totalAssets === null ? '缺少报价' : maskMoney(summary.totalAssets) },
     { label: '起始日期', value: formatBusinessDate(summary.startDate) }
+  ]
+}
+
+function technicalSummaryItems(summary: BackupSummary): { label: string; value: string }[] {
+  return [
+    { label: '请求回执', value: `${summary.mutationReceiptCount} 条` },
+    { label: '行情观测', value: `${summary.priceObservationCount} 条` }
   ]
 }
 </script>
@@ -180,34 +279,15 @@ function summaryItems(summary: BackupSummary): { label: string; value: string }[
     </header>
 
     <p class="page-intro">
-      导出用于人工核对明细；完整备份包含起始余额、收支、持仓、在途、分组、行情、计划期次、请求回执和更正历史。
+      完整备份用于换设备或误操作后还原全部数据；明细表用于导出到表格软件核对收支与交易。
     </p>
 
     <section class="backup-card">
       <header>
-        <h2>导出</h2>
-        <small>只读取，不改变账本</small>
+        <h2>完整备份</h2>
+        <small>包含全部账本数据，不受日期筛选影响</small>
       </header>
-      <div class="form-row">
-        <label class="form-field">
-          <span>明细开始日期（选填）</span>
-          <input v-model="exportFrom" type="date" />
-        </label>
-        <label class="form-field">
-          <span>明细结束日期（选填）</span>
-          <input v-model="exportTo" type="date" />
-        </label>
-      </div>
       <div class="backup-actions">
-        <LoadingButton
-          class="action-secondary"
-          :loading="exportingKind === 'details'"
-          :disabled="isExporting"
-          loading-label="导出中…"
-          @click="exportDetails"
-        >
-          导出明细 CSV
-        </LoadingButton>
         <LoadingButton
           class="action-primary"
           :loading="exportingKind === 'backup'"
@@ -218,7 +298,38 @@ function summaryItems(summary: BackupSummary): { label: string; value: string }[
           下载完整备份
         </LoadingButton>
       </div>
-      <p class="helper-note">明细 CSV 包含日期、类型、方向、金额、现金影响、数量、净值、费用、分类 / 标的、状态和关联标识。</p>
+    </section>
+
+    <section class="backup-card">
+      <header>
+        <h2>导出明细表</h2>
+        <small>只读取，不改变账本</small>
+      </header>
+      <details class="date-filter-details">
+        <summary>按日期范围导出（默认导出全部）</summary>
+        <div class="form-row">
+          <label class="form-field">
+            <span>开始日期（选填）</span>
+            <input v-model="exportFrom" type="date" />
+          </label>
+          <label class="form-field">
+            <span>结束日期（选填）</span>
+            <input v-model="exportTo" type="date" />
+          </label>
+        </div>
+      </details>
+      <div class="backup-actions">
+        <LoadingButton
+          class="action-secondary"
+          :loading="exportingKind === 'details'"
+          :disabled="isExporting"
+          loading-label="导出中…"
+          @click="exportDetails"
+        >
+          导出明细 CSV
+        </LoadingButton>
+      </div>
+      <p class="helper-note">包含日期、类型、金额、现金变动、数量、净值、费用、分类与备注。</p>
     </section>
 
     <section class="backup-card">
@@ -265,6 +376,19 @@ function summaryItems(summary: BackupSummary): { label: string; value: string }[
       <RouterLink class="home-link" to="/">返回总览核对余额 ›</RouterLink>
     </section>
 
+    <section v-if="previousSnapshot" class="backup-card">
+      <header>
+        <h2>替换前的账本快照</h2>
+        <small>{{ formatBusinessDate(previousSnapshot.savedAt.slice(0, 10)) }}</small>
+      </header>
+      <p class="helper-note">已保留本次替换前的旧账本快照，离开页面后也可回来下载或取回。</p>
+      <div class="backup-actions">
+        <button type="button" class="action-secondary" @click="downloadPreviousSnapshot">下载旧账本</button>
+        <button type="button" class="action-secondary" @click="rollbackToPrevious">取回替换前的账本</button>
+      </div>
+      <button type="button" class="text-button clear-snapshot-btn" @click="clearPreviousSnapshot">不再需要，清除快照</button>
+    </section>
+
     <template v-if="validation">
       <section class="backup-card" :class="validation.isValid ? 'valid-card' : 'invalid-card'">
         <header>
@@ -296,6 +420,16 @@ function summaryItems(summary: BackupSummary): { label: string; value: string }[
             </div>
           </article>
         </div>
+
+        <details class="tech-details">
+          <summary>技术详情</summary>
+          <div class="summary-grid compact">
+            <div v-for="item in technicalSummaryItems(validation.summary)" :key="`tech-${item.label}`">
+              <span>{{ item.label }}</span>
+              <b>{{ item.value }}</b>
+            </div>
+          </div>
+        </details>
 
         <ul v-if="validation.duplicateRisks.length" class="validation-list risks">
           <li v-for="risk in validation.duplicateRisks" :key="risk">{{ risk }}</li>
@@ -542,6 +676,39 @@ function summaryItems(summary: BackupSummary): { label: string; value: string }[
   min-height: var(--touch-target);
   margin-top: 12px;
   font-size: var(--text-footnote);
+}
+
+.date-filter-details,
+.tech-details {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.date-filter-details summary,
+.tech-details summary {
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+  font-weight: 500;
+}
+
+.rollback-box {
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: var(--radius-control);
+  background: var(--color-bg-subtle);
+}
+
+.rollback-box .helper-note {
+  margin-top: 0;
+}
+
+.clear-snapshot-btn {
+  display: block;
+  margin: 10px auto 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
 }
 
 .success-card .home-link {

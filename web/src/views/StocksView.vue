@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { navigateBack } from '../utils/navigation'
 import Decimal from 'decimal.js'
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ApiError, getApiErrorMessage } from '../api/client'
+import { useAmountPrivacy } from '../composables/useAmountPrivacy'
 import { toast } from '../composables/useMessage'
 import { buyStock, fetchStockOverview, fetchStockQuote, refreshStockQuote, refreshStockQuotes, saveStockHolding, searchStocks, sellStock } from '../api/stocks'
 import { fetchLedger, updateAssetCoverage } from '../api/ledger'
+import AmountVisibilityButton from '../components/AmountVisibilityButton.vue'
 import AppNav from '../components/AppNav.vue'
 import MoneyAmount from '../components/MoneyAmount.vue'
 import BackButton from '../components/BackButton.vue'
@@ -49,7 +51,10 @@ type SheetKind = 'buy' | 'sell' | 'holding' | 'detail'
 
 const router = useRouter()
 const today = todayInBusinessTimeZone()
+const { amountsMasked, maskMoney, maskSignedMoney } = useAmountPrivacy()
 const overview = ref<StockOverview | null>(null)
+const referenceQuote = ref<{ price: number; date: string } | null>(null)
+let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined
 const isLoading = ref(false)
 const isRefreshing = ref(false)
 const errorMessage = ref('')
@@ -313,6 +318,27 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   unmounted = true
   searchSequence++
+  if (searchDebounceTimer !== undefined) clearTimeout(searchDebounceTimer)
+})
+
+watch(searchQuery, (value) => {
+  if (searchDebounceTimer !== undefined) {
+    clearTimeout(searchDebounceTimer)
+    searchDebounceTimer = undefined
+  }
+  searchSequence++
+  searching.value = false
+  if (!sheet.value || selectedStock.value) return
+  const query = value.trim()
+  if (!query) {
+    searchResults.value = []
+    searched.value = false
+    return
+  }
+  searchDebounceTimer = setTimeout(() => {
+    searchDebounceTimer = undefined
+    void runSearch()
+  }, 260)
 })
 
 async function loadLedgerStartDate(): Promise<void> {
@@ -417,11 +443,12 @@ function openSheet(kind: SheetKind, position: StockPosition | null = null): void
   searchResults.value = []
   searched.value = false
   form.shares = ''
-  form.price = position ? String(position.price) : ''
+  form.price = kind === 'holding' && position ? String(position.price) : ''
   form.cost = ''
   form.businessDate = today
   form.priceDate = position?.priceDate ?? today
   form.note = ''
+  referenceQuote.value = position ? { price: position.price, date: position.priceDate } : null
   quoteError.value = ''
   quoteLoading.value = false
 
@@ -452,11 +479,12 @@ async function loadQuote(market: StockMarket, code: string): Promise<void> {
 
   try {
     const quote = await fetchStockQuote(market, code)
-    if (!isCurrent() || form.price !== previousPrice) return
+    if (!isCurrent()) return
 
-    form.price = String(quote.price)
-    form.priceDate = quote.priceDate
-    if (sheet.value === 'holding') {
+    referenceQuote.value = { price: quote.price, date: quote.priceDate }
+    if (sheet.value === 'holding' && form.price === previousPrice) {
+      form.price = String(quote.price)
+      form.priceDate = quote.priceDate
       updateDefault('price', form.price)
       updateDefault('priceDate', form.priceDate)
     }
@@ -494,11 +522,12 @@ function closeSheet(): void {
 async function runSearch(): Promise<void> {
   const query = searchQuery.value.trim()
 
-  if (!query || searching.value) {
+  if (!query) {
     return
   }
 
   const sequence = ++searchSequence
+  const activeSheet = sheet.value
   searching.value = true
   searched.value = true
   searchResults.value = []
@@ -506,11 +535,11 @@ async function runSearch(): Promise<void> {
 
   try {
     const results = await searchStocks(query)
-    if (sequence === searchSequence) {
+    if (sequence === searchSequence && sheet.value === activeSheet && searchQuery.value.trim() === query) {
       searchResults.value = results
     }
   } catch (error) {
-    if (sequence === searchSequence) {
+    if (sequence === searchSequence && sheet.value === activeSheet) {
       formError.value = getApiErrorMessage(error, '股票搜索失败，请稍后重试。')
     }
   } finally {
@@ -534,7 +563,14 @@ function clearSelectedStock(): void {
   }
 
   selectedStock.value = null
+  referenceQuote.value = null
   form.price = ''
+  formError.value = ''
+}
+
+function applyReferencePrice(): void {
+  if (!referenceQuote.value) return
+  form.price = String(referenceQuote.value.price)
   formError.value = ''
 }
 
@@ -674,7 +710,7 @@ async function submitHolding(): Promise<void> {
 }
 
 function positionTodayText(position: StockPosition): string {
-  return position.todayProfit === null ? '—' : formatSignedMoney(position.todayProfit)
+  return position.todayProfit === null ? '—' : maskSignedMoney(position.todayProfit)
 }
 
 // 券商习惯的当日涨跌幅，以昨收为基准；没有昨收就不造一个数字出来。
@@ -757,6 +793,7 @@ function goBack(): void {
         <p class="hero-label">
           股票资产
           <span class="hero-tag">沪深北 · 含 ETF / LOF</span>
+          <AmountVisibilityButton />
         </p>
         <h2 class="hero-balance"><span class="hero-currency">¥</span><MoneyAmount :value="overview.totalValue" prefix="" /></h2>
         <p class="hero-meta">
@@ -771,7 +808,7 @@ function goBack(): void {
           :total-profit="totalProfit"
           :total-rate="totalRate"
         />
-        <p class="hero-foot">可用现金 ¥{{ formatMoney(overview.cashBalance) }}</p>
+        <p class="hero-foot">可用现金 {{ maskMoney(overview.cashBalance) }}</p>
       </section>
 
       <div v-if="overview.positions.length > 0" class="stock-actions">
@@ -814,8 +851,8 @@ function goBack(): void {
         <div class="section-head">
           <h2>{{ group.label }}</h2>
           <span class="meta">
-            {{ group.positions.length }} 只 · ¥{{ formatMoney(group.value) }}
-            <em v-if="group.todayProfit !== 0" :class="amountTone(group.todayProfit)">{{ formatSignedMoney(group.todayProfit) }}</em>
+            {{ group.positions.length }} 只 · {{ maskMoney(group.value) }}
+            <em v-if="group.todayProfit !== 0" :class="amountsMasked ? '' : amountTone(group.todayProfit)">{{ maskSignedMoney(group.todayProfit) }}</em>
           </span>
         </div>
         <div class="position-list">
@@ -836,10 +873,10 @@ function goBack(): void {
               <small>现价 {{ formatUnitPrice(position.price) }} · 成本 {{ positionAverageCostText(position) }}</small>
             </span>
             <span class="position-side">
-              <b>¥{{ formatMoney(position.value) }}</b>
-              <small :class="amountTone(position.todayProfit)">
+              <b>{{ maskMoney(position.value) }}</b>
+              <small :class="amountsMasked ? '' : amountTone(position.todayProfit)">
                 {{ positionTodayLabel(position) }}
-                <em v-if="positionChangePercent(position) !== null" class="position-percent">
+                <em v-if="positionChangePercent(position) !== null && !amountsMasked" class="position-percent">
                   {{ formatPercent(positionChangePercent(position)) }}
                 </em>
               </small>
@@ -1006,9 +1043,12 @@ function goBack(): void {
           </label>
           <label class="form-field">
             <span>成交价（元）</span>
-            <input v-model="form.price" type="text" inputmode="decimal" autocomplete="off" placeholder="0.00" @input="formError = ''" />
+            <input v-model="form.price" type="text" inputmode="decimal" autocomplete="off" placeholder="请按券商成交单填写" @input="formError = ''" />
             <small v-if="quoteLoading">正在获取最新价…</small>
-            <small v-else-if="form.price">默认取最新价 {{ formatUnitPrice(parseUnitPrice(form.price)) }}（{{ formatBusinessDate(form.priceDate) }}），可按实际成交价修改</small>
+            <small v-else-if="referenceQuote">
+              参考行情 ¥{{ formatUnitPrice(referenceQuote.price) }}（{{ formatBusinessDate(referenceQuote.date) }}）·
+              <button type="button" class="text-button inline-ref-btn" @click="applyReferencePrice">用参考价记账</button>
+            </small>
             <small v-else-if="quoteError">{{ quoteError }}</small>
           </label>
           <label class="form-field">
@@ -1030,7 +1070,11 @@ function goBack(): void {
           </label>
           <label class="form-field">
             <span>成交价（元）</span>
-            <input v-model="form.price" type="text" inputmode="decimal" autocomplete="off" placeholder="0.00" @input="formError = ''" />
+            <input v-model="form.price" type="text" inputmode="decimal" autocomplete="off" placeholder="请按券商成交单填写" @input="formError = ''" />
+            <small v-if="referenceQuote">
+              参考行情 ¥{{ formatUnitPrice(referenceQuote.price) }}（{{ formatBusinessDate(referenceQuote.date) }}）·
+              <button type="button" class="text-button inline-ref-btn" @click="applyReferencePrice">用参考价记账</button>
+            </small>
           </label>
           <label class="form-field">
             <span>业务日期</span>
@@ -1673,6 +1717,14 @@ function goBack(): void {
 .preview-line span {
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
+}
+
+.inline-ref-btn {
+  margin-left: 6px;
+  padding: 0;
+  color: var(--color-brand);
+  font-size: var(--text-caption);
+  font-weight: 500;
 }
 
 @media (max-width: 360px) {

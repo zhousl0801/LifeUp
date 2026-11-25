@@ -1,14 +1,18 @@
 <script setup lang="ts">
 import { navigateBack } from '../utils/navigation'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchCashOverview, reconcileCash } from '../api/cash'
-import { ApiError, getApiErrorMessage } from '../api/client'
+import { ApiError, getApiErrorMessage, type RecoveredMutationDetail } from '../api/client'
+import { useAmountPrivacy } from '../composables/useAmountPrivacy'
 import { toast } from '../composables/useMessage'
+import { useUnsavedSheet } from '../composables/useUnsavedSheet'
+import AmountVisibilityButton from '../components/AmountVisibilityButton.vue'
 import AppNav from '../components/AppNav.vue'
 import MoneyAmount from '../components/MoneyAmount.vue'
 import BackButton from '../components/BackButton.vue'
 import BottomSheet from '../components/BottomSheet.vue'
+import ConfirmSheet from '../components/ConfirmSheet.vue'
 import LoadingButton from '../components/LoadingButton.vue'
 import LoadingState from '../components/LoadingState.vue'
 import { amountTone, formatMoney, formatSignedMoney, parseAmount, subtractAmounts } from '../utils/format'
@@ -26,6 +30,7 @@ interface ActivityGroup {
 
 const route = useRoute()
 const router = useRouter()
+const { amountsMasked, maskMoney, maskSignedMoney } = useAmountPrivacy()
 const overview = ref<CashOverview | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref('')
@@ -37,6 +42,15 @@ const formError = ref('')
 const isSaving = ref(false)
 const requestId = ref(createRequestId())
 const expectedVersion = ref(0)
+const reasonPresets = ['漏记零花', '利息/返现', '多记修正']
+
+const { discardOpen, requestClose, resolveDiscard } = useUnsavedSheet(
+  () => requestId.value,
+  () => isReconcileOpen.value,
+  () => isSaving.value,
+  () => ({ actualBalance: actualBalance.value, reason: reason.value }),
+  closeReconcile
+)
 
 const filters: Array<{ value: CashFilter; label: string }> = [
   { value: 'all', label: '全部' },
@@ -80,13 +94,27 @@ const isBalanced = computed(() => previewDifference.value === 0)
 const canSave = computed(() =>
   previewDifference.value !== null && !isSaving.value)
 
+function handleMutationRecovered(event: Event): void {
+  const detail = (event as CustomEvent<RecoveredMutationDetail>).detail
+  if (detail && detail.requestId === requestId.value && isReconcileOpen.value) {
+    isReconcileOpen.value = false
+    formError.value = ''
+  }
+  void loadCash()
+}
+
 onMounted(async () => {
+  window.addEventListener('lifeup:mutation-recovered', handleMutationRecovered)
   await loadCash()
 
   if (route.query.action === 'reconcile' && overview.value) {
     openReconcile()
     void router.replace({ name: 'cash' })
   }
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('lifeup:mutation-recovered', handleMutationRecovered)
 })
 
 async function loadCash(): Promise<void> {
@@ -129,9 +157,14 @@ function openActivity(activity: CashActivity): void {
     return
   }
 
+  if (activity.assetType === 'fund') {
+    void router.push({ name: 'funds', params: { view: 'activities' } })
+    return
+  }
+
   const routeName = activity.assetType === 'providentFund'
     ? 'provident'
-    : activity.assetType === 'fund' ? 'funds' : activity.assetType === 'stock' ? 'stocks' : 'gold'
+    : activity.assetType === 'stock' ? 'stocks' : 'gold'
 
   void router.push({ name: routeName })
 }
@@ -191,10 +224,16 @@ function openReconcile(): void {
 
   requestId.value = createRequestId()
   expectedVersion.value = overview.value.version
-  actualBalance.value = overview.value.balance.toFixed(2)
+  actualBalance.value = ''
   reason.value = ''
   formError.value = ''
   isReconcileOpen.value = true
+}
+
+function fillBookBalance(): void {
+  if (!overview.value) return
+  actualBalance.value = overview.value.balance.toFixed(2)
+  formError.value = ''
 }
 
 function closeReconcile(): void {
@@ -211,11 +250,6 @@ async function submitReconcile(): Promise<void> {
     return
   }
 
-  if (previewDifference.value !== 0 && !reason.value.trim()) {
-    formError.value = '存在差额时，请填写调整原因。'
-    return
-  }
-
   if (isSaving.value) {
     return
   }
@@ -224,15 +258,18 @@ async function submitReconcile(): Promise<void> {
   formError.value = ''
 
   try {
+    const note = previewDifference.value === 0
+      ? reason.value.trim()
+      : (reason.value.trim() || '余额核对差额')
     const result = await reconcileCash({
       requestId: requestId.value,
       expectedVersion: expectedVersion.value,
       actualBalance: amount,
-      reason: reason.value.trim()
+      reason: note
     })
 
     isReconcileOpen.value = false
-    toast.success(result.isBalanced ? '余额核对一致' : '余额已调整')
+    toast.success(result.isBalanced ? '余额核对一致' : '现金余额已调整')
     await loadCash()
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
@@ -244,6 +281,8 @@ async function submitReconcile(): Promise<void> {
       await loadCash()
       expectedVersion.value = overview.value?.version ?? expectedVersion.value
       requestId.value = createRequestId()
+      formError.value = '现金余额刚有新变动，已刷新账面余额并保留你填的金额，请核对差额后再保存。'
+      return
     }
     formError.value = getApiErrorMessage(error, '核对失败，请重试。')
   } finally {
@@ -273,20 +312,21 @@ async function submitReconcile(): Promise<void> {
         <p class="hero-label">
           可用现金
           <span class="hero-tag">统一余额</span>
+          <AmountVisibilityButton />
         </p>
         <h2 class="hero-balance"><span>¥</span><MoneyAmount :value="overview.balance" prefix="" /></h2>
         <div class="hero-metrics">
           <div>
             <span>本月现金流入</span>
-            <b class="income">{{ formatMoney(overview.inflow) }}</b>
+            <b class="income">{{ maskMoney(overview.inflow, '') }}</b>
           </div>
           <div>
             <span>本月现金流出</span>
-            <b>{{ formatMoney(overview.outflow) }}</b>
+            <b>{{ maskMoney(overview.outflow, '') }}</b>
           </div>
           <div>
             <span>余额净变动</span>
-            <b :class="amountTone(overview.netChange)">{{ formatSignedMoney(overview.netChange) }}</b>
+            <b :class="amountsMasked ? '' : amountTone(overview.netChange)">{{ maskSignedMoney(overview.netChange) }}</b>
           </div>
         </div>
       </section>
@@ -335,8 +375,8 @@ async function submitReconcile(): Promise<void> {
               <strong>{{ activity.title }}</strong>
               <small>{{ activityNote(activity) }}</small>
             </span>
-            <b class="activity-value" :class="activityAmountClass(activity)">
-              {{ formatSignedMoney(activity.amount) }}
+            <b class="activity-value" :class="amountsMasked ? '' : activityAmountClass(activity)">
+              {{ maskSignedMoney(activity.amount) }}
             </b>
           </component>
         </div>
@@ -358,39 +398,50 @@ async function submitReconcile(): Promise<void> {
     <BottomSheet
       :open="isReconcileOpen && overview !== null"
       title="核对现金余额"
-      subtitle="按实际可用现金修正差额"
+      subtitle="填你实际查到的余额，系统自动算差额"
       :close-disabled="isSaving"
-      @close="closeReconcile"
+      @close="requestClose"
     >
       <template v-if="overview">
           <div class="reconcile-fields">
             <div class="balance-row">
               <span>当前账面余额</span>
               <b>¥{{ formatMoney(overview.balance) }}</b>
+              <button type="button" class="reconcile-match" @click="fillBookBalance">和账面一致</button>
             </div>
 
             <label class="field">
-              <span>核对后的实际余额（元）</span>
+              <span>实际查到的余额（元）</span>
               <input
                 v-model="actualBalance"
                 type="text"
                 inputmode="decimal"
                 autocomplete="off"
-                placeholder="0.00"
+                placeholder="输入你查到的金额"
                 @input="formError = ''"
               />
             </label>
 
             <label class="field">
-              <span>调整原因</span>
+              <span>备注（选填）</span>
               <input
                 v-model="reason"
                 type="text"
                 maxlength="100"
-                placeholder="例如：漏记一笔消费"
+                placeholder="不填默认记为核对差额"
                 @input="formError = ''"
               />
             </label>
+
+            <div v-if="previewDifference !== null && !isBalanced" class="reason-presets">
+              <button
+                v-for="preset in reasonPresets"
+                :key="preset"
+                type="button"
+                class="reason-chip"
+                @click="reason = preset"
+              >{{ preset }}</button>
+            </div>
 
             <div class="difference-row">
               <span>核对差额</span>
@@ -400,7 +451,7 @@ async function submitReconcile(): Promise<void> {
             </div>
 
             <p class="sheet-note">
-              {{ isBalanced ? '核对一致，不会生成调整记录。' : '只记录与当前余额的差额，不改变生活收支。' }}
+              {{ previewDifference === null ? '输入实际金额后，系统会自动计算差额。' : isBalanced ? '核对一致，不会生成调整记录。' : '只记录与账面余额的差额，不改变日常消费与收入统计。' }}
             </p>
 
             <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
@@ -412,11 +463,21 @@ async function submitReconcile(): Promise<void> {
               loading-label="保存中…"
               @click="submitReconcile"
             >
-              保存核对
+              {{ isBalanced ? '确认余额一致' : previewDifference !== null ? `按差额调整 ${formatSignedMoney(previewDifference)}` : '保存核对' }}
             </LoadingButton>
           </div>
       </template>
     </BottomSheet>
+    <ConfirmSheet
+      :open="discardOpen"
+      title="放弃修改？"
+      message="离开后，本次填写的内容会丢失。"
+      confirm-label="放弃修改"
+      cancel-label="继续编辑"
+      danger
+      @confirm="resolveDiscard(true)"
+      @cancel="resolveDiscard(false)"
+    />
     <AppNav />
   </main>
 </template>
@@ -742,10 +803,40 @@ async function submitReconcile(): Promise<void> {
 }
 
 .balance-row b {
+  margin-left: auto;
   color: var(--color-brand);
   font-size: 0.875rem;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
+}
+
+.reconcile-match {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-surface);
+  color: var(--color-brand);
+  font-size: var(--text-caption);
+  font-weight: 600;
+}
+
+.reason-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 14px;
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.reason-chip {
+  min-height: 28px;
+  padding: 2px 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-subtle);
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
 }
 
 .field {

@@ -1,4 +1,4 @@
-import { apiDownload, apiRequest } from './client'
+import { apiDownload, apiRequest, readOnlyRequest } from './client'
 
 export interface BackupSummary {
   ledgerId: string
@@ -57,6 +57,10 @@ export function restoreBackup(
     method: 'POST',
     body: JSON.stringify({ backup, validationToken, replaceExisting })
   })
+}
+
+export function fetchBackupSnapshot(): Promise<unknown> {
+  return readOnlyRequest<unknown>('/api/ledger/backup', { cache: 'no-store' })
 }
 
 export function downloadBackup(): Promise<void> {

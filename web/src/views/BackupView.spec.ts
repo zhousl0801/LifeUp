@@ -1,10 +1,12 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { beforeEach, expect, test, vi } from 'vitest'
+import { ApiError } from '../api/client'
 import BackupView from './BackupView.vue'
 
 const mocks = vi.hoisted(() => ({
   validate: vi.fn(),
   restore: vi.fn(),
+  fetchSnapshot: vi.fn(),
   downloadBackup: vi.fn(),
   downloadDetails: vi.fn()
 }))
@@ -13,6 +15,7 @@ vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }))
 vi.mock('../api/backup', () => ({
   validateBackup: mocks.validate,
   restoreBackup: mocks.restore,
+  fetchBackupSnapshot: mocks.fetchSnapshot,
   downloadBackup: mocks.downloadBackup,
   downloadDetails: mocks.downloadDetails
 }))
@@ -51,6 +54,7 @@ const validValidation = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  sessionStorage.clear()
   mocks.validate.mockResolvedValue(structuredClone(validValidation))
   mocks.restore.mockResolvedValue({
     restored: true,
@@ -59,6 +63,7 @@ beforeEach(() => {
     restoredAt: '2026-10-22T10:00:00Z',
     warnings: []
   })
+  mocks.fetchSnapshot.mockResolvedValue({ format: 'lifeup-backup', previous: true })
   mocks.downloadBackup.mockResolvedValue(undefined)
   mocks.downloadDetails.mockResolvedValue(undefined)
   document.body.innerHTML = ''
@@ -69,7 +74,7 @@ test('export actions show progress on the active button until the download compl
   mocks.downloadDetails.mockImplementationOnce(() => new Promise<void>(resolve => { finishDownload = resolve }))
   mocks.downloadBackup.mockImplementationOnce(() => new Promise<void>(resolve => { finishDownload = resolve }))
   const view = mount(BackupView)
-  const [details, backup] = view.findAll('.backup-actions button')
+  const [backup, details] = view.findAll('.backup-actions button')
 
   await details!.trigger('click')
   expect(mocks.downloadDetails).toHaveBeenCalledWith('', '')
@@ -154,7 +159,28 @@ test('restore failure keeps the validation and shows the error', async () => {
 
   expect(view.text()).toContain('备份或当前账本已变化，请重新校验后再恢复。')
   expect(view.text()).toContain('校验通过')
+  expect(view.text()).not.toContain('替换前的账本快照')
   view.unmount()
+})
+
+test('previous snapshot persists across remount and when restore result is unknown (status 0)', async () => {
+  mocks.restore.mockRejectedValueOnce(new ApiError(0, '网络超时'))
+  const view = mount(BackupView, { attachTo: document.body })
+  await flushPromises()
+  await selectBackup(view, '{"format":"lifeup-backup"}')
+  await view.find('.confirm-replace input').setValue(true)
+  await view.findAll('button').find((button) => button.text() === '确认恢复并替换当前账本')!.trigger('click')
+  await flushPromises()
+
+  expect(view.text()).toContain('暂时无法确认恢复结果')
+  expect(view.text()).toContain('替换前的账本快照')
+  view.unmount()
+
+  const remounted = mount(BackupView, { attachTo: document.body })
+  await flushPromises()
+  expect(remounted.text()).toContain('替换前的账本快照')
+  expect(remounted.text()).toContain('取回替换前的账本')
+  remounted.unmount()
 })
 
 async function selectBackup(view: ReturnType<typeof mount>, content: string): Promise<void> {

@@ -66,7 +66,7 @@ test('prefills the salary and provident plans for a new profile', async () => {
   expect(input('每月税后工资')?.value).toBe('12000')
   expect(input('公积金月缴存')?.value).toBe('4800')
   expect(input('发薪日')?.value).toBe('15')
-  expect(input('年终奖月数')?.value).toBe('0')
+  expect(input('年终奖月数')).toBeNull()
 })
 
 test('rejects a profile without base salary', async () => {
@@ -86,6 +86,8 @@ test('rejects bonus months without a net bonus', async () => {
 
   input('税前 Base')!.value = '20000'
   input('税前 Base')!.dispatchEvent(new Event('input', { bubbles: true }))
+  input('有年终奖')!.click()
+  await nextTick()
   input('年终奖月数')!.value = '4'
   input('年终奖月数')!.dispatchEvent(new Event('input', { bubbles: true }))
   await nextTick()
@@ -100,6 +102,9 @@ test('rejects bonus months without a net bonus', async () => {
 test('emits the parsed profile and annual summary', async () => {
   mountSheet()
   await flushPromises()
+
+  input('有年终奖')!.click()
+  await nextTick()
 
   for (const [label, value] of [
     ['税前 Base', '20000'],
@@ -134,7 +139,7 @@ test('confirms before disabling an existing profile', async () => {
   await flushPromises()
 
   const confirm = Array.from(document.querySelectorAll('button'))
-    .find(button => button.textContent?.trim() === '停用')!
+    .find(button => button.textContent?.trim() === '解除联动')!
   confirm.click()
   await flushPromises()
 

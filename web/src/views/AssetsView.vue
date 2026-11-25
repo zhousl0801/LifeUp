@@ -6,6 +6,7 @@ import { fetchMonthChange, updateAssetCoverage } from '../api/ledger'
 import { getApiErrorMessage } from '../api/client'
 import { toast } from '../composables/useMessage'
 import AppNav from '../components/AppNav.vue'
+import AmountVisibilityButton from '../components/AmountVisibilityButton.vue'
 import MoneyAmount from '../components/MoneyAmount.vue'
 import AssetDistribution from '../components/AssetDistribution.vue'
 import BackButton from '../components/BackButton.vue'
@@ -178,10 +179,12 @@ function goHome(): void {
 
     <template v-else-if="overview">
       <section class="hero">
-        <p class="hero-label">
-          {{ overview.coverageComplete ? '总资产' : '已记录资产' }}
-          <span class="tag">{{ overview.currency }}</span>
-        </p>
+        <div class="hero-top">
+          <p class="hero-label">
+            {{ overview.coverageComplete ? '总资产' : '已记录资产' }}
+          </p>
+          <AmountVisibilityButton />
+        </div>
         <h1 class="hero-value"><span class="currency">¥</span><MoneyAmount :value="overview.totalAssets" :masked="privacy.amountsMasked" prefix="" /></h1>
       </section>
 
@@ -348,6 +351,13 @@ function goHome(): void {
   background: var(--color-hero-glow), linear-gradient(180deg, var(--color-hero-bg) 0%, var(--color-hero-bg-end) 100%);
   box-shadow: var(--shadow-hero);
   color: var(--color-hero-text);
+}
+
+.hero-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .hero-label {

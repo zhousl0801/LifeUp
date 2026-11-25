@@ -21,7 +21,9 @@ import { fetchPlanOverview } from '../api/plans'
 import { fetchQuoteStatus, refreshQuotes, type QuoteStatus } from '../api/quotes'
 import { ApiError, getApiErrorMessage } from '../api/client'
 import { useFundSearch } from '../composables/useFundSearch'
+import { useAmountPrivacy } from '../composables/useAmountPrivacy'
 import { toast } from '../composables/useMessage'
+import AmountVisibilityButton from '../components/AmountVisibilityButton.vue'
 import AppNav from '../components/AppNav.vue'
 import AppIcon from '../components/AppIcon.vue'
 import MoneyAmount from '../components/MoneyAmount.vue'
@@ -95,7 +97,9 @@ function normalizeView(value: unknown): PortfolioView {
 }
 
 const today = todayInBusinessTimeZone()
+const { amountsMasked, maskMoney, maskSignedMoney } = useAmountPrivacy()
 const overview = ref<FundOverview | null>(null)
+const sellNetAmountManual = ref(false)
 const isLoading = ref(false)
 const errorMessage = ref('')
 const quoteRefreshing = ref(false)
@@ -644,17 +648,17 @@ function metricDisplay(fund: FundSummary) {
     {
       key: 'daily',
       label: '日收益',
-      value: fund.hasDailyProfit ? formatSignedMoney(fund.dailyProfit) : '—',
-      sub: fund.hasDailyProfit && fund.dailyProfitRate !== null
+      value: fund.hasDailyProfit ? maskSignedMoney(fund.dailyProfit) : '—',
+      sub: fund.hasDailyProfit && fund.dailyProfitRate !== null && !amountsMasked.value
         ? `${formatSignedMoney(fund.dailyProfitRate)}%`
         : undefined,
-      tone: amountTone(fund.hasDailyProfit ? fund.dailyProfit : null)
+      tone: amountsMasked.value ? '' : amountTone(fund.hasDailyProfit ? fund.dailyProfit : null)
     },
     {
       key: 'cumulative',
       label: '累计收益',
-      value: fund.historyConfirmed ? formatSignedMoney(cumulative) : '待核对',
-      tone: amountTone(fund.historyConfirmed ? cumulative : null)
+      value: fund.historyConfirmed ? maskSignedMoney(cumulative) : '待核对',
+      tone: amountsMasked.value ? '' : amountTone(fund.historyConfirmed ? cumulative : null)
     },
     {
       key: 'cumulativeRate',
@@ -663,8 +667,8 @@ function metricDisplay(fund: FundSummary) {
         ? '待核对'
         : !fund.hasEffectiveQuotes
           ? '行情待补'
-          : rate === null ? '—' : `${formatSignedMoney(rate)}%`,
-      tone: amountTone(fund.historyConfirmed && fund.hasEffectiveQuotes ? rate : null)
+          : rate === null ? '—' : (amountsMasked.value ? '••••' : `${formatSignedMoney(rate)}%`),
+      tone: amountsMasked.value ? '' : amountTone(fund.historyConfirmed && fund.hasEffectiveQuotes ? rate : null)
     }
   ]
 }
@@ -918,6 +922,7 @@ function openSheet(kind: SheetKind, positionId?: string): void {
 function openSellConfirmSheet(application: PendingFundSell): void {
   openSheet('sellConfirm', application.positionId)
   confirmingSellId.value = application.transactionId
+  sellNetAmountManual.value = false
   form.shares = String(application.shares)
   form.netValue = ''
   form.netValueDate = application.businessDate
@@ -925,12 +930,29 @@ function openSellConfirmSheet(application: PendingFundSell): void {
   form.note = application.note ?? ''
 }
 
-function openBuyConfirmSheet(pending: PendingFundBuy): void {
-  openSheet('buyConfirm', pending.positionId)
-  confirmingBuyId.value = pending.transactionId
+watch(
+  () => [sheet.value, form.shares, form.netValue, form.fee] as const,
+  ([currentSheet]) => {
+    if (currentSheet !== 'sellConfirm' || sellNetAmountManual.value) return
+    const shares = parseQuantity(form.shares)
+    const netValue = parsePrice(form.netValue)
+    const fee = parseAmount(form.fee)
+    if (shares === null || netValue === null || netValue <= 0 || fee === null || fee < 0) {
+      form.netAmount = ''
+      return
+    }
+    const gross = new Decimal(shares).mul(netValue).minus(fee)
+    form.netAmount = gross.gt(0) ? gross.toFixed(2, Decimal.ROUND_DOWN) : ''
+  }
+)
+
+function onSellNetAmountInput(): void {
+  sellNetAmountManual.value = true
+  formError.value = ''
 }
 
 function estimateSellNetAmount(): void {
+  sellNetAmountManual.value = false
   const shares = parseQuantity(form.shares)
   const netValue = parsePrice(form.netValue)
   const fee = parseAmount(form.fee)
@@ -949,6 +971,11 @@ function estimateSellNetAmount(): void {
 
   formError.value = ''
   form.netAmount = gross.toFixed(2, Decimal.ROUND_DOWN)
+}
+
+function openBuyConfirmSheet(pending: PendingFundBuy): void {
+  openSheet('buyConfirm', pending.positionId)
+  confirmingBuyId.value = pending.transactionId
 }
 
 function openArrivalSheet(arrival: PendingFundArrival): void {
@@ -1405,6 +1432,7 @@ function goBack(): void {
         <p class="hero-label">
           总资产
           <span class="hero-tag">{{ scope.historyConfirmed ? '已确认持仓' : '持仓日期待确认' }}</span>
+          <AmountVisibilityButton />
         </p>
         <h2 class="hero-balance">
           <template v-if="scope.hasEffectiveQuotes"><span class="hero-currency">¥</span><MoneyAmount :value="scope.assetValue" prefix="" /></template>
@@ -1488,7 +1516,7 @@ function goBack(): void {
       <template v-else-if="activeView === 'positions'">
         <div class="section-head">
           <h2>持仓明细</h2>
-          <span class="meta">可用现金 ¥{{ formatMoney(overview.cashBalance) }}</span>
+          <span class="meta">可用现金 {{ maskMoney(overview.cashBalance) }}</span>
         </div>
 
         <section v-if="sortedFunds.length" class="fund-list">
@@ -1543,23 +1571,23 @@ function goBack(): void {
               >
                 <header class="fund-class-head">
                   <strong>{{ fundClass.shareClass ? `${fundClass.shareClass} 类` : '未标类别' }}</strong>
-                  <span>{{ formatQuantity(fundClass.shares) }} 份 · 成本 ¥{{ formatMoney(fundClass.cost) }}</span>
+                  <span>{{ formatQuantity(fundClass.shares) }} 份 · 成本 {{ maskMoney(fundClass.cost) }}</span>
                 </header>
                 <div class="fund-class-values">
                   <div>
                     <span>估值</span>
-                    <b>¥{{ formatMoney(fundClass.value) }}</b>
+                    <b>{{ maskMoney(fundClass.value) }}</b>
                   </div>
                   <div>
                     <span>持有盈亏</span>
-                    <b :class="amountTone(fundClass.holdingProfit)">
-                      {{ formatSignedMoney(fundClass.holdingProfit) }}
+                    <b :class="amountsMasked ? '' : amountTone(fundClass.holdingProfit)">
+                      {{ maskSignedMoney(fundClass.holdingProfit) }}
                     </b>
                   </div>
                   <div>
                     <span>已实现盈亏</span>
-                    <b :class="amountTone(fundClass.realizedProfit)">
-                      {{ formatSignedMoney(fundClass.realizedProfit) }}
+                    <b :class="amountsMasked ? '' : amountTone(fundClass.realizedProfit)">
+                      {{ maskSignedMoney(fundClass.realizedProfit) }}
                     </b>
                   </div>
                 </div>
@@ -1895,9 +1923,6 @@ function goBack(): void {
               <input v-model="form.netValue" type="text" inputmode="decimal" placeholder="0.0000" />
             </label>
           </div>
-          <button type="button" class="text-button estimate-button" @click="estimateSellNetAmount">
-            按 份额 × 净值 − 费用 试算净到账
-          </button>
           <div class="form-row">
             <label class="form-field">
               <span>净值日期</span>
@@ -1909,8 +1934,13 @@ function goBack(): void {
             </label>
           </div>
           <label class="form-field">
-            <span>净到账金额（元）</span>
-            <input v-model="form.netAmount" type="text" inputmode="decimal" placeholder="0.00" />
+            <span>预计到账金额（元）</span>
+            <input v-model="form.netAmount" type="text" inputmode="decimal" placeholder="输完份额、净值和费用自动计算" @input="onSellNetAmountInput" />
+            <small v-if="sellNetAmountManual">
+              已按平台确认单修改 ·
+              <button type="button" class="text-button inline-recalc" @click="estimateSellNetAmount">恢复自动计算</button>
+            </small>
+            <small v-else-if="form.netAmount">已自动按「份额 × 净值 − 费用」算出，如有尾差可直接修改。</small>
           </label>
           <label class="form-field">
             <span>确认日期</span>
@@ -2798,10 +2828,12 @@ function goBack(): void {
   text-align: center;
 }
 
-.estimate-button {
+.estimate-button,
+.inline-recalc {
   align-self: flex-start;
-  min-height: 32px;
+  min-height: 28px;
   padding: 0;
+  color: var(--color-brand);
   font-size: var(--text-caption);
 }
 

@@ -1,5 +1,5 @@
 import { beforeEach, expect, test, vi } from 'vitest'
-import { apiRequest, clearReadCache, pendingMutationCount, readPendingMutations } from './client'
+import { activeWriteCount, apiRequest, clearReadCache, pendingMutationCount, readOnlyRequest, readPendingMutations } from './client'
 
 beforeEach(() => {
   localStorage.clear()
@@ -18,7 +18,7 @@ test('only shows a pending notice after an in-flight save cannot be confirmed', 
   expect(readPendingMutations()).toHaveLength(1)
   expect(pendingMutationCount.value).toBe(0)
   rejectSave(new TypeError('offline'))
-  await expect(save).rejects.toThrow('待核实')
+  await expect(save).rejects.toThrow('暂时没收到保存结果')
   expect(pendingMutationCount.value).toBe(1)
 })
 
@@ -38,7 +38,7 @@ test('unknown result preserves original request and prevents a changed amount be
   const input = { amount: 100, requestId: 'b8388a71-7021-4142-b3a0-12710f203fde' }
   await expect(apiRequest('/api/ledger/provident/deposits', { method: 'POST', body: JSON.stringify(input) })).rejects.toThrow()
   const calls = fetch.mock.calls.length
-  await expect(apiRequest('/api/ledger/provident/deposits', { method: 'POST', body: JSON.stringify({ ...input, amount: 200 }) })).rejects.toThrow('待核实')
+  await expect(apiRequest('/api/ledger/provident/deposits', { method: 'POST', body: JSON.stringify({ ...input, amount: 200 }) })).rejects.toThrow('上一笔保存仍在确认中')
   expect(fetch).toHaveBeenCalledTimes(calls)
   expect(localStorage.length).toBeGreaterThan(0)
 })
@@ -46,7 +46,7 @@ test('unknown result preserves original request and prevents a changed amount be
 test('pending request survives module reload and can be queried without resending', async () => {
   vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('offline'))
   const requestId = '4108dc88-73c5-4e5e-9b04-92705bdd2dc4'
-  await expect(apiRequest('/api/ledger/cash/reconcile', { method: 'POST', body: JSON.stringify({ actualBalance: 900, expectedVersion: 0, requestId }) })).rejects.toThrow('待核实')
+  await expect(apiRequest('/api/ledger/cash/reconcile', { method: 'POST', body: JSON.stringify({ actualBalance: 900, expectedVersion: 0, requestId }) })).rejects.toThrow('暂时没收到保存结果')
   vi.resetModules()
   const refreshed = await import('./client')
   const request = refreshed.readPendingMutations()[0]!
@@ -83,7 +83,7 @@ test('nested history confirmations use the same pending journal and recovery rec
   vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new TypeError('network'))
     .mockResolvedValueOnce(new Response('', { status: 404 }))
   const body = JSON.stringify({ change: { requestId: 'history-request' }, previewToken: 'preview' })
-  await expect(apiRequest('/api/ledger/history/change', { method: 'POST', body })).rejects.toThrow('保存结果待核实')
+  await expect(apiRequest('/api/ledger/history/change', { method: 'POST', body })).rejects.toThrow('暂时没收到保存结果')
   expect(readPendingMutations()[0]?.requestId).toBe('history-request')
 })
 
@@ -166,4 +166,28 @@ test('automatic lookup recovery invalidates the read cache', async () => {
     body: JSON.stringify({ amount: 100, requestId: 'auto-recover-cache-clear' })
   })
   expect(await apiRequest<{ amount: number }>('/api/ledger')).toEqual({ amount: 200 })
+})
+
+test('readOnlyRequest with cache no-store bypasses in-memory read cache', async () => {
+  const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    .mockResolvedValueOnce(new Response(JSON.stringify({ version: 1 }), { status: 200 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ version: 2 }), { status: 200 }))
+
+  expect(await readOnlyRequest<{ version: number }>('/api/ledger/backup')).toEqual({ version: 1 })
+  expect(await readOnlyRequest<{ version: number }>('/api/ledger/backup', { cache: 'no-store' })).toEqual({ version: 2 })
+  expect(fetchSpy).toHaveBeenCalledTimes(2)
+})
+
+test('activeWriteCount tracks non-GET writes even without requestId', async () => {
+  let resolveFetch!: (value: Response) => void
+  vi.spyOn(globalThis, 'fetch').mockReturnValueOnce(new Promise<Response>((resolve) => {
+    resolveFetch = resolve
+  }))
+
+  expect(activeWriteCount.value).toBe(0)
+  const pending = apiRequest('/api/ledger/backup/restore', { method: 'POST', body: '{}' })
+  expect(activeWriteCount.value).toBe(1)
+  resolveFetch(new Response(JSON.stringify({ restored: true }), { status: 200 }))
+  await pending
+  expect(activeWriteCount.value).toBe(0)
 })

@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { fetchEntryPeriod } from '../api/entries'
 import { getApiErrorMessage } from '../api/client'
+import { useAmountPrivacy } from '../composables/useAmountPrivacy'
 import type { EntryCategory } from '../types/category'
 import type {
   EntryKind,
@@ -20,6 +21,8 @@ import LedgerMonthlyBudget from './LedgerMonthlyBudget.vue'
 import LedgerStatsChart, { type StatsChartMode } from './LedgerStatsChart.vue'
 import LoadingState from './LoadingState.vue'
 import MoneyAmount from './MoneyAmount.vue'
+
+const { amountsMasked, maskMoney } = useAmountPrivacy()
 
 const palette = [
   '#4F46E5',
@@ -400,7 +403,7 @@ function resolveIconKey(kind: EntryKind, category: string, fallback?: string | n
             覆盖 {{ stats.coveredDays }} 天
           </template>
           <template v-else>
-            {{ period === 'year' ? '月均' : '日均' }} ¥{{ formatMoney(activeAverage) }} · {{ totalCount }} 笔 · 覆盖 {{ stats.coveredDays }} 天
+            {{ period === 'year' ? '月均' : '日均' }} {{ maskMoney(activeAverage) }} · {{ totalCount }} 笔 · 覆盖 {{ stats.coveredDays }} 天
           </template>
         </p>
         <p v-if="stats.note" class="stats-note">{{ stats.note }}</p>
@@ -417,15 +420,17 @@ function resolveIconKey(kind: EntryKind, category: string, fallback?: string | n
       <div class="overview-strip" role="group" aria-label="当期收支结余快览">
         <button type="button" :class="{ active: mode === 'expense' }" @click="emit('update:mode', 'expense')">
           <span>支出</span>
-          <b>¥{{ formatMoney(stats.expense) }}</b>
+          <b>{{ maskMoney(stats.expense) }}</b>
         </button>
         <button type="button" :class="{ active: mode === 'income' }" @click="emit('update:mode', 'income')">
           <span>收入</span>
-          <b class="income">¥{{ formatMoney(stats.income) }}</b>
+          <b class="income">{{ maskMoney(stats.income) }}</b>
         </button>
         <button type="button" :class="{ active: mode === 'balance' }" @click="emit('update:mode', 'balance')">
           <span>结余</span>
-          <b :class="{ income: surplus > 0, negative: surplus < 0 }">{{ surplus > 0 ? '+' : surplus < 0 ? '−' : '' }}¥{{ formatMoney(Math.abs(surplus)) }}</b>
+          <b :class="amountsMasked ? '' : { income: surplus > 0, negative: surplus < 0 }">
+            {{ amountsMasked ? '••••' : `${surplus > 0 ? '+' : surplus < 0 ? '−' : ''}¥${formatMoney(Math.abs(surplus))}` }}
+          </b>
         </button>
       </div>
     </section>
@@ -434,7 +439,7 @@ function resolveIconKey(kind: EntryKind, category: string, fallback?: string | n
     <section class="stats-card chart-card">
       <div class="stats-head">
         <h2>{{ mode === 'income' ? '收入趋势' : mode === 'balance' ? '收支对比' : '支出趋势' }}</h2>
-        <span class="tiny">{{ peakLabel || (period === 'year' ? '按月' : '按日') }}</span>
+        <span class="tiny">{{ amountsMasked ? (period === 'year' ? '按月' : '按日') : (peakLabel || (period === 'year' ? '按月' : '按日')) }}</span>
       </div>
 
       <LedgerStatsChart
@@ -458,10 +463,10 @@ function resolveIconKey(kind: EntryKind, category: string, fallback?: string | n
         <span class="point-callout-copy">
           <strong>{{ selectedPoint.label }}</strong>
           <template v-if="mode === 'balance'">
-            收 ¥{{ formatMoney(selectedPoint.income) }} · 支 ¥{{ formatMoney(selectedPoint.expense) }}
+            收 {{ maskMoney(selectedPoint.income) }} · 支 {{ maskMoney(selectedPoint.expense) }}
           </template>
           <template v-else>
-            {{ mode === 'income' ? '收入' : '支出' }} ¥{{ formatMoney(selectedPoint[mode]) }}
+            {{ mode === 'income' ? '收入' : '支出' }} {{ maskMoney(selectedPoint[mode]) }}
             <template v-if="period === 'month' && selectedPoint.category && selectedPoint[mode] > 0">（{{ selectedPoint.category }}等）</template>
           </template>
         </span>
@@ -516,7 +521,7 @@ function resolveIconKey(kind: EntryKind, category: string, fallback?: string | n
                     <small v-if="categoryDeltaLabel(category)" class="rank-delta" :class="`delta-${categoryDeltaLabel(category)!.tone}`">
                       {{ categoryDeltaLabel(category)!.text }}
                     </small>
-                    <b>¥{{ formatMoney(category.amount) }}</b>
+                    <b>{{ maskMoney(category.amount) }}</b>
                   </span>
                 </span>
                 <span class="rank-bar">

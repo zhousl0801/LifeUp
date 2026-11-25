@@ -154,7 +154,7 @@ test.each([
   const view = mount(HomeView, { global: { plugins: [createPinia()] } })
   await flushPromises()
 
-  await view.get('.hero-amount button[aria-label="显示资产金额"]').trigger('click')
+  await view.get('.hero-amount button[aria-label="显示所有页面金额"]').trigger('click')
   const card = view.get('.month-flow')
   const segments = card.findAll<HTMLElement>('.month-flow-segment')
   expect(segments.map((segment) => segment.element.style.width)).toEqual([incomeWidth, expenseWidth])
@@ -175,7 +175,7 @@ test('shows recorded assets, no comparable month change and the seven-day trend 
   await flushPromises()
 
   expect(view.find('.hero-label').text()).toContain('已记录资产')
-  expect(view.find('.hero-change').text()).toContain('暂无可比数据')
+  expect(view.find('.hero-change').text()).toContain('暂时算不出来')
   expect(view.find('.added-note').exists()).toBe(false)
   expect(view.find('.hero-meta').exists()).toBe(false)
   expect(view.find('.trend-panel h2').text()).toBe('资产趋势')
@@ -186,7 +186,7 @@ test('shows recorded assets, no comparable month change and the seven-day trend 
   expect(view.text()).not.toContain('自动记账')
   expect(mocks.plans).not.toHaveBeenCalled()
   expect(distribution.get('[aria-label="现金资产"]').text()).not.toContain('68.8%')
-  await view.get('button[aria-label="显示资产金额"]').trigger('click')
+  await view.get('button[aria-label="显示所有页面金额"]').trigger('click')
   expect(distribution.get('[aria-label="现金资产"]').text()).toContain('68.8%')
   expect(distribution.get('[aria-label="基金资产"]').text()).toContain('暂未录入')
   expect(view.find('.chart-stub').exists()).toBe(false)
@@ -214,16 +214,16 @@ test('draws the daily asset totals once seven days are recorded', async () => {
   const fundCard = view.get('[aria-label="基金资产"]')
   expect(card.get('.card-balance').text()).toBe('¥••••')
   expect(card.find('.card-visibility').exists()).toBe(false)
-  await view.get('.hero-amount button[aria-label="显示资产金额"]').trigger('click')
+  await view.get('.hero-amount button[aria-label="显示所有页面金额"]').trigger('click')
   expect(view.get('.hero-value').text()).toBe('¥355,851.75')
   expect(view.get('.chart-readout').text()).toContain('¥355,851.75')
   expect(card.get('.card-balance').text()).toBe('¥244,685.00')
-  await view.get('.hero-amount button[aria-label="隐藏资产金额"]').trigger('click')
+  await view.get('.hero-amount button[aria-label="隐藏所有页面金额"]').trigger('click')
   expect(view.get('.hero-value').text()).toBe('¥••••')
   expect(view.get('.chart-readout').text()).toContain('¥••••')
   expect(card.get('.card-balance').text()).toBe('¥••••')
   expect(fundCard.get('.card-balance').text()).toBe('¥••••')
-  await view.get('.hero-amount button[aria-label="显示资产金额"]').trigger('click')
+  await view.get('.hero-amount button[aria-label="显示所有页面金额"]').trigger('click')
   expect(fundCard.get('.card-balance').text()).toBe('¥278,788.02')
   expect(view.find('.chart-note').exists()).toBe(false)
   expect(view.find('.trend-wait').exists()).toBe(false)
@@ -239,13 +239,13 @@ test('keeps the selected privacy state when returning to the overview', async ()
   const mountHome = () => mount(HomeView, { global: { plugins: [pinia] } })
   const first = mountHome()
   await flushPromises()
-  await first.get('button[aria-label="显示资产金额"]').trigger('click')
+  await first.get('button[aria-label="显示所有页面金额"]').trigger('click')
   first.unmount()
 
   const returned = mountHome()
   await flushPromises()
   expect(returned.get('.hero-value').text()).toBe('¥355,851.75')
-  expect(returned.find('button[aria-label="隐藏资产金额"]').exists()).toBe(true)
+  expect(returned.find('button[aria-label="隐藏所有页面金额"]').exists()).toBe(true)
   returned.unmount()
 })
 
@@ -283,7 +283,7 @@ test('defaults to today change and switches to month change', async () => {
   expect(document.body.querySelector('.breakdown-total b')?.textContent).toBe('••••')
   document.body.querySelector<HTMLButtonElement>('.sheet-close')!.click()
   await flushPromises()
-  await view.get('.hero-amount button[aria-label="显示资产金额"]').trigger('click')
+  await view.get('.hero-amount button[aria-label="显示所有页面金额"]').trigger('click')
   expect(view.find('.hero-change').text()).toContain('+1,000.00')
   expect(view.find('.hero-change').text()).toContain('+5.00%')
 
@@ -336,7 +336,7 @@ test('negative comparable changes show a downward arrow', async () => {
   const view = mount(HomeView, { global: { plugins: [createPinia()] } })
   await flushPromises()
   expect(view.find('.change-arrow').exists()).toBe(false)
-  await view.get('button[aria-label="显示资产金额"]').trigger('click')
+  await view.get('button[aria-label="显示所有页面金额"]').trigger('click')
   expect(view.get('.change-arrow').text()).toBe('▼')
   view.unmount()
 })
@@ -366,7 +366,7 @@ test('explains the daily increases and decreases with separate cash and investme
     expect(sheet.textContent).not.toMatch(/500\.00|120\.00|1,100\.00|2,000\.00|1,005\.00/)
     document.body.querySelector<HTMLButtonElement>('.sheet-close')!.click()
     await flushPromises()
-    await view.get('button[aria-label="显示资产金额"]').trigger('click')
+    await view.get('button[aria-label="显示所有页面金额"]').trigger('click')
     await view.get('.hero-change').trigger('click')
     const rows = [...document.body.querySelectorAll('.breakdown-row')].map(row => row.textContent?.trim())
     expect(rows).toEqual(expect.arrayContaining([
@@ -417,7 +417,7 @@ test('includes earlier NAV profit in the headline and detail total with the NAV 
     sheet.querySelector<HTMLButtonElement>('.sheet-close')!.click()
     await flushPromises()
 
-    await view.get('button[aria-label="显示资产金额"]').trigger('click')
+    await view.get('button[aria-label="显示所有页面金额"]').trigger('click')
     expect(view.get('.hero-change b').text()).toBe('−9,634.70')
     expect(view.get('.hero-change .change-percent').text()).toBe('-1.55%')
     await view.get('.hero-change').trigger('click')
@@ -452,7 +452,7 @@ test('does not add the fund profit twice when the NAV date matches the daily cha
   const view = mount(HomeView, { global: { plugins: [createPinia()] } })
   try {
     await flushPromises()
-    await view.get('button[aria-label="显示资产金额"]').trigger('click')
+    await view.get('button[aria-label="显示所有页面金额"]').trigger('click')
     expect(view.get('.hero-change b').text()).toBe('−20.00')
     expect(view.find('.hero-change-context').exists()).toBe(false)
     expect(view.get('.card-fund').findAll('.card-note > span').map(note => note.text())).toEqual(['−20.00', '−1.96%'])
@@ -503,7 +503,7 @@ test('carries over the latest disclosed fund profit and rate to the fund card be
     // Masked by default
     expect(fundNotes()).toEqual(['••••', '••••'])
 
-    await view.get('button[aria-label="显示资产金额"]').trigger('click')
+    await view.get('button[aria-label="显示所有页面金额"]').trigger('click')
     expect(fundNotes()).toEqual(['−9,198.06', '−3.26%'])
 
     // Switching to monthly scope uses monthly asset change without adding prior daily disclosure
@@ -550,7 +550,7 @@ test('shows asset changes by selected period and masks all card figures with the
   expect(cardNotes('cash')).toEqual(['••••', '••••'])
   expect(cardNotes('providentFund')).toEqual(['缴存 ••••', '提取 ••••'])
   expect(view.find('.month-flow-segment').exists()).toBe(false)
-  await view.get('.hero-amount button[aria-label="显示资产金额"]').trigger('click')
+  await view.get('.hero-amount button[aria-label="显示所有页面金额"]').trigger('click')
   expect(view.get('.month-flow').text()).toContain('¥9,800.00')
   expect(view.get('.month-flow').text()).toContain('¥3,268.50')
   expect(view.get('.month-surplus').text()).toContain('+6,531.50')
@@ -589,7 +589,7 @@ test('keeps the rendered trend period selected until the latest request finishes
 
   finishQuarter({ ...trend(start), range: 'quarter', points: [point(today, { totalAssets: 420000 })] })
   await flushPromises()
-  await view.get('button[aria-label="显示资产金额"]').trigger('click')
+  await view.get('button[aria-label="显示所有页面金额"]').trigger('click')
   expect(view.get('.range-button.active').text()).toBe('3月')
   expect(view.get('.chart-readout').text()).toContain('¥420,000.00')
 
@@ -616,7 +616,7 @@ test('mounts the baseline chart while trend is loading and reuses cached trend o
 
   finishInitialTrend({ ...trend(start), range: 'week', points: [point(today, { totalAssets: 360000 })] })
   await flushPromises()
-  await first.get('button[aria-label="显示资产金额"]').trigger('click')
+  await first.get('button[aria-label="显示所有页面金额"]').trigger('click')
   expect(first.get('.chart-readout').text()).toContain('¥360,000.00')
   first.unmount()
 

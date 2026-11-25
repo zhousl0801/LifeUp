@@ -6,7 +6,9 @@ import { useRouter } from 'vue-router'
 import { arriveGoldSell, buyGold, fetchGoldOverview, refreshGoldQuote, saveGoldHolding, sellGold } from '../api/gold'
 import { ApiError, getApiErrorMessage } from '../api/client'
 import { fetchDayChange, fetchLedger, updateAssetCoverage } from '../api/ledger'
+import { useAmountPrivacy } from '../composables/useAmountPrivacy'
 import { toast } from '../composables/useMessage'
+import AmountVisibilityButton from '../components/AmountVisibilityButton.vue'
 import AppNav from '../components/AppNav.vue'
 import MoneyAmount from '../components/MoneyAmount.vue'
 import BackButton from '../components/BackButton.vue'
@@ -44,6 +46,7 @@ type SheetKind = 'buy' | 'sell' | 'sellArrival' | 'holding' | 'detail'
 
 const router = useRouter()
 const today = todayInBusinessTimeZone()
+const { amountsMasked, maskMoney } = useAmountPrivacy()
 const overview = ref<GoldOverview | null>(null)
 const dailyChange = ref<DayInvestmentChange | null>(null)
 const dailyRate = computed(() => calculatePercent(dailyChange.value?.profit, dailyChange.value?.previousValue))
@@ -533,6 +536,7 @@ function goBack(): void {
         <p class="hero-label">
           贵金属资产
           <span class="hero-tag">积存金 · 人民币</span>
+          <AmountVisibilityButton />
         </p>
         <h2 class="hero-balance">
           <template v-if="overview.hasEffectiveQuote"><span class="hero-currency">¥</span><MoneyAmount :value="overview.value" prefix="" /></template>
@@ -541,7 +545,7 @@ function goBack(): void {
         <p class="hero-meta">
           <template v-if="overview.hasEffectiveQuote">{{ quoteLabel }}: {{ formatMoney(overview.quote) }}¥/g</template>
           <template v-else>行情待补</template>
-          <template v-if="overview.pendingArrivalAmount > 0"> · 含待到账 ¥{{ formatMoney(overview.pendingArrivalAmount) }}</template>
+          <template v-if="overview.pendingArrivalAmount > 0"> · 含待到账 {{ maskMoney(overview.pendingArrivalAmount) }}</template>
         </p>
         <InvestmentHeroMetrics
           :daily-profit="dailyChange?.profit ?? null"
@@ -550,7 +554,7 @@ function goBack(): void {
           :total-rate="totalRate"
           :total-unavailable="overview.hasEffectiveQuote ? undefined : '行情待补'"
         />
-        <p class="hero-foot">可用现金 ¥{{ formatMoney(overview.cashBalance) }}</p>
+        <p class="hero-foot">可用现金 {{ maskMoney(overview.cashBalance) }}</p>
       </section>
 
       <div v-if="overview.isConfigured" class="gold-actions">
@@ -574,7 +578,7 @@ function goBack(): void {
       <template v-if="overview.pendingArrivals.length">
         <div class="section-head">
           <h2>卖出待到账</h2>
-          <span class="meta">{{ overview.pendingArrivals.length }} 笔 · ¥{{ formatMoney(overview.pendingArrivalAmount) }}</span>
+          <span class="meta">{{ overview.pendingArrivals.length }} 笔 · {{ maskMoney(overview.pendingArrivalAmount) }}</span>
         </div>
         <section class="pending-list">
           <article v-for="pending in overview.pendingArrivals" :key="pending.transactionId" class="pending-card">
@@ -586,7 +590,7 @@ function goBack(): void {
               </small>
             </div>
             <div class="pending-side">
-              <b>¥{{ formatMoney(pending.amount) }}</b>
+              <b>{{ maskMoney(pending.amount) }}</b>
               <button type="button" class="confirm-button" @click="openArrivalSheet(pending)">登记到账</button>
             </div>
           </article>
@@ -596,7 +600,7 @@ function goBack(): void {
       <section v-if="hasHolding" class="market-group">
         <div class="section-head">
           <h2>持仓</h2>
-          <span class="meta">1 项 · ¥{{ formatMoney(overview.value) }}</span>
+          <span class="meta">1 项 · {{ maskMoney(overview.value) }}</span>
         </div>
         <div class="position-list">
           <button type="button" class="position-row" @click="openDetail">
@@ -605,7 +609,7 @@ function goBack(): void {
                 <strong>积存金</strong>
               </span>
               <small class="position-code-line">
-                {{ formatQuantity(overview.grams) }} 克 · 成本 {{ overview.averageCost === null ? '—' : `¥${formatMoney(overview.averageCost)} / 克` }}
+                {{ formatQuantity(overview.grams) }} 克 · 成本 {{ overview.averageCost === null ? '—' : `${maskMoney(overview.averageCost)} / 克` }}
               </small>
               <small>
                 报价 {{ overview.hasEffectiveQuote ? `${formatMoney(overview.quote)} 元/克` : '行情待补' }}
@@ -613,10 +617,10 @@ function goBack(): void {
               </small>
             </span>
             <span class="position-side">
-              <b>¥{{ formatMoney(overview.value) }}</b>
-              <small :class="amountTone(totalProfit)">
-                {{ profitText(totalProfit) }}
-                <em v-if="totalRate !== null" class="position-percent">{{ formatPercent(totalRate) }}</em>
+              <b>{{ maskMoney(overview.value) }}</b>
+              <small :class="amountsMasked ? '' : amountTone(totalProfit)">
+                {{ amountsMasked && totalProfit !== null ? '••••' : profitText(totalProfit) }}
+                <em v-if="totalRate !== null && !amountsMasked" class="position-percent">{{ formatPercent(totalRate) }}</em>
               </small>
             </span>
           </button>

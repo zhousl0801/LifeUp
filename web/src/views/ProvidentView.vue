@@ -10,10 +10,14 @@ import { useRouter } from 'vue-router'
 import { depositProvident, fetchProvidentOverview, withdrawProvident, setProvidentOpening } from '../api/provident'
 import { fetchPlanOverview, pausePlan, resumePlan, savePlan } from '../api/plans'
 import { ApiError, getApiErrorMessage } from '../api/client'
+import { useAmountPrivacy } from '../composables/useAmountPrivacy'
 import { toast } from '../composables/useMessage'
+import { useUnsavedSheet } from '../composables/useUnsavedSheet'
+import AmountVisibilityButton from '../components/AmountVisibilityButton.vue'
 import AppNav from '../components/AppNav.vue'
 import BottomSheet from '../components/BottomSheet.vue'
-import { amountTone, formatBusinessDate, formatMoney, formatSignedMoney, parseAmount, todayInBusinessTimeZone } from '../utils/format'
+import ConfirmSheet from '../components/ConfirmSheet.vue'
+import { amountTone, formatBusinessDate, formatMoney, parseAmount, todayInBusinessTimeZone } from '../utils/format'
 import { formatPeriodLabel } from '../utils/period'
 import { createRequestId } from '../utils/request'
 import type { PlanOverview } from '../types/plan'
@@ -23,6 +27,7 @@ type SheetKind = 'opening' | 'record'
 
 const router = useRouter()
 const today = todayInBusinessTimeZone()
+const { amountsMasked, maskMoney, maskSignedMoney } = useAmountPrivacy()
 const overview = ref<ProvidentOverview | null>(null)
 const planOverview = ref<PlanOverview | null>(null)
 const isLoading = ref(false)
@@ -44,6 +49,14 @@ const form = reactive({
   monthlyDay: '15',
   monthlyTime: '09:00'
 })
+
+const { discardOpen, requestClose, resolveDiscard } = useUnsavedSheet(
+  () => requestId.value,
+  () => sheet.value !== null,
+  () => isSaving.value,
+  () => ({ ...form }),
+  closeSheet
+)
 
 const depositPlan = computed(() =>
   planOverview.value?.plans.find((plan) => plan.type === 'providentDeposit') ?? null)
@@ -371,23 +384,24 @@ function goBack(): void {
         <p class="hero-label">
           公积金余额
           <span class="hero-tag">个人＋单位</span>
+          <AmountVisibilityButton />
         </p>
         <h2 class="hero-balance"><span>¥</span><MoneyAmount :value="overview.balance" prefix="" /></h2>
         <p class="hero-meta">截至 {{ formatBusinessDate(overview.asOfDate) }}</p>
         <div class="hero-metrics">
           <div>
             <span>本月缴存</span>
-            <b :class="amountTone(overview.monthDeposit)">{{ formatSignedMoney(overview.monthDeposit) }}</b>
+            <b :class="amountsMasked ? '' : amountTone(overview.monthDeposit)">{{ maskSignedMoney(overview.monthDeposit) }}</b>
           </div>
           <div>
             <span>本月提取</span>
-            <b :class="amountTone(-overview.monthWithdrawal)">
-              {{ overview.monthWithdrawal > 0 ? `−${formatMoney(overview.monthWithdrawal)}` : formatMoney(0) }}
+            <b :class="amountsMasked ? '' : amountTone(-overview.monthWithdrawal)">
+              {{ amountsMasked ? '••••' : (overview.monthWithdrawal > 0 ? `−${formatMoney(overview.monthWithdrawal)}` : formatMoney(0)) }}
             </b>
           </div>
           <div>
             <span>余额净变动</span>
-            <b :class="amountTone(overview.netChange)">{{ formatSignedMoney(overview.netChange) }}</b>
+            <b :class="amountsMasked ? '' : amountTone(overview.netChange)">{{ maskSignedMoney(overview.netChange) }}</b>
           </div>
         </div>
       </section>
@@ -411,9 +425,9 @@ function goBack(): void {
           <span class="activity-mark">{{ activity.type === 'opening' ? '始' : activity.type === 'deposit' ? '存' : '提' }}</span>
           <span class="activity-copy">
             <strong>{{ activity.type === 'opening' ? '起始公积金' : activity.type === 'deposit' ? '公积金缴存' : '公积金提取' }}</strong>
-            <small>{{ activityNote(activity) }} · 余额 {{ formatMoney(activity.balanceAfter) }}</small>
+            <small>{{ activityNote(activity) }} · 余额 {{ maskMoney(activity.balanceAfter, '') }}</small>
           </span>
-          <b class="activity-value" :class="activityAmountClass(activity)">{{ activityAmount(activity) }}</b>
+          <b class="activity-value" :class="amountsMasked ? '' : activityAmountClass(activity)">{{ amountsMasked ? '••••' : activityAmount(activity) }}</b>
         </div>
       </section>
 
@@ -427,7 +441,7 @@ function goBack(): void {
       :title="sheetTitle"
       :subtitle="sheet === 'opening' ? '记录已有余额，按今天入账' : '缴存与提取可一起登记'"
       :close-disabled="isSaving"
-      @close="closeSheet"
+      @close="requestClose"
     >
       <div class="summary-line">
         <span>当前公积金余额</span>
@@ -523,7 +537,7 @@ function goBack(): void {
         <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
 
         <div class="form-actions">
-          <button type="button" class="secondary-button" :disabled="isSaving" @click="closeSheet">
+          <button type="button" class="secondary-button" :disabled="isSaving" @click="requestClose">
             取消
           </button>
           <LoadingButton class="primary-button" type="submit" :loading="isSaving" :disabled="!canSubmit" loading-label="保存中…">
@@ -532,6 +546,16 @@ function goBack(): void {
         </div>
       </form>
     </BottomSheet>
+    <ConfirmSheet
+      :open="discardOpen"
+      title="放弃修改？"
+      message="离开后，本次填写的内容会丢失。"
+      confirm-label="放弃修改"
+      cancel-label="继续编辑"
+      danger
+      @confirm="resolveDiscard(true)"
+      @cancel="resolveDiscard(false)"
+    />
     <AppNav />
   </main>
 </template>

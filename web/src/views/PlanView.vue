@@ -20,6 +20,7 @@ import { fetchSalaryProfile } from '../api/salary'
 import { ApiError, getApiErrorMessage } from '../api/client'
 import { useFundSearch } from '../composables/useFundSearch'
 import { toast } from '../composables/useMessage'
+import { useUnsavedSheet } from '../composables/useUnsavedSheet'
 import AppIcon from '../components/AppIcon.vue'
 import AppNav from '../components/AppNav.vue'
 import MoneyAmount from '../components/MoneyAmount.vue'
@@ -85,7 +86,9 @@ const formError = ref('')
 const busyAction = ref('')
 const busyKind = ref('')
 const pendingPlanRemoval = ref<AutoPlan | null>(null)
+const pendingSkipOccurrence = ref<PlanOccurrence | null>(null)
 const isDeletingPlan = ref(false)
+const formSession = ref(0)
 const calendarYear = ref(Number(today.slice(0, 4)))
 const calendarMonth = ref(Number(today.slice(5, 7)))
 const calendarDays = ref<TradingDay[]>([])
@@ -131,6 +134,31 @@ const {
   resetFundSearch: clearSearchState
 } = useFundSearch()
 const selectedFundTarget = ref<FundSearchResult | null>(null)
+
+const { discardOpen, requestClose, resolveDiscard } = useUnsavedSheet(
+  () => String(formSession.value),
+  () => sheetOpen.value,
+  () => isSaving.value,
+  () => ({ ...form, selectedFundCode: selectedFundTarget.value?.code ?? '' }),
+  closeSheet
+)
+
+const planFormNote = computed(() => {
+  switch (form.type) {
+    case 'salaryIncome':
+      return '到期自动记一笔工资收入，同步增加可用现金（不向银行发指令）。'
+    case 'bonusIncome':
+      return '到期自动记一笔年终奖收入，同步增加可用现金。'
+    case 'providentDeposit':
+      return '到期自动增加公积金余额，不影响日常收支。'
+    case 'providentWithdrawal':
+      return '到期自动从公积金转入可用现金，不计入日常收入。'
+    case 'fundSip':
+      return '到期在 LifeUp 记一笔买入并扣减现金，净值公布后自动确认份额（请另行在基金平台实际定投）。'
+    default:
+      return ''
+  }
+})
 
 const fundChoices = computed(() => {
   const choices = new Map<string, FundPosition & { sourceIds: string[] }>()
@@ -488,6 +516,7 @@ function openNew(type: PlanType = 'salaryIncome'): void {
   form.startDate = today
   form.fundPositionId = ''
   resetFundSearch()
+  formSession.value++
   sheetOpen.value = true
 
   if (type === 'fundSip') {
@@ -512,6 +541,7 @@ function openEdit(plan: AutoPlan): void {
   form.startDate = plan.startDate
   form.fundPositionId = plan.fundPositionId ?? ''
   resetFundSearch()
+  formSession.value++
   sheetOpen.value = true
 
   if (plan.type === 'fundSip') {
@@ -706,6 +736,17 @@ async function confirmPlanRemoval(): Promise<void> {
   }
 }
 
+function requestSkipOccurrence(occurrence: PlanOccurrence): void {
+  pendingSkipOccurrence.value = occurrence
+}
+
+async function confirmSkipOccurrence(): Promise<void> {
+  const occurrence = pendingSkipOccurrence.value
+  if (!occurrence || busyAction.value) return
+  pendingSkipOccurrence.value = null
+  await handleOccurrence(occurrence.id, 'skip')
+}
+
 async function handleOccurrence(occurrenceId: string, action: 'retry' | 'skip'): Promise<void> {
   busyAction.value = occurrenceId
   busyKind.value = action
@@ -840,7 +881,6 @@ function goBack(): void {
 
 <template>
   <main class="page plan-page with-nav">
-    <GoalTabs />
     <header class="plan-header">
       <BackButton @back="goBack" />
       <h1>自动记账</h1>
@@ -855,6 +895,7 @@ function goBack(): void {
         <AppIcon name="refresh" :class="{ spinning: busyAction === 'run' }" />
       </button>
     </header>
+    <GoalTabs />
 
     <LoadingState v-if="isLoading && !overview" variant="card" label="正在读取自动计划" />
     <LoadingState v-if="isLoading && !overview" variant="list" :rows="3" label="正在读取计划列表" />
@@ -1071,29 +1112,29 @@ function goBack(): void {
             </div>
             <div class="occurrence-actions">
               <LoadingButton
-                class="small-button"
+                class="small-button primary-small"
                 :loading="busyAction === occurrence.id && busyKind === 'record'"
                 loading-label="补记中…"
                 @click="recordCurrentOccurrence(occurrence.id)"
               >
-                补记本期
+                现在补记
               </LoadingButton>
               <LoadingButton
                 class="small-button"
                 :loading="busyAction === occurrence.id && busyKind === 'retry'"
-                loading-label="排队中…"
+                loading-label="重试中…"
                 @click="handleOccurrence(occurrence.id, 'retry')"
               >
-                重新排队
+                稍后自动再试
               </LoadingButton>
-              <LoadingButton
-                class="small-button"
-                :loading="busyAction === occurrence.id && busyKind === 'skip'"
-                loading-label="跳过中…"
-                @click="handleOccurrence(occurrence.id, 'skip')"
+              <button
+                type="button"
+                class="small-button subtle-skip"
+                :disabled="busyAction === occurrence.id"
+                @click="requestSkipOccurrence(occurrence)"
               >
-                跳过
-              </LoadingButton>
+                跳过本期
+              </button>
             </div>
           </article>
         </section>
@@ -1171,7 +1212,7 @@ function goBack(): void {
       :title="sheetTitle"
       subtitle="保存只影响尚未发生的期次"
       :close-disabled="isSaving"
-      @close="closeSheet"
+      @close="requestClose"
     >
       <form class="form-stack" @submit.prevent="submit">
         <label v-if="showTypeField" class="form-field">
@@ -1281,14 +1322,19 @@ function goBack(): void {
           </select>
         </label>
 
-        <label v-if="form.type === 'fundSip' && form.cycle === 'tradingDay'" class="form-field">
-          <span>交易日范围</span>
-          <select v-model="form.tradingScope">
-            <option value="china">中国交易日</option>
-            <option value="threeMarkets">三地交易日（中、美、港均开市）</option>
-          </select>
-          <small>默认按基金是否 QDII 选择：QDII 用三地交易日，境内基金用中国交易日。</small>
-        </label>
+        <details v-if="form.type === 'fundSip' && form.cycle === 'tradingDay'" class="trading-rule-details">
+          <summary>
+            交易日规则：{{ form.tradingScope === 'china' ? '中国交易日' : '三地交易日（中、美、港均开市）' }}（已自动匹配，点此调整）
+          </summary>
+          <label class="form-field">
+            <span>交易日范围</span>
+            <select v-model="form.tradingScope">
+              <option value="china">中国交易日</option>
+              <option value="threeMarkets">三地交易日（中、美、港均开市）</option>
+            </select>
+            <small>默认按基金是否 QDII 自动匹配：QDII 用三地交易日，境内基金用中国交易日。</small>
+          </label>
+        </details>
 
         <label v-if="form.type !== 'fundSip' || form.cycle === 'monthly'" class="form-field">
           <span>每月日期</span>
@@ -1318,17 +1364,38 @@ function goBack(): void {
         </div>
 
         <p class="form-note">
-          保存不会立即扣款。基金定投到期时扣减账本现金并生成待确认买入，需自行核对实际份额和净值，不向销售平台下单。
+          {{ planFormNote }}
         </p>
         <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
         <div class="form-actions">
-          <button type="button" class="secondary-button" :disabled="isSaving" @click="closeSheet">取消</button>
+          <button type="button" class="secondary-button" :disabled="isSaving" @click="requestClose">取消</button>
           <LoadingButton class="primary-button" type="submit" :loading="isSaving" :disabled="!canSubmit" loading-label="保存中…">
             保存
           </LoadingButton>
         </div>
       </form>
     </BottomSheet>
+    <ConfirmSheet
+      :open="pendingSkipOccurrence !== null"
+      title="跳过这笔自动记账？"
+      :message="pendingSkipOccurrence ? `跳过 ${pendingSkipOccurrence.dueDate} 这笔「${planDisplayName(pendingSkipOccurrence.planId, pendingSkipOccurrence.planName)}」¥${formatMoney(pendingSkipOccurrence.amount)}？跳过后本期不再记账，无法恢复。` : ''"
+      confirm-label="确认跳过"
+      cancel-label="先保留"
+      danger
+      :busy="Boolean(pendingSkipOccurrence && busyAction === pendingSkipOccurrence.id)"
+      @confirm="confirmSkipOccurrence"
+      @cancel="pendingSkipOccurrence = null"
+    />
+    <ConfirmSheet
+      :open="discardOpen"
+      title="放弃修改？"
+      message="离开后，本次填写的内容会丢失。"
+      confirm-label="放弃修改"
+      cancel-label="继续编辑"
+      danger
+      @confirm="resolveDiscard(true)"
+      @cancel="resolveDiscard(false)"
+    />
     <ConfirmSheet
       :open="pendingPlanRemoval !== null"
       title="删除计划"
@@ -2096,5 +2163,32 @@ function goBack(): void {
 .readonly-field small {
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
+}
+
+.primary-small {
+  border-color: var(--color-brand);
+  background: var(--color-brand);
+  color: var(--color-text-inverse);
+}
+
+.subtle-skip {
+  color: var(--color-text-secondary);
+}
+
+.trading-rule-details {
+  padding: 10px 12px;
+  border-radius: var(--radius-control);
+  background: var(--color-bg-subtle);
+}
+
+.trading-rule-details summary {
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+  font-weight: 500;
+}
+
+.trading-rule-details .form-field {
+  margin-top: 10px;
 }
 </style>

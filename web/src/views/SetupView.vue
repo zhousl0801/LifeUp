@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { getApiErrorMessage } from '../api/client'
 import LoadingState from '../components/LoadingState.vue'
@@ -19,6 +19,12 @@ const form = reactive({
   startDate: today,
   cashAsOfDate: today,
   cashBalance: ''
+})
+
+watch(() => form.startDate, (next, previous) => {
+  if (form.cashAsOfDate === previous || form.cashAsOfDate < next) {
+    form.cashAsOfDate = next
+  }
 })
 const errors = reactive({
   startDate: '',
@@ -105,7 +111,6 @@ function clearErrors(): void {
         <p class="app-name">LifeUp</p>
         <p class="app-sub">建立起始账本</p>
       </div>
-      <span class="currency-tag">CNY</span>
     </header>
 
     <LoadingState v-if="isChecking" variant="card" label="正在检查账本" />
@@ -117,20 +122,13 @@ function clearErrors(): void {
 
     <template v-else>
       <section class="intro">
-        <h1>设置起始资产</h1>
-        <p>起始日期和现金余额只建立统计起点，不计为收入或投资收益。其他资产将在对应页面录入。</p>
+        <h1>今天手上有多少可用现金？</h1>
+        <p>填一个起点金额即可开始记账，不计为收入。基金、股票、公积金和贵金属可以稍后再补录。</p>
       </section>
 
       <form class="setup-form" novalidate @submit.prevent="submit">
-        <label class="field"><span>现金余额日期</span><input v-model="form.cashAsOfDate" type="date" :min="form.startDate" :max="today" required /><small>所填现金余额在这一天成立，独立于账本起始日期。</small></label>
         <label class="field">
-          <span>账本起始日期</span>
-          <input v-model="form.startDate" type="date" :max="today" required />
-          <small v-if="errors.startDate" class="field-error">{{ errors.startDate }}</small>
-        </label>
-
-        <label class="field">
-          <span>起始现金余额（元）</span>
+          <span>可用现金（元）</span>
           <input
             v-model="form.cashBalance"
             type="text"
@@ -139,14 +137,30 @@ function clearErrors(): void {
             placeholder="0.00"
             required
           />
-          <small class="field-hint">统一现金池的当前余额，写入后作为账本起点。</small>
+          <small class="field-hint">微信、支付宝、储蓄卡等日常可用现金合计。</small>
           <small v-if="errors.cashBalance" class="field-error">{{ errors.cashBalance }}</small>
         </label>
+
+        <details class="past-dates">
+          <summary>从过去某天开始记（默认今天）</summary>
+          <div class="past-dates-fields">
+            <label class="field">
+              <span>从哪天开始记账</span>
+              <input v-model="form.startDate" type="date" :max="today" required />
+              <small v-if="errors.startDate" class="field-error">{{ errors.startDate }}</small>
+            </label>
+            <label class="field">
+              <span>这笔余额是哪天的</span>
+              <input v-model="form.cashAsOfDate" type="date" :min="form.startDate" :max="today" required />
+              <small class="field-hint">只在补录历史账本时才需要和起始日不同。</small>
+            </label>
+          </div>
+        </details>
 
         <p v-if="errors.form" class="form-error" role="alert">{{ errors.form }}</p>
 
         <LoadingButton class="primary-button" type="submit" :loading="isSaving" loading-label="保存中…">
-          建立账本
+          开始记账
         </LoadingButton>
       </form>
     </template>
@@ -198,6 +212,27 @@ function clearErrors(): void {
   border-bottom-right-radius: 16px;
   border-bottom: 0;
   margin-bottom: 14px;
+}
+
+.past-dates {
+  margin-bottom: 14px;
+}
+
+.past-dates > summary {
+  padding: 6px 4px;
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+  cursor: pointer;
+}
+
+.past-dates-fields {
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 16px;
+}
+
+.past-dates-fields > .field:last-child {
+  border-bottom: 0;
 }
 
 .field > span {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
+import { useAmountPrivacy } from '../composables/useAmountPrivacy'
 import type { SalaryProfile } from '../types/salary'
 import { formatMoney } from '../utils/format'
 
@@ -12,7 +13,12 @@ defineEmits<{
   edit: []
 }>()
 
-const masked = ref(true)
+const { amountsMasked, toggleAmountsMasked } = useAmountPrivacy(true)
+const masked = computed(() => amountsMasked.value)
+
+function toggleMask(): void {
+  toggleAmountsMasked()
+}
 
 const netAnnualCash = computed(() => props.profile
   ? props.profile.netMonthlySalary * 12 + props.profile.bonusNetAmount
@@ -34,7 +40,7 @@ function money(value: number): string {
         <strong>{{ profile ? '工资、公积金和年终奖' : '还没有工资档案' }}</strong>
       </div>
       <div v-if="profile" class="salary-head-actions">
-        <button type="button" class="salary-action" @click="masked = !masked">
+        <button type="button" class="salary-action" @click="toggleMask">
           {{ masked ? '显示金额' : '隐藏金额' }}
         </button>
         <button type="button" class="salary-action is-brand" @click="$emit('edit')">编辑</button>

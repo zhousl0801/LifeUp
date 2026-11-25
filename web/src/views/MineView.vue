@@ -1,19 +1,30 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useUnsavedSheet } from '../composables/useUnsavedSheet'
 import AppIcon from '../components/AppIcon.vue'
 import AppNav from '../components/AppNav.vue'
 import BottomSheet from '../components/BottomSheet.vue'
+import ConfirmSheet from '../components/ConfirmSheet.vue'
 import DefaultAvatar from '../components/DefaultAvatar.vue'
 import { fileToAvatar, loadProfile, normalizeProfileName, saveProfile, type UserProfile } from '../utils/profile'
 import { useTheme, type ThemeMode } from '../utils/theme'
 
 const profile = ref<UserProfile>(loadProfile())
 const profileSheetOpen = ref(false)
+const profileSession = ref(0)
 const draftName = ref('')
 const draftAvatar = ref<string | null>(null)
 const profileError = ref('')
 const avatarBusy = ref(false)
 const avatarInput = ref<HTMLInputElement | null>(null)
+
+const { discardOpen, requestClose, resolveDiscard } = useUnsavedSheet(
+  () => String(profileSession.value),
+  () => profileSheetOpen.value,
+  () => avatarBusy.value,
+  () => ({ name: draftName.value, avatar: draftAvatar.value ?? '' }),
+  () => { profileSheetOpen.value = false }
+)
 const themeSheetOpen = ref(false)
 const { mode, setThemeMode } = useTheme()
 const themeOptions: { value: ThemeMode; label: string; description: string }[] = [
@@ -29,6 +40,7 @@ function openProfileSheet(): void {
   draftName.value = profile.value.name
   draftAvatar.value = profile.value.avatar
   profileError.value = ''
+  profileSession.value++
   profileSheetOpen.value = true
 }
 
@@ -122,7 +134,7 @@ function chooseTheme(value: ThemeMode): void {
       :open="profileSheetOpen"
       title="头像与昵称"
       subtitle="只保存在当前设备，不会同步到其他设备"
-      @close="profileSheetOpen = false"
+      @close="requestClose"
     >
       <div class="profile-editor">
         <div class="avatar-editor">
@@ -183,6 +195,17 @@ function chooseTheme(value: ThemeMode): void {
       </div>
       <p class="theme-note">主题选择只保存在当前设备，不会改变账本数据。</p>
     </BottomSheet>
+
+    <ConfirmSheet
+      :open="discardOpen"
+      title="放弃修改？"
+      message="离开后，本次修改会丢失。"
+      confirm-label="放弃修改"
+      cancel-label="继续编辑"
+      danger
+      @confirm="resolveDiscard(true)"
+      @cancel="resolveDiscard(false)"
+    />
 
     <AppNav />
   </main>

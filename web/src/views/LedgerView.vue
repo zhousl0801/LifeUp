@@ -4,6 +4,7 @@ import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { fetchEntryPeriod, fetchEntryStats } from '../api/entries'
 import { fetchCategories } from '../api/categories'
 import { ApiError, getApiErrorMessage } from '../api/client'
+import { useAmountPrivacy } from '../composables/useAmountPrivacy'
 import { toast } from '../composables/useMessage'
 import AppNav from '../components/AppNav.vue'
 import AppIcon from '../components/AppIcon.vue'
@@ -39,6 +40,7 @@ interface LedgerContext {
 
 const route = useRoute()
 const router = useRouter()
+const { amountsMasked, maskMoney } = useAmountPrivacy()
 const savedContext = window.history.state?.ledgerContext as LedgerContext | undefined
 const ledgerChange = takeLedgerReturn()
 function ledgerDate(value: unknown): string | null {
@@ -392,6 +394,7 @@ function shiftPeriod(direction: -1 | 1): void {
 }
 
 function formatEntryAmount(entry: LedgerEntry): string {
+  if (amountsMasked.value) return '••••'
   return `${entry.kind === 'income' ? '+' : '−'}${formatMoney(entry.amount)}`
 }
 
@@ -419,11 +422,11 @@ function openEntry(entryId?: string): void {
       <LedgerMonthlyBudget v-if="period === 'month'"
         :month="anchor.slice(0, 7)" :today="today" :expense="displayExpense">
         <span class="ledger-hero-label">▣ 本月支出</span>
-        <strong class="ledger-hero-amount">¥{{ formatMoney(displayExpense) }}</strong>
+        <strong class="ledger-hero-amount">{{ maskMoney(displayExpense) }}</strong>
       </LedgerMonthlyBudget>
       <div v-else class="ledger-hero-copy">
         <span class="ledger-hero-label">▣ {{ period === 'day' ? '当天' : '本年' }}支出</span>
-        <strong class="ledger-hero-amount">¥{{ formatMoney(displayExpense) }}</strong>
+        <strong class="ledger-hero-amount">{{ maskMoney(displayExpense) }}</strong>
       </div>
     </section>
 
@@ -432,10 +435,10 @@ function openEntry(entryId?: string): void {
         <button v-for="item in chartPeriodOptions" :key="item.value" type="button"
           :class="{ active: period === item.value }" @click="setPeriod(item.value)">{{ item.label }}</button>
       </div>
-      <div class="toolbar-views">
-        <button type="button" class="round-tool" aria-label="收支图表" :aria-pressed="true" @click="switchView('chart')"><AppIcon name="chart" /></button>
-        <button type="button" class="round-tool" aria-label="账单列表" :aria-pressed="false" @click="switchView('list')"><AppIcon name="list" /></button>
-        <button type="button" class="round-tool" aria-label="收支日历" :aria-pressed="false" @click="switchView('calendar')"><AppIcon name="calendar" /></button>
+      <div class="toolbar-views" role="group" aria-label="账单视图">
+        <button type="button" class="view-pill" aria-label="收支日历" :aria-pressed="false" @click="switchView('calendar')"><AppIcon name="calendar" /><span>日历</span></button>
+        <button type="button" class="view-pill" aria-label="账单列表" :aria-pressed="false" @click="switchView('list')"><AppIcon name="list" /><span>列表</span></button>
+        <button type="button" class="view-pill" aria-label="收支图表" :aria-pressed="true" @click="switchView('chart')"><AppIcon name="chart" /><span>图表</span></button>
       </div>
     </section>
 
@@ -444,9 +447,11 @@ function openEntry(entryId?: string): void {
         <strong><AppIcon :name="view === 'list' ? 'list' : 'calendar'" />
           {{ view === 'list' ? '账单列表' : '收支日历' }}
         </strong>
-        <button type="button" class="round-tool" aria-label="收支图表" :aria-pressed="false" @click="switchView('chart')"><AppIcon name="chart" /></button>
-        <button type="button" class="round-tool" aria-label="账单列表" :aria-pressed="view === 'list'" @click="switchView('list')"><AppIcon name="list" /></button>
-        <button type="button" class="round-tool" aria-label="收支日历" :aria-pressed="view === 'calendar'" @click="switchView('calendar')"><AppIcon name="calendar" /></button>
+        <div class="toolbar-views" role="group" aria-label="账单视图">
+          <button type="button" class="view-pill" aria-label="收支日历" :aria-pressed="view === 'calendar'" @click="switchView('calendar')"><AppIcon name="calendar" /><span>日历</span></button>
+          <button type="button" class="view-pill" aria-label="账单列表" :aria-pressed="view === 'list'" @click="switchView('list')"><AppIcon name="list" /><span>列表</span></button>
+          <button type="button" class="view-pill" aria-label="收支图表" :aria-pressed="false" @click="switchView('chart')"><AppIcon name="chart" /><span>图表</span></button>
+        </div>
       </header>
       <template v-if="view === 'calendar'">
         <p v-if="statsError" class="state-inline">{{ statsError }} <button type="button" @click="loadStats">重试</button></p>
@@ -628,9 +633,18 @@ function openEntry(entryId?: string): void {
   margin-bottom: 14px;
   box-shadow: var(--shadow-card);
 }
-.toolbar-views { display: flex; align-items: center; gap: 6px; }
-.toolbar-views .round-tool { background: var(--color-bg-subtle); }
-.toolbar-views .round-tool[aria-pressed='true'] { background: color-mix(in srgb, var(--ledger-accent) 15%, var(--color-bg-surface)); }
+.toolbar-views { display: flex; align-items: center; gap: 4px; }
+.view-pill {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  min-height: 36px; padding: 0 10px; border: 0; border-radius: var(--radius-pill);
+  background: var(--color-bg-subtle); color: var(--color-text-secondary);
+  font-size: var(--text-caption); font-weight: 600; white-space: nowrap;
+}
+.view-pill .app-icon { width: 14px; height: 14px; }
+.view-pill[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--ledger-accent) 15%, var(--color-bg-surface));
+  color: var(--ledger-accent);
+}
 .calendar-heading { margin-bottom: 8px; }
 .calendar-heading strong { display: flex; gap: 6px; align-items: center; margin-right: auto; }
 .calendar-heading .round-tool { background: var(--color-bg-subtle); }

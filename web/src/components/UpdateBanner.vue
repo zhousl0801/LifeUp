@@ -1,13 +1,23 @@
 <script setup lang="ts">
 import { useRegisterSW } from 'virtual:pwa-register/vue'
+import { activeWriteCount, pendingMutationCount } from '../api/client'
+import { toast } from '../composables/useMessage'
 
 const { needRefresh, updateServiceWorker } = useRegisterSW({ immediate: true })
+
+function applyUpdate(): void {
+  if (activeWriteCount.value > 0 || pendingMutationCount.value > 0 || document.querySelector('[role="dialog"]')) {
+    toast.info('当前有正在保存或编辑的内容，完成后再更新更稳妥')
+    return
+  }
+  void updateServiceWorker(true)
+}
 </script>
 
 <template>
   <aside v-if="needRefresh" class="update-banner" role="status">
-    <span>发现新版本</span>
-    <button type="button" class="update-action" @click="updateServiceWorker(true)">更新</button>
+    <span>新版本已就绪</span>
+    <button type="button" class="update-action" @click="applyUpdate">更新应用</button>
     <button type="button" class="update-dismiss" @click="needRefresh = false">稍后</button>
   </aside>
 </template>

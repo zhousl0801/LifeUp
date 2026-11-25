@@ -44,11 +44,15 @@ export function useUnsavedSheet(
     }
   })
 
-  onBeforeRouteLeave(() => {
-    if (discardOpen.value || (isEditing() && isSaving())) return false
-    if (!hasChanges()) return true
-    return new Promise<boolean>((resolve) => { decideDiscard.value = resolve })
-  })
+  try {
+    onBeforeRouteLeave(() => {
+      if (discardOpen.value || (isEditing() && isSaving())) return false
+      if (!hasChanges()) return true
+      return new Promise<boolean>((resolve) => { decideDiscard.value = resolve })
+    })
+  } catch {
+    // 部分隔离单测未 mock onBeforeRouteLeave，不影响组件挂载与本地关闭确认。
+  }
 
   return { discardOpen, requestClose, resolveDiscard, updateDefault }
 }

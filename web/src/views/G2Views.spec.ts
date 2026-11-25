@@ -283,12 +283,7 @@ test('redemption confirmation can estimate net proceeds from shares, net value a
   setValue('费用（元）', '2')
   await flushPromises()
 
-  const estimateButton = [...document.querySelectorAll<HTMLButtonElement>('.sheet button')]
-    .find((button) => button.textContent?.includes('试算净到账'))!
-  estimateButton.click()
-  await flushPromises()
-
-  expect(field('净到账金额（元）').value).toBe('118.00')
+  expect(field('预计到账金额（元）').value).toBe('118.00')
 
   document.querySelector('.sheet form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
   await flushPromises()

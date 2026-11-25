@@ -185,11 +185,11 @@ test('cash conflict keeps the draft and requires a new version before confirming
   reason.value = '核对'
   reason.dispatchEvent(new Event('input', { bubbles: true }))
   await flushPromises()
-  const save = () => Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.trim() === '保存核对')!
+  const save = () => Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.trim().startsWith('按差额调整'))!
   save().click()
   await flushPromises()
   expect(amount.value).toBe('900')
-  expect(document.body.textContent).toContain('现金余额已变化，请重新确认')
+  expect(document.body.textContent).toContain('现金余额刚有新变动')
   expect(mocks.reconcile.mock.calls[0]![0].expectedVersion).toBe(0)
   save().click()
   await flushPromises()

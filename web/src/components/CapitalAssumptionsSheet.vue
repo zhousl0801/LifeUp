@@ -57,6 +57,7 @@ const fields = reactive<Record<FieldKey, string>>({
 const errors = reactive<Partial<Record<FieldKey, string>>>({})
 const sessionKey = ref(0)
 const followProfile = ref(false)
+const confirmClearGoal = ref(false)
 let previewTimer: ReturnType<typeof setTimeout> | null = null
 let skipNextPreviewSchedule = false
 
@@ -246,13 +247,24 @@ function applySuggestion(
 function applyPreset(value: number): void {
   fields.investmentAnnualReturnPercent = String(value)
 }
+
+function clearTargetGoal(): void {
+  if (props.saving) return
+  confirmClearGoal.value = false
+  clearPreviewTimer()
+  fields.targetAmount = ''
+  emit('save', {
+    ...props.settings,
+    targetAmount: null
+  })
+}
 </script>
 
 <template>
   <BottomSheet
     :open="open"
-    title="调整假设"
-    subtitle="目标按万元填写；留空的假设按最近 6 个月自动估算"
+    title="调整预测"
+    subtitle="目标按万元填写；留空项自动按工资档案或历史完整月估算"
     :close-disabled="saving"
     @close="requestClose"
   >
@@ -272,7 +284,14 @@ function applyPreset(value: number): void {
           </span>
         </label>
         <small v-if="errors.targetAmount" class="field-error">{{ errors.targetAmount }}</small>
-        <small v-else class="hint">例如 100 表示 100 万；留空则清除目标</small>
+        <small v-else class="hint">例如 100 表示 100 万。</small>
+        <button
+          v-if="settings.targetAmount !== null"
+          type="button"
+          class="clear-goal-link"
+          :disabled="saving"
+          @click="confirmClearGoal = true"
+        >取消当前目标</button>
       </div>
 
       <div v-if="hasSalaryProfile" class="field full follow-banner">
@@ -486,6 +505,17 @@ function applyPreset(value: number): void {
   </BottomSheet>
 
   <ConfirmSheet
+    :open="confirmClearGoal"
+    title="取消当前目标？"
+    message="取消后不再显示目标达成倒计时，页面仍会按当前速度展示长期积累预测。"
+    confirm-label="取消目标"
+    cancel-label="先保留"
+    danger
+    :busy="saving"
+    @confirm="clearTargetGoal"
+    @cancel="confirmClearGoal = false"
+  />
+  <ConfirmSheet
     :open="discardOpen"
     title="放弃修改？"
     message="离开后，本次修改会丢失。"
@@ -619,6 +649,16 @@ function applyPreset(value: number): void {
 
 .hint {
   color: var(--color-text-secondary);
+}
+
+.clear-goal-link {
+  align-self: flex-start;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-error);
+  font-size: var(--text-caption);
+  font-weight: 500;
 }
 
 .field-error {

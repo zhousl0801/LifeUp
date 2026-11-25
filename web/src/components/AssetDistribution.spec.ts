@@ -47,8 +47,9 @@ test('shows every asset card and keeps each balance, fill and link tied to its a
 
   const cards = view.findAll('article')
   expect(cards.map(card => card.attributes('aria-label'))).toEqual([
-    '现金资产', '基金资产', '股票资产', '公积金资产', '贵金属资产'
+    '现金资产', '基金资产', '公积金资产', '贵金属资产'
   ])
+  expect(view.text()).toContain('已隐藏不持有的资产（股票）')
   const cash = view.get('[aria-label="现金资产"]')
   expect(cash.get('.card-balance').text()).toBe('¥2,000.00')
   expect(cash.text()).toContain('57.1%')
@@ -58,9 +59,6 @@ test('shows every asset card and keeps each balance, fill and link tied to its a
   expect(fund.get('.card-balance').text()).toBe('暂未录入')
   expect(fund.get('a').attributes('href')).toBe('/funds')
   expect(fund.get('a').text()).toBe('录入')
-  const stock = view.get('[aria-label="股票资产"]')
-  expect(stock.get('.card-balance').text()).toBe('不持有')
-  expect(stock.find('a').exists()).toBe(false)
   const provident = view.get('[aria-label="公积金资产"]')
   expect(provident.text()).toContain('28.6%')
   expect(provident.get('a').attributes('href')).toBe('/provident')

@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import type { ECharts } from 'echarts/core'
 import type { EChartsOption } from 'echarts'
 import { useEChart } from '../composables/useEChart'
+import { useAmountPrivacy } from '../composables/useAmountPrivacy'
 import { formatMoney, sumAmounts } from '../utils/format'
 import { chartFontSize, chartTheme } from '../utils/chartTheme'
 import type { EntryPeriod, EntryStatsPoint } from '../types/entry'
@@ -22,6 +23,7 @@ const emit = defineEmits<{
   selectPoint: [point: EntryStatsPoint]
 }>()
 
+const { amountsMasked } = useAmountPrivacy()
 const container = ref<HTMLElement | null>(null)
 
 function prefersReducedMotion(): boolean {
@@ -264,7 +266,7 @@ useEChart(container, buildOption, {
     ref="container"
     class="stats-chart"
     role="img"
-    :aria-label="`${mode === 'income' ? '收入' : mode === 'balance' ? '收支对比' : '支出'}趋势图，合计 ${formatMoney(total)} 元`"
+    :aria-label="`${mode === 'income' ? '收入' : mode === 'balance' ? '收支对比' : '支出'}趋势图，${amountsMasked ? '金额已隐藏' : `合计 ${formatMoney(total)} 元`}`"
   />
 </template>
 

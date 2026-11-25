@@ -353,7 +353,6 @@ onBeforeUnmount(() => {
         <div class="hero-amount">
           <p class="hero-label">
             {{ overview.coverageComplete ? '总资产' : '已记录资产' }}
-            <span class="tag">{{ overview.currency }}</span>
             <AmountVisibilityButton />
           </p>
           <h2 class="hero-value">
@@ -391,7 +390,7 @@ onBeforeUnmount(() => {
               @click="openChangeSheet"
             >
               <span>{{ changeScope === 'day' ? '当日变化' : '本月变化' }}</span>
-              <b>暂无可比数据</b>
+              <b>暂时算不出来</b>
               <span class="info-mark">ⓘ</span>
             </button>
             <div class="change-scope" role="group" aria-label="资产变化范围">
@@ -448,7 +447,7 @@ onBeforeUnmount(() => {
             <small>已记录 {{ Math.min(daysRecorded, 7) }}/7 天</small>
           </div>
 
-          <div class="hero-range" role="group" aria-label="趋势范围">
+          <div v-if="trendReady" class="hero-range" role="group" aria-label="趋势范围">
             <button
               v-for="option in rangeOptions"
               :key="option.value"
@@ -550,9 +549,11 @@ onBeforeUnmount(() => {
         <p v-else class="hint">
           {{ changeScope === 'day'
             ? (overview?.startDate === today
-              ? '账本从今天开始，暂无可比基线。记录满一天后即可看到当日变化。'
-              : '昨日或今日的资产余额、行情依据不足，暂时无法计算当日变化。')
-            : '账本起始日晚于本月月初，暂无可比基线。记录满一个完整月份后即可看到同口径变化。' }}
+              ? '账本从今天开始，明天起就能看到和昨天相比的变化。'
+              : '缺少昨天或今天的余额、行情报价，暂时算不出当日变化。')
+            : (overview?.startDate && overview.startDate > `${today.slice(0, 7)}-01`
+              ? '账本是本月新建的，缺少上月底的记录，下个月起就能看到完整月度变化。'
+              : '有持仓缺少上月底或最新报价，刷新行情后即可计算本月变化。') }}
         </p>
         <div v-if="addedRecords > 0" class="breakdown-row new-record">
           <span>新增记录（不计入变化）</span>
@@ -578,8 +579,8 @@ onBeforeUnmount(() => {
         <p v-if="changeContextDate && changePercent !== null" class="sheet-note">变化比例以昨日可比资产为基数。</p>
         <p class="sheet-note">
           {{ changeScope === 'day'
-            ? '对比今日与昨日估值。买卖和到账在现金与投资之间划转，公积金提取在公积金与现金之间划转。现金收支只统计实际影响余额的记账。'
-            : '只比较月初和今天都已记录的类别；现金和公积金只叫余额变化，基金和贵金属的市值变化才叫收益。' }}
+            ? '对比今日与昨日估值。买卖和到账在现金与投资之间划转，公积金提取在公积金与现金之间划转。现金收支只统计实际影响余额的账单。'
+            : '只比较月初和今天都已记录的资产；现金和公积金只算余额变化，基金、股票和贵金属的市值变化算作收益。' }}
         </p>
       </div>
       <p v-else class="hint">{{ activeChangeError || '资产变化暂时无法读取。' }}</p>

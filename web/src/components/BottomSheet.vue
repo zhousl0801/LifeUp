@@ -427,6 +427,7 @@ async function endDrag(event: PointerEvent): Promise<void> {
 }
 
 .sheet-close {
+  flex-shrink: 0;
   min-width: 32px;
   min-height: 32px;
   margin: -2px 0 0;
@@ -437,6 +438,7 @@ async function endDrag(event: PointerEvent): Promise<void> {
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .sheet-close-icon {

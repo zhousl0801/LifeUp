@@ -37,7 +37,7 @@ export interface ApiRequestInit extends RequestInit {
 }
 
 function isCacheableRead(init?: ApiRequestInit): boolean {
-  return (init?.method?.toUpperCase() ?? 'GET') === 'GET' && !init?.body && !init?.headers
+  return (init?.method?.toUpperCase() ?? 'GET') === 'GET' && !init?.body && !init?.headers && init?.cache !== 'no-store'
 }
 
 function readCached<T>(key: string): T | undefined {
@@ -246,16 +246,33 @@ export async function lookupMutation<T>(requestId: string): Promise<T> {
   return receipt.result
 }
 
+export const activeWriteCount = ref(0)
+
+export interface RecoveredMutationDetail {
+  requestId: string
+  path: string
+  method: string
+  result: unknown
+}
+
+function notifyMutationRecovered(detail: RecoveredMutationDetail): void {
+  if (typeof window !== 'undefined' && typeof CustomEvent === 'function') {
+    window.dispatchEvent(new CustomEvent<RecoveredMutationDetail>('lifeup:mutation-recovered', { detail }))
+  }
+}
+
 export async function recoverMutation(request: PendingMutation, retry: boolean): Promise<unknown> {
   try {
     const result = await lookupMutation(request.requestId)
     forget(request.requestId)
     clearReadCache()
+    notifyMutationRecovered({ requestId: request.requestId, path: request.path, method: request.method, result })
     return result
   } catch (error) {
     if (retry && error instanceof ApiError && error.status === 404) {
       const result = await apiRequest(request.path, { method: request.method, body: request.body })
       clearReadCache()
+      notifyMutationRecovered({ requestId: request.requestId, path: request.path, method: request.method, result })
       return result
     }
 
@@ -266,6 +283,7 @@ export async function recoverMutation(request: PendingMutation, retry: boolean):
 export async function apiRequest<T>(path: string, init?: ApiRequestInit): Promise<T> {
   const body = typeof init?.body === 'string' ? init.body : undefined
   const method = init?.method?.toUpperCase() ?? 'GET'
+  const isWrite = method !== 'GET' && method !== 'HEAD'
   let parsed: { requestId?: string; change?: { requestId?: string } } | undefined
   if (body) {
     try {
@@ -277,7 +295,13 @@ export async function apiRequest<T>(path: string, init?: ApiRequestInit): Promis
   const requestId = method !== 'GET' ? (parsed?.requestId ?? parsed?.change?.requestId) : undefined
 
   if (!requestId) {
-    return readOnlyRequest<T>(path, init)
+    if (!isWrite) return readOnlyRequest<T>(path, init)
+    activeWriteCount.value++
+    try {
+      return await readOnlyRequest<T>(path, init)
+    } finally {
+      activeWriteCount.value = Math.max(0, activeWriteCount.value - 1)
+    }
   }
 
   const pending = readPendingMutations()
@@ -285,9 +309,10 @@ export async function apiRequest<T>(path: string, init?: ApiRequestInit): Promis
 
   if (pending.some((request) => request.requestId !== requestId)
     || (original && (original.path !== path || original.body !== body || original.method !== method))) {
-    throw new ApiError(0, '上次保存结果待核实，请先在顶部查询结果或重试原请求。')
+    throw new ApiError(0, '上一笔保存仍在确认中，请先在顶部确认或重试，避免重复记账。')
   }
 
+  activeWriteCount.value++
   inFlightMutations.set(requestId, (inFlightMutations.get(requestId) ?? 0) + 1)
   try {
     remember({ requestId, path, method, body: body! })
@@ -307,10 +332,11 @@ export async function apiRequest<T>(path: string, init?: ApiRequestInit): Promis
         clearReadCache()
         return result
       } catch {
-        throw new ApiError(0, '保存结果待核实，原内容已保留；请查询结果或重试原请求，勿重新记账。')
+        throw new ApiError(0, '暂时没收到保存结果，内容已保留；系统会在联网后自动确认，也可在顶部重试，无需重新填写。')
       }
     }
   } finally {
+    activeWriteCount.value = Math.max(0, activeWriteCount.value - 1)
     const remaining = (inFlightMutations.get(requestId) ?? 1) - 1
     if (remaining) inFlightMutations.set(requestId, remaining)
     else inFlightMutations.delete(requestId)

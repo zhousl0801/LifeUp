@@ -107,6 +107,9 @@ const rows = computed<DistributionRow[]>(() => {
   ]
 })
 
+const cardRows = computed(() => rows.value.filter((row) => !row.notHeld))
+const hiddenNotHeldRows = computed(() => rows.value.filter((row) => row.notHeld))
+
 const barSegments = computed(() => rows.value
   .filter((row) => row.configured && !row.notHeld && row.amount !== null && row.amount > 0)
   .map((row) => ({ key: row.key, width: row.percent ?? 0 })))
@@ -183,7 +186,7 @@ function changeTone(row: DistributionRow): string {
 
     <div v-if="cards" class="asset-cards">
       <article
-        v-for="row in rows"
+        v-for="row in cardRows"
         :key="row.key"
         class="distribution-card"
         :class="`card-${row.key}`"
@@ -246,6 +249,10 @@ function changeTone(row: DistributionRow): string {
         </div>
       </article>
     </div>
+    <p v-if="cards && hiddenNotHeldRows.length" class="hidden-assets-note">
+      已隐藏不持有的资产（{{ hiddenNotHeldRows.map(row => row.label).join('、') }}）·
+      <RouterLink to="/assets">管理 ›</RouterLink>
+    </p>
 
     <div v-if="!cards && !amountsMasked" class="ratio-bar" role="img" :aria-label="barLabel">
       <span
@@ -342,6 +349,19 @@ function changeTone(row: DistributionRow): string {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
+}
+
+.hidden-assets-note {
+  margin: 10px 4px 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+  text-align: center;
+}
+
+.hidden-assets-note a {
+  color: var(--color-brand);
+  font-weight: 600;
+  text-decoration: none;
 }
 
 .distribution-card:first-child {

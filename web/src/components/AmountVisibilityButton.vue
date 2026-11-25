@@ -1,16 +1,15 @@
 <script setup lang="ts">
-import { storeToRefs } from 'pinia'
-import { useHomePreferencesStore } from '../stores/homePreferences'
+import { useAmountPrivacy } from '../composables/useAmountPrivacy'
 import AppIcon from './AppIcon.vue'
 
-const { amountsMasked } = storeToRefs(useHomePreferencesStore())
+const { amountsMasked } = useAmountPrivacy()
 </script>
 
 <template>
   <button
     type="button"
     class="amount-visibility"
-    :aria-label="amountsMasked ? '显示资产金额' : '隐藏资产金额'"
+    :aria-label="amountsMasked ? '显示所有页面金额' : '隐藏所有页面金额'"
     @click="amountsMasked = !amountsMasked"
   >
     <AppIcon :name="amountsMasked ? 'eye-off' : 'eye'" />

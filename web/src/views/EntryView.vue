@@ -4,6 +4,7 @@ import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { createEntry, fetchEntry, reverseEntry, updateEntry } from '../api/entries'
 import { createCategory, deleteCategory, fetchCategories, reorderCategories } from '../api/categories'
 import { ApiError, clearReadCache, getApiErrorMessage } from '../api/client'
+import { toast } from '../composables/useMessage'
 import AmountKeypad from '../components/AmountKeypad.vue'
 import AppIcon from '../components/AppIcon.vue'
 import LoadingState from '../components/LoadingState.vue'
@@ -548,11 +549,16 @@ async function saveCategory(): Promise<void> {
   categorySheetError.value = ''
 
   try {
-    const created = await createCategory({ kind: form.kind, name })
+    const created = await createCategory({
+      kind: form.kind,
+      name,
+      ...(hasGroups.value && activeGroup.value ? { isGroup: false, parentId: activeGroup.value.id } : {})
+    })
     await loadCategories()
     chooseCategory(created.name)
     categorySheet.value = null
     categoryEditMode.value = false
+    toast.success(`已新增分类「${created.name}」`)
   } catch (error) {
     categorySheetError.value = error instanceof ApiError && error.status === 409
       ? '同类型下已存在同名分类。'
@@ -662,6 +668,7 @@ async function submit(mode: 'exit' | 'again' = 'exit'): Promise<void> {
       requestId.value = createRequestId()
       initialForm.value = { ...form }
       savedForNext.value = true
+      toast.success('已保存，可继续记下一笔')
       if (entryContent.value) entryContent.value.scrollTop = 0
     } else {
       await finishSave(result, entryId.value ? 'update' : 'create')
@@ -871,7 +878,7 @@ function handleKeydown(event: KeyboardEvent): void {
             <span aria-hidden="true">{{ expandedCategories ? '⌃' : '›' }}</span>
           </button>
           <button
-            v-if="categoryEditMode && canManageCategories"
+            v-if="(categoryEditMode && canManageCategories) || (hasGroups && categoriesLoaded && canEdit && activeGroup)"
             type="button"
             class="category-tile category-add"
             @click="openAddCategory"
@@ -879,7 +886,7 @@ function handleKeydown(event: KeyboardEvent): void {
             <span class="category-mark-wrap">
               <span class="category-mark"><AppIcon name="plus" /></span>
             </span>
-            <span class="category-name">添加</span>
+            <span class="category-name">新增</span>
           </button>
         </div>
         <p v-if="categoryEditMode && canManageCategories" class="category-hint">
@@ -961,14 +968,16 @@ function handleKeydown(event: KeyboardEvent): void {
       </footer>
 
       <ConfirmSheet :open="leaveDecision !== null" title="这笔账还没保存"
-        :message="isEditing ? '再改一会儿，还是放弃这次修改？' : '要接着记，还是放弃这笔账？'"
-        confirm-label="放弃" cancel-label="继续" close-icon danger
+        :message="isEditing ? '离开后，本次修改会丢失。' : '离开后，这笔刚填的账会丢失。'"
+        confirm-label="放弃修改" cancel-label="继续编辑" close-icon danger
         @confirm="resolveLeave(true)" @cancel="resolveLeave(false)" />
 
       <BottomSheet
         :open="categorySheet !== null"
         :title="categorySheetTitle"
-        :subtitle="categorySheet === 'add' ? `新增后立即选中，只影响「${form.kind === 'income' ? '收入' : '支出'}」分类` : '历史记录仍会保留该分类名称'"
+        :subtitle="categorySheet === 'add'
+          ? (hasGroups && activeGroup ? `新增到「${activeGroup.name}」并立即选中，已填金额和备注会保留` : `新增后立即选中，只影响「${form.kind === 'income' ? '收入' : '支出'}」分类`)
+          : '历史记录仍会保留该分类名称'"
         :close-disabled="isCategorySaving"
         @close="closeCategorySheet"
       >
