@@ -117,7 +117,7 @@ onBeforeUnmount(() => {
         @click="edit"
       >
         <span class="budget-compact-track">
-          <span class="budget-compact-fill" :style="{ width: `${Math.min(percentage ?? 0, 100)}%` }" />
+          <span class="budget-compact-fill" :style="{ transform: `scaleX(${Math.min(percentage ?? 0, 100) / 100})` }" />
         </span>
         <span class="budget-compact-text">
           <span>预算已用 {{ progressLabel || '0%' }}</span>
@@ -196,6 +196,11 @@ onBeforeUnmount(() => {
   display: grid; place-items: center; width: clamp(94px, 27vw, 112px); aspect-ratio: 1;
   padding: 7px; border: 0; border-radius: 50%; color: var(--color-text-primary);
   background: conic-gradient(var(--ledger-accent, var(--color-brand)) var(--progress), var(--color-bg-subtle) 0);
+  transition: transform var(--motion-press-out) var(--ease-settle);
+}
+.budget-ring:active {
+  transform: scale(0.96);
+  transition-duration: var(--motion-press-in);
 }
 .budget-ring.over {
   background: conic-gradient(var(--color-danger) var(--progress), var(--color-bg-subtle) 0);
@@ -250,9 +255,10 @@ onBeforeUnmount(() => {
   border-radius: var(--radius-pill); background: var(--color-bg-subtle);
 }
 .budget-compact-fill {
-  display: block; height: 100%; border-radius: var(--radius-pill);
+  display: block; width: 100%; height: 100%; border-radius: var(--radius-pill);
   background: var(--ledger-accent, var(--color-brand));
-  transition: width var(--motion-base) var(--ease-standard);
+  transform-origin: left center;
+  transition: transform var(--motion-data) var(--ease-move);
 }
 .budget-compact-bar.over .budget-compact-fill { background: var(--color-danger); }
 .budget-compact-text {
@@ -260,4 +266,14 @@ onBeforeUnmount(() => {
   color: var(--color-text-secondary); font-size: var(--text-caption); font-variant-numeric: tabular-nums;
 }
 .budget-compact-bar.over .budget-compact-text small { color: var(--color-danger); font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) {
+  .budget-ring:active {
+    transform: none;
+  }
+
+  .budget-compact-fill {
+    transition: none;
+  }
+}
 </style>

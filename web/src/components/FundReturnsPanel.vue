@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, useTemplateRef, watch } from 'vue'
 import { fetchFundReturnDay, fetchFundReturns } from '../api/funds'
 import { getApiErrorMessage } from '../api/client'
+import { useSlidingIndicator } from '../composables/useSlidingIndicator'
 import BottomSheet from './BottomSheet.vue'
 import MoneyAmount from './MoneyAmount.vue'
 import FundReturnChart from './FundReturnChart.vue'
@@ -24,6 +25,12 @@ const rangeOptions: { key: TrendRange; label: string }[] = [
 ]
 const today = todayInBusinessTimeZone()
 const range = ref<TrendRange>('month')
+const rangeTrackRef = useTemplateRef<HTMLElement>('rangeTrack')
+const monthDirection = shallowRef<-1 | 0 | 1>(0)
+const { ready: rangePillReady, animated: rangePillAnimated, indicatorStyle: rangePillStyle } = useSlidingIndicator(
+  rangeTrackRef,
+  range
+)
 const data = ref<FundReturn | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref('')
@@ -125,6 +132,7 @@ function shiftMonth(offset: number): void {
   const value = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}`
 
   if (value >= minMonth.value && value <= maxMonth.value) {
+    monthDirection.value = offset > 0 ? 1 : -1
     calendarMonth.value = value
   }
 }
@@ -215,7 +223,14 @@ function rowTitle(shareClass: string | null, platform: string | null): string {
         <h2>投资收益走势</h2>
         <p>按净值披露日归属，未披露日期不计收益</p>
       </div>
-      <div class="range-tabs" role="tablist" aria-label="收益区间">
+      <div ref="rangeTrack" class="range-tabs" :class="{ 'has-pill': rangePillReady }" role="tablist" aria-label="收益区间">
+        <span
+          v-if="rangePillReady"
+          class="range-pill"
+          :class="{ 'is-animated': rangePillAnimated }"
+          :style="rangePillStyle"
+          aria-hidden="true"
+        />
         <button
           v-for="option in rangeOptions"
           :key="option.key"
@@ -275,7 +290,7 @@ function rowTitle(shareClass: string | null, platform: string | null): string {
         <div class="calendar-weekdays" aria-hidden="true">
           <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
         </div>
-        <div class="calendar-grid">
+        <div :key="calendarMonth" class="calendar-grid" :class="monthDirection === -1 ? 'is-prev' : monthDirection === 1 ? 'is-next' : ''">
           <button
             v-for="(cell, index) in calendarCells"
             :key="`${cell.date}-${index}`"
@@ -380,6 +395,7 @@ function rowTitle(shareClass: string | null, platform: string | null): string {
 }
 
 .range-tabs {
+  position: relative;
   display: flex;
   flex: 0 0 auto;
   gap: 3px;
@@ -388,7 +404,25 @@ function rowTitle(shareClass: string | null, platform: string | null): string {
   background: var(--color-brand-soft);
 }
 
+.range-pill {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  border-radius: var(--radius-tag);
+  background: var(--color-bg-surface);
+  box-shadow: 0 1px 4px var(--color-shadow);
+  transform-origin: left center;
+  pointer-events: none;
+}
+
+.range-pill.is-animated {
+  transition: transform var(--motion-segment) var(--ease-move);
+}
+
 .range-tabs button {
+  position: relative;
+  z-index: 1;
   min-height: var(--touch-target);
   padding: 0 7px;
   border: 0;
@@ -396,12 +430,17 @@ function rowTitle(shareClass: string | null, platform: string | null): string {
   background: transparent;
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
+  transition: color var(--motion-feedback) var(--ease-move);
 }
 
 .range-tabs button.active {
   background: var(--color-bg-surface);
   color: var(--color-brand);
   font-weight: 600;
+}
+
+.range-tabs.has-pill button.active {
+  background: transparent;
 }
 
 .return-summary {
@@ -507,6 +546,26 @@ function rowTitle(shareClass: string | null, platform: string | null): string {
 
 .calendar-grid {
   margin-top: 3px;
+  min-height: 284px;
+  align-content: start;
+}
+
+.calendar-grid.is-prev {
+  animation: fund-cal-prev var(--motion-content-in) var(--ease-enter);
+}
+
+.calendar-grid.is-next {
+  animation: fund-cal-next var(--motion-content-in) var(--ease-enter);
+}
+
+@keyframes fund-cal-prev {
+  from { opacity: 0; transform: translate3d(-8px, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes fund-cal-next {
+  from { opacity: 0; transform: translate3d(8px, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
 .calendar-day {
@@ -521,6 +580,9 @@ function rowTitle(shareClass: string | null, platform: string | null): string {
   border: 1px solid transparent;
   border-radius: var(--radius-tag);
   background: transparent;
+  transition:
+    border-color var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-settle);
 }
 
 .calendar-day span {
@@ -571,6 +633,23 @@ function rowTitle(shareClass: string | null, platform: string | null): string {
 
 .calendar-day:not(:disabled):active {
   border-color: var(--color-brand);
+  transform: scale(0.95);
+  transition-duration: var(--motion-press-in);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .range-pill.is-animated {
+    transition: none;
+  }
+
+  .calendar-grid.is-prev,
+  .calendar-grid.is-next {
+    animation: none;
+  }
+
+  .calendar-day:not(:disabled):active {
+    transform: none;
+  }
 }
 
 .calendar-note {

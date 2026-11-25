@@ -79,14 +79,16 @@ function signed(value: number): string {
             <span v-if="row.isGoalYear" class="badge">达成</span>
           </span>
           <span class="delta">{{ row.isGoalYear && row.total === 0 ? '—' : signed(row.total) }}</span>
-          <span class="chev" aria-hidden="true">{{ isExpanded(row.year) ? '⌃' : '⌄' }}</span>
+          <span class="chev" :class="{ open: isExpanded(row.year) }" aria-hidden="true">⌄</span>
         </button>
 
-        <div v-if="isExpanded(row.year)" class="details">
-          <span>净储蓄 <b>{{ amount(row.netSavings) }}</b></span>
-          <span>公积金缴存 <b>{{ amount(row.providentDeposit) }}</b></span>
-          <span>投资收益 <b>{{ amount(row.return) }}</b></span>
-        </div>
+        <Transition name="collapse-reveal">
+          <div v-if="isExpanded(row.year)" class="details">
+            <span>净储蓄 <b>{{ amount(row.netSavings) }}</b></span>
+            <span>公积金缴存 <b>{{ amount(row.providentDeposit) }}</b></span>
+            <span>投资收益 <b>{{ amount(row.return) }}</b></span>
+          </div>
+        </Transition>
       </div>
     </div>
 
@@ -158,9 +160,22 @@ function signed(value: number): string {
   min-height: 44px;
   padding: 6px 4px;
   border: 0;
+  border-radius: var(--radius-control);
   background: none;
   color: var(--color-text-primary);
   text-align: left;
+  transition: background-color var(--motion-press-out) var(--ease-settle);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .row-main:hover {
+    background: var(--color-bg-hover);
+  }
+}
+
+.row-main:active {
+  background: var(--color-bg-hover);
+  transition-duration: var(--motion-press-in);
 }
 
 .year {
@@ -196,9 +211,21 @@ function signed(value: number): string {
 }
 
 .chev {
+  display: inline-block;
   color: var(--color-text-secondary);
   font-size: 12px;
   text-align: center;
+  transition: transform var(--motion-feedback) var(--ease-move);
+}
+
+.chev.open {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chev {
+    transition: none;
+  }
 }
 
 .details {

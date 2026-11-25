@@ -27,6 +27,7 @@ body {
  * 用一条纯色不透明的 fixed 色条锚定顶部安全区，让 WebKit 采样纯色并关闭渐进模糊。 */
 .status-bar-scrim {
   --scrim-base: var(--color-bg-page);
+  --scrim-bg: var(--scrim-base);
   position: fixed;
   top: 0;
   right: 0;
@@ -34,26 +35,41 @@ body {
   z-index: 55;
   /* 覆盖安全区 + 顶部留白，内容从色条下方开始，滚动内容在色条下沿被纯色截断而不是被模糊。 */
   height: var(--app-safe-top);
-  background-color: var(--scrim-base);
+  background-color: var(--scrim-bg);
   pointer-events: none;
+  transition: background-color var(--motion-feedback) var(--ease-move);
 }
 
-body:has(.home-hero) .status-bar-scrim {
+.status-bar-scrim-probe {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background-color: var(--scrim-bg);
+  transition: none;
+}
+
+.status-bar-scrim[data-surface='home'],
+body:has(.home-hero) .status-bar-scrim:not([data-surface]) {
   --scrim-base: var(--color-hero-bg);
   /* 首页 hero 顶部有光晕渐变，色条只盖安全区，避免与光晕产生色带。 */
   height: max(env(safe-area-inset-top), 8px);
 }
 
-body:has(.entry-screen) .status-bar-scrim {
+.status-bar-scrim[data-surface='entry'],
+body:has(.entry-screen) .status-bar-scrim:not([data-surface]) {
   --scrim-base: color-mix(in srgb, var(--color-bg-page) 78%, var(--color-bg-surface));
 }
 
-body:has(.sheet-backdrop) .status-bar-scrim {
-  background-color: color-mix(in srgb, #120f24 48%, var(--scrim-base));
+.status-bar-scrim[data-sheet-open='true'],
+body:has(.sheet-backdrop) .status-bar-scrim:not([data-sheet-open]) {
+  --scrim-bg: color-mix(in srgb, #120f24 48%, var(--scrim-base));
 }
 
-:root[data-color-scheme='dark'] body:has(.sheet-backdrop) .status-bar-scrim {
-  background-color: color-mix(in srgb, #000000 62%, var(--scrim-base));
+:root[data-color-scheme='dark'] .status-bar-scrim[data-sheet-open='true'],
+:root[data-color-scheme='dark'] body:has(.sheet-backdrop) .status-bar-scrim:not([data-sheet-open]) {
+  --scrim-bg: color-mix(in srgb, #000000 62%, var(--scrim-base));
 }
 
 button,
@@ -201,10 +217,10 @@ summary:focus-visible {
   user-select: none;
   -webkit-user-select: none;
   transition:
-    transform 220ms cubic-bezier(0.22, 1.35, 0.36, 1),
-    background-color var(--motion-fast) ease,
-    box-shadow var(--motion-fast) ease,
-    color var(--motion-fast) ease;
+    transform var(--motion-press-out) var(--ease-settle),
+    background-color var(--motion-feedback) var(--ease-move),
+    box-shadow var(--motion-feedback) var(--ease-move),
+    color var(--motion-feedback) var(--ease-move);
 }
 
 :is(
@@ -276,7 +292,7 @@ summary:focus-visible {
   box-shadow: inset 0 0 var(--glossy-glow-blur) var(--glossy-glow-spread)
     rgba(255, 255, 255, var(--glossy-glow, 0.24));
   opacity: var(--glossy-light);
-  transition: opacity 140ms ease;
+  transition: opacity var(--motion-feedback) var(--ease-move);
 }
 
 :is(
@@ -289,7 +305,9 @@ summary:focus-visible {
   .icon-button
 ):active:not(:disabled) {
   --glossy-light: 0.52;
-  transform: scale(0.968);
+  transform: scale(0.97);
+  transition-duration: var(--motion-press-in), var(--motion-press-in), var(--motion-press-in), var(--motion-press-in);
+  transition-timing-function: var(--ease-exit), var(--ease-move), var(--ease-move), var(--ease-move);
 }
 
 :is(
@@ -517,14 +535,19 @@ summary:focus-visible {
 }
 .ui-disclosure > summary::after {
   content: '⌄';
+  display: inline-block;
   color: var(--color-brand);
   font-size: 1rem;
+  transition: transform var(--motion-feedback) var(--ease-move);
 }
 .ui-disclosure[open] > summary::after {
   transform: rotate(180deg);
 }
 .ui-disclosure > summary:hover {
   color: var(--color-brand);
+}
+.ui-disclosure[open] > :not(summary) {
+  animation: motion-collapse-in var(--motion-collapse-in) var(--ease-enter);
 }
 
 .ui-segmented {
@@ -602,7 +625,7 @@ summary:focus-visible {
   border-bottom: 1px solid var(--color-border-subtle);
   color: var(--color-text-primary);
   font-size: 0.875rem;
-  transition: background-color 0.15s ease;
+  transition: background-color var(--motion-feedback) var(--ease-move);
 }
 
 .form-stack > :is(.form-field, .form-row):not(:is(.form-field, .form-row) + *) {
@@ -759,6 +782,7 @@ summary:focus-visible {
   color: var(--color-error);
   font-size: var(--text-footnote);
   line-height: 1.55;
+  animation: motion-feedback-in var(--motion-feedback) var(--ease-enter);
 }
 
 .form-actions {
@@ -810,21 +834,164 @@ summary:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: .01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: .01ms !important;
-    scroll-behavior: auto !important;
-  }
+/* ========== 统一页面/内容/折叠/浮层过渡语言 ========== */
+@keyframes motion-feedback-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
+@keyframes motion-collapse-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes motion-route-tab {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes motion-route-push {
+  from { opacity: 0; transform: translate3d(14px, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes motion-route-pop {
+  from { opacity: 0; transform: translate3d(-14px, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes motion-route-modal-in {
+  from { opacity: 0; transform: translate3d(0, 22px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes motion-route-modal-desktop {
+  from { opacity: 0; transform: translate3d(0, 6px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+/* 只动画本次导航入场的直系安全内容子层，不给 .page 根节点加 transform，且不影响晚到的异步内容节点。 */
+.route-stage[data-route-motion='tab'] [data-route-enter='1'] {
+  animation: motion-route-tab var(--motion-content-in) var(--ease-enter) backwards;
+}
+
+.route-stage[data-route-motion='push'] [data-route-enter='1'] {
+  animation: motion-route-push var(--motion-route) var(--ease-enter) backwards;
+}
+
+.route-stage[data-route-motion='pop'] [data-route-enter='1'] {
+  animation: motion-route-pop var(--motion-route) var(--ease-enter) backwards;
+}
+
+.route-stage[data-route-motion='modal-out'] [data-route-enter='1'] {
+  animation: motion-route-tab var(--motion-content-in) var(--ease-enter) backwards;
+}
+
+.route-stage[data-route-motion='modal-in'] [data-route-enter='1'] {
+  animation: motion-route-modal-in var(--motion-route) var(--ease-enter) backwards;
+}
+
+/* 共享 Vue Transition 类 */
+.collapse-reveal-enter-active {
+  transition:
+    opacity var(--motion-collapse-in) var(--ease-enter),
+    transform var(--motion-collapse-in) var(--ease-enter);
+}
+
+.collapse-reveal-leave-active {
+  transition: opacity var(--motion-collapse-out) var(--ease-exit);
+  pointer-events: none;
+}
+
+.collapse-reveal-enter-from {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+.collapse-reveal-leave-to {
+  opacity: 0;
+}
+
+.content-fade-enter-active {
+  transition: opacity var(--motion-content-in) var(--ease-enter);
+}
+
+.content-fade-leave-active {
+  transition: opacity var(--motion-content-out) var(--ease-exit);
+  pointer-events: none;
+}
+
+.content-fade-enter-from,
+.content-fade-leave-to {
+  opacity: 0;
+}
+
+.popover-fade-enter-active {
+  transition:
+    opacity var(--motion-feedback) var(--ease-enter),
+    transform var(--motion-feedback) var(--ease-enter);
+}
+
+.popover-fade-leave-active {
+  transition: opacity var(--motion-content-out) var(--ease-exit);
+  pointer-events: none;
+}
+
+.popover-fade-enter-from {
+  opacity: 0;
+  transform: translateY(4px) scale(0.98);
+}
+
+.popover-fade-leave-to {
+  opacity: 0;
+}
+
+.banner-fade-enter-active {
+  transition:
+    opacity var(--motion-content-in) var(--ease-enter),
+    transform var(--motion-content-in) var(--ease-enter);
+}
+
+.banner-fade-leave-active {
+  transition:
+    opacity var(--motion-content-out) var(--ease-exit),
+    transform var(--motion-content-out) var(--ease-exit);
+  pointer-events: none;
+}
+
+.banner-fade-enter-from,
+.banner-fade-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.notice-fade-enter-active {
+  transition:
+    opacity var(--motion-content-in) var(--ease-enter),
+    transform var(--motion-content-in) var(--ease-enter);
+}
+
+.notice-fade-leave-active {
+  transition: opacity var(--motion-content-out) var(--ease-exit);
+  pointer-events: none;
+}
+
+.notice-fade-enter-from {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+.notice-fade-leave-to {
+  opacity: 0;
+}
 
 @media (min-width: 600px) {
   body {
     background: var(--color-bg-canvas);
+  }
+
+  .route-stage[data-route-motion='modal-in'] [data-route-enter='1'] {
+    animation-name: motion-route-modal-desktop;
   }
 
   .page,
@@ -865,7 +1032,7 @@ summary:focus-visible {
   background: linear-gradient(90deg, transparent, var(--color-skeleton-highlight), transparent);
   background-size: 240% 100%;
   content: '';
-  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  animation: skeleton-shimmer var(--motion-shimmer-cycle) var(--ease-move) infinite;
 }
 
 .skeleton-hero {
@@ -903,7 +1070,6 @@ summary:focus-visible {
   overflow: hidden;
   border-radius: var(--radius-card);
   background: var(--color-skeleton-base);
-  animation: loading-breathe 2.6s ease-in-out infinite;
 }
 
 .loading-block::after {
@@ -918,7 +1084,7 @@ summary:focus-visible {
   );
   background-size: 220% 100%;
   content: '';
-  animation: loading-sweep 1.8s var(--ease-standard) infinite;
+  animation: loading-sweep var(--motion-sweep-cycle) var(--ease-move) infinite;
 }
 
 .loading-line {
@@ -989,7 +1155,7 @@ summary:focus-visible {
   border-radius: 50%;
   background: conic-gradient(from 90deg, transparent 0 42%, var(--color-accent-mint) 72%, var(--color-brand));
   mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 0);
-  animation: loading-orbit .9s linear infinite;
+  animation: loading-orbit var(--motion-busy-cycle) var(--ease-linear) infinite;
 }
 
 @keyframes loading-sweep {
@@ -1001,45 +1167,79 @@ summary:focus-visible {
   to { transform: rotate(360deg); }
 }
 
-@keyframes loading-breathe {
-  0%, 100% { opacity: .86; }
-  50% { opacity: 1; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .loading-block::after,
-  .loading-orbit {
-    animation: none;
-  }
-
-  .loading-block {
-    animation: none;
-  }
-}
-
 .stagger-item {
-  animation: stagger-reveal .36s var(--ease-standard) both;
-  animation-delay: calc(var(--stagger, 0) * 45ms);
+  /* 列表项不做重复级联入场，保证返回、筛选与长列表滚动的即时响应。 */
 }
 
 .money-amount {
   font-variant-numeric: tabular-nums;
 }
 
-@keyframes stagger-reveal {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: none; }
-}
-
+/* 精细化减少动态效果策略：位移/缩放/旋转/骨架流光/脉冲归零，保留极轻 70ms 纯透明度提示。 */
 @media (prefers-reduced-motion: reduce) {
-  .stagger-item {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .status-bar-scrim {
+    transition-duration: var(--motion-reduced-fade);
+  }
+
+  .route-stage[data-route-motion] [data-route-enter='1'] {
     animation: none;
   }
-}
 
-@media (prefers-reduced-motion: reduce) {
-  .skeleton::after {
+  .ui-disclosure > summary::after {
+    transition: none;
+  }
+
+  .ui-disclosure[open] > :not(summary) {
+    animation: motion-feedback-in var(--motion-reduced-fade) var(--ease-linear);
+  }
+
+  .form-error {
+    animation-duration: var(--motion-reduced-fade);
+  }
+
+  .collapse-reveal-enter-active,
+  .collapse-reveal-leave-active,
+  .content-fade-enter-active,
+  .content-fade-leave-active,
+  .popover-fade-enter-active,
+  .popover-fade-leave-active,
+  .banner-fade-enter-active,
+  .banner-fade-leave-active,
+  .notice-fade-enter-active,
+  .notice-fade-leave-active {
+    transition: opacity var(--motion-reduced-fade) var(--ease-linear);
+  }
+
+  .collapse-reveal-enter-from,
+  .popover-fade-enter-from,
+  .banner-fade-enter-from,
+  .banner-fade-leave-to,
+  .notice-fade-enter-from {
+    transform: none;
+  }
+
+  .skeleton::after,
+  .loading-block::after,
+  .loading-orbit {
     animation: none;
+  }
+
+  :is(
+    .primary-button,
+    .secondary-button,
+    .danger-button,
+    .confirm-button,
+    .action-primary,
+    .action-secondary,
+    .icon-button
+  ) {
+    transition:
+      background-color var(--motion-reduced-fade) var(--ease-linear),
+      color var(--motion-reduced-fade) var(--ease-linear);
   }
 
   :is(

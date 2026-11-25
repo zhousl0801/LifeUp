@@ -433,15 +433,17 @@ async function submitReconcile(): Promise<void> {
               />
             </label>
 
-            <div v-if="previewDifference !== null && !isBalanced" class="reason-presets">
-              <button
-                v-for="preset in reasonPresets"
-                :key="preset"
-                type="button"
-                class="reason-chip"
-                @click="reason = preset"
-              >{{ preset }}</button>
-            </div>
+            <Transition name="collapse-reveal">
+              <div v-if="previewDifference !== null && !isBalanced" class="reason-presets">
+                <button
+                  v-for="preset in reasonPresets"
+                  :key="preset"
+                  type="button"
+                  class="reason-chip"
+                  @click="reason = preset"
+                >{{ preset }}</button>
+              </div>
+            </Transition>
 
             <div class="difference-row">
               <span>核对差额</span>
@@ -517,10 +519,21 @@ async function submitReconcile(): Promise<void> {
   color: var(--color-brand);
   font-size: 0.875rem;
   font-weight: 600;
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-move);
 }
 
-.reconcile-link:hover {
+@media (hover: hover) and (pointer: fine) {
+  .reconcile-link:hover {
+    background: var(--color-brand-soft);
+  }
+}
+
+.reconcile-link:active {
   background: var(--color-brand-soft);
+  transform: scale(0.97);
+  transition-duration: var(--motion-press-in);
 }
 
 .cash-hero {
@@ -659,11 +672,22 @@ async function submitReconcile(): Promise<void> {
   font-size: 0.8125rem;
   font-weight: 600;
   white-space: nowrap;
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    color var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-move);
 }
 
-.filter-tabs button:hover:not(.active) {
-  background: var(--color-bg-hover);
-  color: var(--color-brand);
+@media (hover: hover) and (pointer: fine) {
+  .filter-tabs button:hover:not(.active) {
+    background: var(--color-bg-hover);
+    color: var(--color-brand);
+  }
+}
+
+.filter-tabs button:active {
+  transform: scale(0.97);
+  transition-duration: var(--motion-press-in);
 }
 
 .filter-tabs button.active {
@@ -712,8 +736,19 @@ async function submitReconcile(): Promise<void> {
   border-bottom: 0;
 }
 
-.activity-row.clickable:hover {
+.activity-row.clickable {
+  transition: background-color var(--motion-feedback) var(--ease-move);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .activity-row.clickable:hover {
+    background: var(--color-bg-hover);
+  }
+}
+
+.activity-row.clickable:active {
   background: var(--color-bg-hover);
+  transition-duration: var(--motion-press-in);
 }
 
 .activity-mark {
@@ -818,6 +853,14 @@ async function submitReconcile(): Promise<void> {
   color: var(--color-brand);
   font-size: var(--text-caption);
   font-weight: 600;
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-move);
+}
+
+.reconcile-match:active {
+  transform: scale(0.97);
+  transition-duration: var(--motion-press-in);
 }
 
 .reason-presets {
@@ -837,6 +880,17 @@ async function submitReconcile(): Promise<void> {
   background: var(--color-bg-subtle);
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    color var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-move);
+}
+
+.reason-chip:active {
+  background: var(--color-brand-soft);
+  color: var(--color-brand);
+  transform: scale(0.97);
+  transition-duration: var(--motion-press-in);
 }
 
 .field {
@@ -931,6 +985,15 @@ async function submitReconcile(): Promise<void> {
 
 .primary-button {
   width: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reconcile-link:active,
+  .filter-tabs button:active,
+  .reconcile-match:active,
+  .reason-chip:active {
+    transform: none;
+  }
 }
 
 </style>

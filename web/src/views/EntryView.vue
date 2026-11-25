@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, useTemplateRef } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { createEntry, fetchEntry, reverseEntry, updateEntry } from '../api/entries'
 import { createCategory, deleteCategory, fetchCategories, reorderCategories } from '../api/categories'
 import { ApiError, clearReadCache, getApiErrorMessage } from '../api/client'
 import { toast } from '../composables/useMessage'
+import { useSlidingIndicator } from '../composables/useSlidingIndicator'
 import AmountKeypad from '../components/AmountKeypad.vue'
 import AppIcon from '../components/AppIcon.vue'
 import LoadingState from '../components/LoadingState.vue'
@@ -39,6 +40,7 @@ const entryStatus = ref<EntryStatus>('active')
 const entrySource = ref<LedgerEntry['source']>('manual')
 const dateInput = ref<HTMLInputElement | null>(null)
 const entryContent = ref<HTMLElement | null>(null)
+const kindTrackRef = useTemplateRef<HTMLElement>('kindTrack')
 const requestId = ref(createRequestId())
 const form = reactive({
   kind: (route.query.kind === 'income' ? 'income' : 'expense') as EntryKind,
@@ -668,7 +670,6 @@ async function submit(mode: 'exit' | 'again' = 'exit'): Promise<void> {
       requestId.value = createRequestId()
       initialForm.value = { ...form }
       savedForNext.value = true
-      toast.success('已保存，可继续记下一笔')
       if (entryContent.value) entryContent.value.scrollTop = 0
     } else {
       await finishSave(result, entryId.value ? 'update' : 'create')
@@ -781,6 +782,11 @@ function handleKeydown(event: KeyboardEvent): void {
   }
 }
 
+const { ready: kindPillReady, animated: kindPillAnimated, indicatorStyle: kindPillStyle } = useSlidingIndicator(
+  kindTrackRef,
+  () => form.kind
+)
+
 </script>
 
 <template>
@@ -788,7 +794,14 @@ function handleKeydown(event: KeyboardEvent): void {
     <header class="entry-header">
       <BackButton v-if="!categoryEditMode" @back="goBack" />
       <button v-else type="button" class="header-action" @click="exitCategoryEdit">完成</button>
-      <div class="kind-tabs" role="tablist" aria-label="收支方向">
+      <div ref="kindTrack" class="kind-tabs" :class="{ 'has-pill': kindPillReady }" role="tablist" aria-label="收支方向">
+        <span
+          v-if="kindPillReady"
+          class="kind-pill"
+          :class="{ 'is-animated': kindPillAnimated }"
+          :style="kindPillStyle"
+          aria-hidden="true"
+        />
         <button
           type="button"
           role="tab"
@@ -904,31 +917,33 @@ function handleKeydown(event: KeyboardEvent): void {
             撤销这笔记录
           </button>
 
-          <section v-if="showReverse" class="reverse-panel">
-            <p>撤销会恢复这笔记录对现金的影响，并保留原始记录。</p>
-            <label class="field">
-              <span>撤销原因</span>
-              <input v-model="reverseReason" type="text" maxlength="200" placeholder="选填" />
-            </label>
-            <div class="reverse-actions">
-              <button
-                type="button"
-                class="secondary-button"
-                :disabled="isReversing"
-                @click="showReverse = false"
-              >
-                取消
-              </button>
-              <LoadingButton
-                class="danger-button"
-                :loading="isReversing"
-                loading-label="撤销中…"
-                @click="confirmReverse"
-              >
-                确认撤销
-              </LoadingButton>
-            </div>
-          </section>
+          <Transition name="collapse-reveal">
+            <section v-if="showReverse" class="reverse-panel">
+              <p>撤销会恢复这笔记录对现金的影响，并保留原始记录。</p>
+              <label class="field">
+                <span>撤销原因</span>
+                <input v-model="reverseReason" type="text" maxlength="200" placeholder="选填" />
+              </label>
+              <div class="reverse-actions">
+                <button
+                  type="button"
+                  class="secondary-button"
+                  :disabled="isReversing"
+                  @click="showReverse = false"
+                >
+                  取消
+                </button>
+                <LoadingButton
+                  class="danger-button"
+                  :loading="isReversing"
+                  loading-label="撤销中…"
+                  @click="confirmReverse"
+                >
+                  确认撤销
+                </LoadingButton>
+              </div>
+            </section>
+          </Transition>
 
           <p v-if="entrySource === 'automatic'" class="source-note">自动记账记录</p>
         </div>
@@ -1035,7 +1050,11 @@ function handleKeydown(event: KeyboardEvent): void {
 .entry-manage {
   display: grid; place-items: center; min-height: 44px; border-radius: 50%;
   color: var(--color-text-primary); background: var(--color-bg-surface);
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-settle);
 }
+.entry-manage:active { transform: scale(0.95); transition-duration: var(--motion-press-in); }
 .entry-manage .app-icon { width: 19px; height: 19px; }
 .category-groups {
   display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 6px; scrollbar-width: none;
@@ -1044,7 +1063,12 @@ function handleKeydown(event: KeyboardEvent): void {
   display: inline-flex; align-items: center; gap: 4px;
   flex: 0 0 auto; min-height: 44px; padding: 0 8px; border: 0;
   border-radius: var(--radius-pill); background: var(--color-bg-surface); color: var(--color-text-secondary);
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    color var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-settle);
 }
+.category-groups button:active:not(:disabled) { transform: scale(0.97); transition-duration: var(--motion-press-in); }
 .category-groups button[aria-pressed='true'] { background: var(--color-brand); color: var(--color-on-brand); }
 .category-empty { color: var(--color-text-secondary); font-size: var(--text-footnote); }
 
@@ -1057,26 +1081,50 @@ function handleKeydown(event: KeyboardEvent): void {
 }
 
 .kind-tabs {
-  display: flex;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
   padding: 3px;
   border-radius: var(--radius-control);
   background: var(--color-bg-subtle);
 }
 
+.kind-pill {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  border-radius: var(--radius-control);
+  background: var(--color-bg-surface);
+  box-shadow: 0 2px 6px var(--color-shadow);
+  transform-origin: left center;
+  pointer-events: none;
+}
+
+.kind-pill.is-animated {
+  transition: transform var(--motion-segment) var(--ease-move);
+}
+
 .kind-tabs button {
-  flex: 1;
+  position: relative;
+  z-index: 1;
   min-height: 40px;
   border: 0;
   border-radius: var(--radius-control);
   background: transparent;
   color: var(--color-text-secondary);
+  transition: color var(--motion-feedback) var(--ease-move);
 }
 
 .kind-tabs button.active {
   background: var(--color-bg-surface);
   color: var(--color-brand);
   font-weight: 700;
+}
+
+.kind-tabs.has-pill button.active {
+  background: transparent;
 }
 
 .entry-content {
@@ -1156,7 +1204,16 @@ function handleKeydown(event: KeyboardEvent): void {
   border-radius: 50%;
   background: var(--color-brand-soft);
   color: var(--color-brand);
-  transition: background var(--motion-fast) ease, color var(--motion-fast) ease;
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    color var(--motion-feedback) var(--ease-move),
+    box-shadow var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-settle);
+}
+
+.category-tile:active:not(:disabled) .category-mark {
+  transform: scale(0.92);
+  transition-duration: var(--motion-press-in);
 }
 
 .category-mark :deep(.app-icon) {
@@ -1214,6 +1271,7 @@ function handleKeydown(event: KeyboardEvent): void {
   font-weight: 600;
   line-height: 1;
   box-shadow: 0 1px 3px var(--color-shadow);
+  animation: motion-feedback-in var(--motion-feedback) var(--ease-enter);
 }
 
 .category-add .category-mark {
@@ -1267,6 +1325,7 @@ function handleKeydown(event: KeyboardEvent): void {
 
 .amount-heading [role='status'] {
   color: var(--color-brand);
+  animation: motion-feedback-in var(--motion-feedback) var(--ease-enter);
 }
 
 .amount-display {
@@ -1451,10 +1510,10 @@ function handleKeydown(event: KeyboardEvent): void {
   user-select: none;
   -webkit-user-select: none;
   transition:
-    transform 220ms cubic-bezier(0.22, 1.35, 0.36, 1),
-    background-color var(--motion-fast) ease,
-    box-shadow var(--motion-fast) ease,
-    color var(--motion-fast) ease;
+    transform var(--motion-press-out) var(--ease-settle),
+    background-color var(--motion-feedback) var(--ease-move),
+    box-shadow var(--motion-feedback) var(--ease-move),
+    color var(--motion-feedback) var(--ease-move);
 }
 
 .entry-save > *,
@@ -1491,7 +1550,7 @@ function handleKeydown(event: KeyboardEvent): void {
   box-shadow: inset 0 0 var(--glossy-glow-blur) var(--glossy-glow-spread)
     rgba(255, 255, 255, var(--glossy-glow));
   opacity: var(--glossy-light);
-  transition: opacity 140ms ease;
+  transition: opacity var(--motion-feedback) var(--ease-move);
 }
 
 .entry-save {
@@ -1527,7 +1586,8 @@ function handleKeydown(event: KeyboardEvent): void {
 .entry-save:active:not(:disabled),
 .entry-save-again:active:not(:disabled) {
   --glossy-light: 0.52;
-  transform: scale(0.968);
+  transform: scale(0.97);
+  transition-duration: var(--motion-press-in);
 }
 
 .entry-save[aria-busy='true'],
@@ -1550,6 +1610,13 @@ function handleKeydown(event: KeyboardEvent): void {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .kind-pill.is-animated {
+    transition: none;
+  }
+
+  .entry-manage:active,
+  .category-groups button:active:not(:disabled),
+  .category-tile:active:not(:disabled) .category-mark,
   .entry-save:active:not(:disabled),
   .entry-save-again:active:not(:disabled) {
     transform: none;

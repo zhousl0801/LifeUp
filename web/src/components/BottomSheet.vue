@@ -1,12 +1,19 @@
 <script lang="ts">
+import { shallowRef } from 'vue'
+import { setVisibleSheetCount } from '../utils/routeMotion'
+
 // 多个 sheet 叠加时，只让最上层处理 Tab / Escape，避免下层同时抢焦点。
 type OpenSheet = {
   element: () => HTMLElement | null
   previousFocus: HTMLElement | null
 }
 
-const openSheets: OpenSheet[] = []
+const openSheets = shallowRef<OpenSheet[]>([])
 let releasePageScroll: (() => void) | undefined
+
+function syncSheetCount(): void {
+  setVisibleSheetCount(openSheets.value.length)
+}
 
 function lockPageScroll(): () => void {
   const { style } = document.body
@@ -31,7 +38,8 @@ function lockPageScroll(): () => void {
 </script>
 
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, shallowRef as localShallowRef, useId, watch } from 'vue'
+import { isReducedMotion } from '../composables/useReducedMotion'
 
 const props = defineProps<{
   open: boolean
@@ -46,21 +54,85 @@ const emit = defineEmits<{
 }>()
 
 const sheetId = useId()
-const sheet = ref<HTMLElement | null>(null)
-const dragY = ref(0)
-const dragging = ref(false)
-const keyboardInset = ref(0)
-const viewportHeight = ref<number | null>(null)
+const sheet = localShallowRef<HTMLElement | null>(null)
+const dragY = localShallowRef(0)
+const dragging = localShallowRef(false)
+const keyboardInset = localShallowRef(0)
+const viewportHeight = localShallowRef<number | null>(null)
 const registration: OpenSheet = { element: () => sheet.value, previousFocus: null }
+
+interface DragSample {
+  y: number
+  time: number
+}
+
 let dragStartY: number | null = null
 let dragPointerId: number | null = null
+let dragCaptureTarget: HTMLElement | null = null
+let dragCaptured = false
+let dragBaseOffset = 0
+let dragSheetHeight = 360
+let dragSamples: DragSample[] = []
 let wasOpen = false
 let viewportBound = false
+let keyboardResizing = false
+let keyboardResizeTimer: number | undefined
+const lastStackIndex = shallowRef(0)
+
+const stackIndex = computed(() => openSheets.value.indexOf(registration))
+const backdropZIndex = computed(() => 50 + (stackIndex.value >= 0 ? stackIndex.value : lastStackIndex.value))
+const isRecessed = computed(() => stackIndex.value >= 0 && stackIndex.value < openSheets.value.length - 1)
+const isStackedOverlay = computed(() => (stackIndex.value >= 0 ? stackIndex.value : lastStackIndex.value) > 0)
+
+const backdropOpacity = computed(() => {
+  if (!dragging.value || dragY.value <= 0) {
+    return undefined
+  }
+  const ratio = Math.min(1, Math.max(0, dragY.value / dragSheetHeight))
+  return String(Math.max(0.18, 1 - ratio * 0.82))
+})
+
+function isDesktopDialog(): boolean {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(min-width: 600px)').matches
+}
+
+function readVisualTranslateY(): number {
+  const el = sheet.value
+  if (!el || typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') {
+    return 0
+  }
+  const transform = window.getComputedStyle(el).transform
+  if (!transform || transform === 'none') {
+    return 0
+  }
+  const matrixMatch = transform.match(/^matrix\(([^)]+)\)$/)
+  if (matrixMatch) {
+    const parts = matrixMatch[1]!.split(',').map(Number)
+    return Number.isFinite(parts[5]) ? parts[5]! : 0
+  }
+  const matrix3dMatch = transform.match(/^matrix3d\(([^)]+)\)$/)
+  if (matrix3dMatch) {
+    const parts = matrix3dMatch[1]!.split(',').map(Number)
+    return Number.isFinite(parts[13]) ? parts[13]! : 0
+  }
+  return 0
+}
 
 function scrollFocusedControlIntoView(): void {
   const active = document.activeElement
   if (!(active instanceof HTMLElement) || !sheet.value?.contains(active)) return
   if (!active.matches('input, textarea, select')) return
+  const viewport = window.visualViewport
+  if (viewport) {
+    const rect = active.getBoundingClientRect()
+    const visibleTop = viewport.offsetTop + 8
+    const visibleBottom = viewport.offsetTop + viewport.height - 8
+    if (rect.top >= visibleTop && rect.bottom <= visibleBottom) {
+      return
+    }
+  }
   active.scrollIntoView?.({ block: 'nearest' })
 }
 
@@ -74,8 +146,20 @@ function syncVisualViewport(): void {
 
   const layoutHeight = window.innerHeight || document.documentElement.clientHeight
   const occluded = Math.max(0, Math.round(layoutHeight - viewport.height - viewport.offsetTop))
-  if (occluded > 80) {
-    keyboardInset.value = occluded
+  const nextInset = occluded > 80 ? occluded : 0
+  if (nextInset !== keyboardInset.value) {
+    keyboardResizing = true
+    if (dragging.value) {
+      resetDrag()
+    }
+    window.clearTimeout(keyboardResizeTimer)
+    keyboardResizeTimer = window.setTimeout(() => {
+      keyboardResizing = false
+    }, 180)
+  }
+
+  if (nextInset > 0) {
+    keyboardInset.value = nextInset
     viewportHeight.value = Math.max(200, Math.floor(viewport.height))
     void nextTick(scrollFocusedControlIntoView)
   } else {
@@ -98,6 +182,8 @@ function unbindVisualViewport(): void {
     window.visualViewport.removeEventListener('scroll', syncVisualViewport)
   }
   viewportBound = false
+  keyboardResizing = false
+  window.clearTimeout(keyboardResizeTimer)
   keyboardInset.value = 0
   viewportHeight.value = null
 }
@@ -106,8 +192,17 @@ function handleFocusIn(event: FocusEvent): void {
   const target = event.target
   if (!(target instanceof HTMLElement) || !target.matches('input, textarea, select')) return
   syncVisualViewport()
-  void nextTick(() => target.scrollIntoView?.({ block: 'nearest' }))
+  void nextTick(scrollFocusedControlIntoView)
 }
+
+watch(
+  () => props.closeDisabled,
+  (disabled) => {
+    if (disabled && dragPointerId !== null) {
+      resetDrag()
+    }
+  }
+)
 
 watch(
   () => props.open,
@@ -115,16 +210,18 @@ watch(
     if (open) {
       wasOpen = true
 
-      if (openSheets.length === 0) {
+      if (openSheets.value.length === 0) {
         releasePageScroll = lockPageScroll()
       }
-      openSheets.push(registration)
+      openSheets.value = [...openSheets.value, registration]
+      lastStackIndex.value = openSheets.value.length - 1
+      syncSheetCount()
       registration.previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
       resetDrag()
       bindVisualViewport()
       await nextTick()
       // 不自动聚焦输入框，避免打开 sheet 就弹出键盘；先把焦点放在对话框本身。
-      if (openSheets.at(-1) === registration) sheet.value?.focus({ preventScroll: true })
+      if (openSheets.value.at(-1) === registration) sheet.value?.focus({ preventScroll: true })
     } else if (wasOpen) {
       wasOpen = false
       unbindVisualViewport()
@@ -141,35 +238,58 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleKeydown)
   unbindVisualViewport()
+  resetDrag()
   unregisterSheet()
 })
 
 function unregisterSheet(): void {
-  const index = openSheets.indexOf(registration)
+  const index = openSheets.value.indexOf(registration)
   if (index < 0) return
 
-  const wasTop = index === openSheets.length - 1
+  const wasTop = index === openSheets.value.length - 1
   const previousFocus = registration.previousFocus
   const closingElement = sheet.value
-  openSheets.splice(index, 1)
+  const nextStack = [...openSheets.value]
+  nextStack.splice(index, 1)
+  openSheets.value = nextStack
+  syncSheetCount()
   registration.previousFocus = null
 
-  for (const upper of openSheets.slice(index)) {
+  for (const upper of nextStack.slice(index)) {
     if (closingElement?.contains(upper.previousFocus)) upper.previousFocus = previousFocus
   }
 
-  if (openSheets.length === 0) {
+  if (nextStack.length === 0) {
     releasePageScroll?.()
     releasePageScroll = undefined
   }
   if (!wasTop) return
 
-  const nextSheet = openSheets.at(-1)?.element()
-  if (previousFocus?.isConnected && (!nextSheet || nextSheet.contains(previousFocus))) {
-    previousFocus.focus({ preventScroll: true })
-  } else {
-    nextSheet?.focus({ preventScroll: true })
+  const nextRegistration = nextStack.at(-1)
+  if (!nextRegistration) {
+    if (previousFocus?.isConnected) {
+      previousFocus.focus({ preventScroll: true })
+    }
+    if (closingElement && document.activeElement instanceof HTMLElement && closingElement.contains(document.activeElement)) {
+      document.activeElement.blur()
+    }
+    return
   }
+
+  // 下层浮层在下一轮 DOM 刷新后才会移除 inert，待刷新后再恢复焦点并复核当前顶层；若原触发元素不可聚焦则回退到下层对话框。
+  void nextTick(() => {
+    if (openSheets.value.at(-1) !== nextRegistration) {
+      return
+    }
+    const nextSheet = nextRegistration.element()
+    if (previousFocus?.isConnected && nextSheet?.contains(previousFocus)) {
+      previousFocus.focus({ preventScroll: true })
+      if (document.activeElement === previousFocus) {
+        return
+      }
+    }
+    nextSheet?.focus({ preventScroll: true })
+  })
 }
 
 function close(): void {
@@ -192,7 +312,7 @@ function focusables(): HTMLElement[] {
 }
 
 function handleKeydown(event: KeyboardEvent): void {
-  if (!props.open || openSheets.at(-1) !== registration) {
+  if (!props.open || openSheets.value.at(-1) !== registration) {
     return
   }
 
@@ -226,30 +346,82 @@ function handleKeydown(event: KeyboardEvent): void {
   }
 }
 
-function startDrag(event: PointerEvent): void {
-  if (props.closeDisabled || dragging.value || event.button !== 0) {
+function isInteractiveTarget(target: EventTarget | null): boolean {
+  return target instanceof Element
+    && Boolean(target.closest('button, a, input, select, textarea, label, [role="button"]'))
+}
+
+function startDrag(event: PointerEvent, fromHeader = false): void {
+  if (props.closeDisabled || dragPointerId !== null || event.button !== 0 || isDesktopDialog() || keyboardResizing) {
     return
   }
 
+  if (fromHeader && isInteractiveTarget(event.target)) {
+    return
+  }
+
+  const target = event.currentTarget as HTMLElement
   dragPointerId = event.pointerId
   dragStartY = event.clientY
-  dragging.value = true
-  dragY.value = 0
-  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+  dragCaptureTarget = target
+  dragSheetHeight = Math.max(240, sheet.value?.offsetHeight || 360)
+  dragBaseOffset = Math.max(0, readVisualTranslateY())
+  dragSamples = [{ y: event.clientY, time: performance.now() }]
+
+  if (!fromHeader) {
+    dragging.value = true
+    dragCaptured = true
+    dragY.value = dragBaseOffset
+    target.setPointerCapture?.(event.pointerId)
+  } else {
+    dragCaptured = false
+  }
 }
 
 function moveDrag(event: PointerEvent): void {
-  if (event.pointerId !== dragPointerId || dragStartY === null) {
+  if (event.pointerId !== dragPointerId || dragStartY === null || props.closeDisabled || keyboardResizing) {
     return
   }
 
-  dragY.value = Math.max(0, event.clientY - dragStartY)
+  const rawDelta = event.clientY - dragStartY
+
+  if (!dragCaptured) {
+    if (Math.abs(rawDelta) < 6) {
+      return
+    }
+    dragCaptured = true
+    dragging.value = true
+    dragCaptureTarget?.setPointerCapture?.(event.pointerId)
+  }
+
+  const now = performance.now()
+  dragSamples.push({ y: event.clientY, time: now })
+  const cutoff = now - 80
+  while (dragSamples.length > 2 && dragSamples[0]!.time < cutoff) {
+    dragSamples.shift()
+  }
+
+  const totalDelta = dragBaseOffset + rawDelta
+  if (totalDelta >= 0) {
+    dragY.value = totalDelta
+  } else if (isReducedMotion()) {
+    dragY.value = 0
+  } else {
+    dragY.value = -24 * (1 - Math.exp(-Math.abs(totalDelta) / 48))
+  }
 }
 
 function resetDrag(): void {
+  if (dragCaptureTarget && dragPointerId !== null && dragCaptureTarget.hasPointerCapture?.(dragPointerId)) {
+    dragCaptureTarget.releasePointerCapture(dragPointerId)
+  }
   dragging.value = false
+  dragCaptured = false
+  dragCaptureTarget = null
   dragStartY = null
   dragPointerId = null
+  dragBaseOffset = 0
+  dragSamples = []
   dragY.value = 0
 }
 
@@ -257,17 +429,73 @@ function cancelDrag(event: PointerEvent): void {
   if (event.pointerId === dragPointerId) resetDrag()
 }
 
+function shouldFlickClose(releaseY: number, releaseTime: number): boolean {
+  if (dragY.value < 24 || dragSamples.length < 2) {
+    return false
+  }
+
+  const samples = [...dragSamples]
+  const lastRecorded = samples.at(-1)!
+  if (releaseTime > lastRecorded.time || releaseY !== lastRecorded.y) {
+    samples.push({ y: releaseY, time: releaseTime })
+  }
+
+  const cutoff = releaseTime - 80
+  while (samples.length > 1 && samples[0]!.time < cutoff) {
+    samples.shift()
+  }
+
+  if (samples.length < 2) {
+    return false
+  }
+
+  const latest = samples.at(-1)!
+  // 回溯找到最后一次真实位移，避免松手与末次 pointermove 同位时掩盖向上回拉。
+  let lastMoved: DragSample | null = null
+  for (let i = samples.length - 2; i >= 0; i--) {
+    if (samples[i]!.y !== latest.y) {
+      lastMoved = samples[i]!
+      break
+    }
+  }
+  if (!lastMoved || latest.y < lastMoved.y) {
+    return false
+  }
+
+  const oldest = samples[0]!
+  const dt = latest.time - oldest.time
+  if (dt <= 0) {
+    return false
+  }
+
+  return (latest.y - oldest.y) / dt >= 0.75
+}
+
 async function endDrag(event: PointerEvent): Promise<void> {
   if (event.pointerId !== dragPointerId) return
 
-  if (dragY.value <= 96 || props.closeDisabled) {
+  const releaseTime = performance.now()
+  const sheetHeight = sheet.value?.offsetHeight ?? 0
+  const distanceThreshold = sheetHeight > 0 ? Math.min(96, Math.round(sheetHeight * 0.28)) : 96
+  const shouldClose = dragging.value
+    && !props.closeDisabled
+    && (dragY.value > distanceThreshold || shouldFlickClose(event.clientY, releaseTime))
+
+  if (!shouldClose) {
     resetDrag()
     return
   }
 
+  if (dragCaptureTarget && dragCaptureTarget.hasPointerCapture?.(event.pointerId)) {
+    dragCaptureTarget.releasePointerCapture(event.pointerId)
+  }
   dragging.value = false
+  dragCaptured = false
+  dragCaptureTarget = null
   dragStartY = null
   dragPointerId = null
+  dragBaseOffset = 0
+  dragSamples = []
   close()
   await nextTick()
 
@@ -282,13 +510,18 @@ async function endDrag(event: PointerEvent): Promise<void> {
       <div
         v-if="open"
         class="sheet-backdrop"
-        :style="keyboardInset > 0 ? { paddingBottom: `${keyboardInset}px` } : undefined"
+        :class="{ 'is-stacked': isStackedOverlay, 'is-dragging': dragging }"
+        :style="{
+          zIndex: backdropZIndex,
+          ...(keyboardInset > 0 ? { paddingBottom: `${keyboardInset}px` } : {}),
+          ...(backdropOpacity !== undefined ? { '--sheet-backdrop-opacity': backdropOpacity } : {})
+        }"
         @click.self="close"
       >
         <section
           ref="sheet"
           class="sheet"
-          :class="{ dragging, 'keyboard-open': keyboardInset > 0 }"
+          :class="{ dragging, 'keyboard-open': keyboardInset > 0, 'is-recessed': isRecessed }"
           :style="{
             '--sheet-drag-y': `${dragY}px`,
             ...(viewportHeight !== null ? { '--sheet-max-height': `${Math.max(200, viewportHeight - 16)}px` } : {})
@@ -296,13 +529,14 @@ async function endDrag(event: PointerEvent): Promise<void> {
           role="dialog"
           aria-modal="true"
           :aria-labelledby="sheetId"
+          :inert="isRecessed || undefined"
           tabindex="-1"
           @focusin="handleFocusIn"
         >
           <div
             class="sheet-grabber"
             aria-hidden="true"
-            @pointerdown="startDrag"
+            @pointerdown="startDrag($event, false)"
             @pointermove="moveDrag"
             @pointerup="endDrag"
             @pointercancel="cancelDrag"
@@ -311,7 +545,14 @@ async function endDrag(event: PointerEvent): Promise<void> {
             <span />
           </div>
 
-          <header class="sheet-head">
+          <header
+            class="sheet-head"
+            @pointerdown="startDrag($event, true)"
+            @pointermove="moveDrag"
+            @pointerup="endDrag"
+            @pointercancel="cancelDrag"
+            @lostpointercapture="cancelDrag"
+          >
             <div>
               <h2 :id="sheetId">{{ title }}</h2>
               <p v-if="subtitle">{{ subtitle }}</p>
@@ -335,6 +576,7 @@ async function endDrag(event: PointerEvent): Promise<void> {
 
 <style scoped>
 .sheet-backdrop {
+  --sheet-backdrop-opacity: 1;
   box-sizing: border-box;
   position: fixed;
   inset: 0;
@@ -342,7 +584,26 @@ async function endDrag(event: PointerEvent): Promise<void> {
   display: flex;
   justify-content: center;
   align-items: flex-end;
+  isolation: isolate;
+}
+
+.sheet-backdrop::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
   background: var(--color-overlay);
+  opacity: var(--sheet-backdrop-opacity);
+  transition: opacity var(--motion-sheet-out) var(--ease-move);
+  pointer-events: none;
+}
+
+.sheet-backdrop.is-stacked::before {
+  background: color-mix(in srgb, var(--color-overlay) 46%, transparent);
+}
+
+.sheet-backdrop.is-dragging::before {
+  transition: none;
 }
 
 .sheet {
@@ -356,8 +617,15 @@ async function endDrag(event: PointerEvent): Promise<void> {
   background: var(--color-bg-page);
   box-shadow: 0 -8px 30px var(--color-shadow);
   outline: none;
-  transform: translateY(var(--sheet-drag-y, 0px));
-  transition: transform var(--motion-sheet) var(--ease-sheet);
+  transform: translate3d(0, var(--sheet-drag-y, 0px), 0);
+  transition:
+    transform var(--motion-sheet-in) var(--ease-enter),
+    opacity var(--motion-feedback) var(--ease-move);
+}
+
+.sheet.is-recessed {
+  transform: translate3d(0, -6px, 0) scale(0.97);
+  opacity: 0.92;
 }
 
 .sheet.keyboard-open {
@@ -368,9 +636,13 @@ async function endDrag(event: PointerEvent): Promise<void> {
   transition: none;
 }
 
-.sheet-enter-active,
+.sheet-enter-active {
+  transition: opacity var(--motion-sheet-in) var(--ease-enter);
+}
+
 .sheet-leave-active {
-  transition: opacity var(--motion-sheet) ease;
+  transition: opacity var(--motion-sheet-out) var(--ease-exit);
+  pointer-events: none;
 }
 
 .sheet-enter-from,
@@ -378,23 +650,37 @@ async function endDrag(event: PointerEvent): Promise<void> {
   opacity: 0;
 }
 
-.sheet-enter-active .sheet,
+.sheet-enter-active .sheet {
+  transition: transform var(--motion-sheet-in) var(--ease-enter);
+}
+
 .sheet-leave-active .sheet {
-  transition: transform var(--motion-sheet) var(--ease-sheet);
+  transition: transform var(--motion-sheet-out) var(--ease-exit);
 }
 
 .sheet-enter-from .sheet,
 .sheet-leave-to .sheet {
-  transform: translateY(100%);
+  transform: translate3d(0, 100%, 0);
+}
+
+.sheet-backdrop.is-dragging:not(.sheet-leave-active) .sheet,
+.sheet-backdrop:not(.sheet-leave-active) .sheet.dragging {
+  transition: none;
 }
 
 .sheet-grabber {
   display: grid;
   place-items: center;
-  height: 28px;
-  margin: 0 calc(var(--page-gutter) * -1);
+  height: 44px;
+  margin: 0 calc(var(--page-gutter) * -1) -14px;
+  padding-bottom: 14px;
+  box-sizing: border-box;
   touch-action: none;
   cursor: grab;
+}
+
+.sheet-grabber:active {
+  cursor: grabbing;
 }
 
 .sheet-grabber span {
@@ -410,6 +696,7 @@ async function endDrag(event: PointerEvent): Promise<void> {
   align-items: flex-start;
   gap: 12px;
   margin-bottom: 12px;
+  touch-action: pan-x;
 }
 
 .sheet-head h2 {
@@ -439,6 +726,10 @@ async function endDrag(event: PointerEvent): Promise<void> {
   font-size: var(--text-caption);
   font-weight: 600;
   white-space: nowrap;
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    color var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-settle);
 }
 
 .sheet-close-icon {
@@ -448,9 +739,16 @@ async function endDrag(event: PointerEvent): Promise<void> {
   margin: auto;
 }
 
-.sheet-close:hover:not(:disabled) {
-  background: var(--color-brand-soft);
-  color: var(--color-brand);
+@media (hover: hover) and (pointer: fine) {
+  .sheet-close:hover:not(:disabled) {
+    background: var(--color-brand-soft);
+    color: var(--color-brand);
+  }
+}
+
+.sheet-close:active:not(:disabled) {
+  transform: scale(0.94);
+  transition-duration: var(--motion-press-in);
 }
 
 .sheet-body {
@@ -462,18 +760,81 @@ async function endDrag(event: PointerEvent): Promise<void> {
 @media (min-width: 600px) {
   .sheet-backdrop {
     align-items: center;
+    padding: 20px;
+  }
+
+  .sheet-grabber {
+    display: none;
   }
 
   .sheet {
+    padding-top: 20px;
     border-radius: var(--radius-sheet);
+    box-shadow: var(--shadow-float);
+  }
+
+  .sheet-head {
+    touch-action: auto;
+  }
+
+  .sheet-enter-active {
+    transition: opacity var(--motion-dialog-in) var(--ease-enter);
+  }
+
+  .sheet-leave-active {
+    transition: opacity var(--motion-dialog-out) var(--ease-exit);
+  }
+
+  .sheet-enter-active .sheet {
+    transition:
+      transform var(--motion-dialog-in) var(--ease-enter),
+      opacity var(--motion-dialog-in) var(--ease-enter);
+  }
+
+  .sheet-leave-active .sheet {
+    transition:
+      transform var(--motion-dialog-out) var(--ease-exit),
+      opacity var(--motion-dialog-out) var(--ease-exit);
+  }
+
+  .sheet-enter-from .sheet,
+  .sheet-leave-to .sheet {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0) scale(0.985);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sheet,
+  .sheet-backdrop::before {
+    transition: opacity var(--motion-reduced-fade) var(--ease-linear);
+  }
+
+  .sheet {
+    transition: opacity var(--motion-reduced-fade) var(--ease-linear);
+  }
+
+  .sheet.is-recessed {
+    transform: none;
+  }
+
+  .sheet-enter-active,
+  .sheet-leave-active {
+    transition: opacity var(--motion-reduced-fade) var(--ease-linear);
+  }
+
   .sheet-enter-active .sheet,
   .sheet-leave-active .sheet {
-    transition: none;
+    transition: opacity var(--motion-reduced-fade) var(--ease-linear);
+  }
+
+  .sheet-enter-from .sheet,
+  .sheet-leave-to .sheet {
+    opacity: 0;
+    transform: none;
+  }
+
+  .sheet-close:active:not(:disabled) {
+    transform: none;
   }
 }
 </style>

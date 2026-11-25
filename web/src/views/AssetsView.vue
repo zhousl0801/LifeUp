@@ -276,10 +276,20 @@ function goHome(): void {
   color: var(--color-brand);
   font-size: 0.875rem;
   font-weight: 600;
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-settle);
 }
 
-.maintenance-link:hover {
-  background: var(--color-brand-soft);
+@media (hover: hover) and (pointer: fine) {
+  .maintenance-link:hover {
+    background: var(--color-brand-soft);
+  }
+}
+
+.maintenance-link:active {
+  transform: scale(0.97);
+  transition-duration: var(--motion-press-in);
 }
 
 .maintenance-list {
@@ -444,5 +454,20 @@ function goHome(): void {
   font-size: var(--text-footnote);
   font-weight: 600;
   text-decoration: none;
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-settle);
+}
+
+.callout-action:active {
+  transform: scale(0.97);
+  transition-duration: var(--motion-press-in);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .maintenance-link:active,
+  .callout-action:active {
+    transform: none;
+  }
 }
 </style>

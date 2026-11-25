@@ -3,6 +3,7 @@ import type { ECharts } from 'echarts/core'
 import type { EChartsOption } from 'echarts'
 import { loadChartRuntime } from '../utils/chartRuntime'
 import { resolvedTheme } from '../utils/theme'
+import { useReducedMotion } from './useReducedMotion'
 
 export interface UseEChartOptions {
   watchSources?: WatchSource | WatchSource[]
@@ -21,6 +22,7 @@ export function useEChart(
   let chart: ECharts | null = null
   let disposed = false
   let resizeObserver: ResizeObserver | null = null
+  const reducedMotion = useReducedMotion()
 
   function resize(): void {
     chart?.resize()
@@ -65,7 +67,7 @@ export function useEChart(
     )
   }
 
-  watch(resolvedTheme, () => render())
+  watch([resolvedTheme, reducedMotion], () => render())
 
   onBeforeUnmount(() => {
     disposed = true

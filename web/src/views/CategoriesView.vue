@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, useTemplateRef } from 'vue'
 import { useRouter } from 'vue-router'
 import { createCategory, fetchCategories, reorderCategories, updateCategory } from '../api/categories'
 import { getApiErrorMessage } from '../api/client'
+import { useSlidingIndicator } from '../composables/useSlidingIndicator'
 import AppIcon from '../components/AppIcon.vue'
 import BottomSheet from '../components/BottomSheet.vue'
 import CategoryIcon from '../components/CategoryIcon.vue'
@@ -32,6 +33,12 @@ interface DragGesture {
 
 const router = useRouter()
 const kind = ref<EntryKind>('expense')
+const kindTrackRef = useTemplateRef<HTMLElement>('kindTrack')
+const { ready: kindPillReady, animated: kindPillAnimated, indicatorStyle: kindPillStyle } = useSlidingIndicator(
+  kindTrackRef,
+  kind,
+  { activeSelector: '[aria-pressed="true"]' }
+)
 const items = ref<EntryCategory[]>([])
 const loading = ref(false)
 const saving = ref(false)
@@ -357,7 +364,14 @@ onBeforeUnmount(() => {
         </button>
       </template>
     </PageHeader>
-    <div class="category-kind" role="group" aria-label="收支方向">
+    <div ref="kindTrack" class="category-kind" :class="{ 'has-pill': kindPillReady }" role="group" aria-label="收支方向">
+      <span
+        v-if="kindPillReady"
+        class="kind-pill"
+        :class="{ 'is-animated': kindPillAnimated }"
+        :style="kindPillStyle"
+        aria-hidden="true"
+      />
       <button v-for="option in (['expense', 'income'] as const)" :key="option" type="button"
         :aria-pressed="kind === option" :disabled="saving" @click="switchKind(option)">
         {{ option === 'expense' ? '支出' : '收入' }}
@@ -402,7 +416,7 @@ onBeforeUnmount(() => {
     <p class="category-status" role="status">{{ status }}</p>
     <Teleport to="body">
       <div v-if="dragItem" class="category-ghost" aria-hidden="true"
-        :style="{ left: Math.max(8, dragPoint.x - 140) + 'px', top: Math.max(8, dragPoint.y - 48) + 'px' }">
+        :style="{ transform: `translate3d(${Math.max(8, dragPoint.x - 140)}px, ${Math.max(8, dragPoint.y - 48)}px, 0) scale(1.02)` }">
         <CategoryIcon :name="dragItem.name" :icon-key="dragItem.iconKey" :group="dragItem.isGroup" :size="20" />
         <span>{{ dragItem.name }}</span>
       </div>
@@ -473,14 +487,25 @@ onBeforeUnmount(() => {
 .category-page .add-group { padding: 0 8px; color: var(--color-brand); background: var(--color-brand-soft); font-weight: 650; }
 .add-group .app-icon, .add-child .app-icon { width: 14px; height: 14px; flex: none; }
 .category-kind {
+  position: relative;
   display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px;
   background: var(--color-bg-subtle); border-radius: var(--radius-control);
 }
+.kind-pill {
+  position: absolute; top: 4px; bottom: 4px; left: 0;
+  border-radius: var(--radius-control); background: var(--color-bg-surface);
+  box-shadow: 0 2px 6px var(--color-shadow);
+  transform-origin: left center; pointer-events: none;
+}
+.kind-pill.is-animated { transition: transform var(--motion-segment) var(--ease-move); }
 .category-kind button {
+  position: relative; z-index: 1;
   min-height: 44px; border: 0; border-radius: var(--radius-control);
   color: var(--color-text-secondary); background: transparent;
+  transition: color var(--motion-feedback) var(--ease-move);
 }
 .category-kind button[aria-pressed='true'] { background: var(--color-bg-surface); color: var(--color-brand); font-weight: 700; }
+.category-kind.has-pill button[aria-pressed='true'] { background: transparent; }
 .category-hint, .category-status { margin: 10px 2px; color: var(--color-text-secondary); font-size: var(--text-footnote); }
 .category-status { color: var(--color-brand); }
 .category-status:empty { margin: 0; }
@@ -488,40 +513,63 @@ onBeforeUnmount(() => {
 .category-card {
   position: relative; background: var(--color-bg-surface); border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-card);
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    border-color var(--motion-feedback) var(--ease-move);
 }
 .category-row {
   position: relative; display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center;
 }
 .category-group { grid-template-columns: 44px minmax(0, 1fr) 44px 44px; padding: 4px 4px 4px 7px; }
-.category-child { margin-inline: 19px 4px; border-top: 1px solid var(--color-border-subtle); }
+.category-child {
+  margin-inline: 19px 4px; border-top: 1px solid var(--color-border-subtle);
+  animation: motion-collapse-in var(--motion-collapse-in) var(--ease-enter);
+}
 .icon-control, .category-name {
   min-height: 44px; padding: 0; border: 0; border-radius: var(--radius-control); background: transparent;
+  transition: background-color var(--motion-feedback) var(--ease-move);
+}
+@media (hover: hover) and (pointer: fine) {
+  .icon-control:hover:not(:disabled), .category-name:hover:not(:disabled) {
+    background: var(--color-bg-hover);
+  }
+}
+.icon-control:active:not(:disabled), .category-name:active:not(:disabled) {
+  background: var(--color-bg-hover);
 }
 .category-row .icon-control { display: grid; place-items: center; width: 44px; color: var(--color-text-secondary); }
 .category-name { color: var(--color-text-primary); display: flex; align-items: center; text-align: left; flex-wrap: wrap; gap: 4px 7px; overflow-wrap: anywhere; }
 .category-group .category-name { font-weight: 700; }
 .category-name small { color: var(--color-text-secondary); font-size: var(--text-footnote); }
-.fold-control .app-icon { width: 15px; height: 15px; }
+.fold-control .app-icon {
+  width: 15px; height: 15px;
+  transition: transform var(--motion-feedback) var(--ease-move);
+}
 .fold-control[aria-expanded='true'] .app-icon { transform: rotate(90deg); }
 .drag-handle { touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab; }
+.drag-handle:active { cursor: grabbing; }
 .grip {
   width: 12px; height: 15px;
   background: radial-gradient(circle, currentColor 1px, transparent 1.6px) 0 0 / 6px 5px;
 }
 .category-page .add-child { margin-left: 26px; padding-inline: 8px; background: transparent; color: var(--color-brand); }
 .category-card.drop-card { background: var(--color-brand-soft); border-color: var(--color-brand); }
-.drag-source { opacity: .5; }
+.drag-source { opacity: .45; transition: opacity var(--motion-feedback) var(--ease-move); }
 .insert-before::after, .insert-after::after {
   content: ''; position: absolute; z-index: 1; inset-inline: 5px; height: 3px;
   background: var(--color-brand); border-radius: 2px; pointer-events: none;
+  animation: motion-feedback-in var(--motion-feedback) var(--ease-enter);
 }
 .insert-before::after { top: -2px; }
 .insert-after::after { bottom: -2px; }
 .category-ghost {
-  position: fixed; z-index: 50; display: flex; align-items: center; gap: 6px; pointer-events: none;
+  position: fixed; top: 0; left: 0; z-index: 50; display: flex; align-items: center; gap: 6px; pointer-events: none;
   max-width: 155px; padding: 7px 10px; overflow-wrap: anywhere;
   background: var(--color-bg-surface); color: var(--color-text-primary);
   border: 1px solid var(--color-brand); border-radius: var(--radius-control);
+  box-shadow: var(--shadow-float);
+  will-change: transform;
+  animation: motion-feedback-in var(--motion-feedback) var(--ease-enter);
 }
 .category-ghost span { min-width: 0; }
 .category-error { color: var(--color-danger); font-size: var(--text-footnote); }
@@ -554,8 +602,32 @@ onBeforeUnmount(() => {
 .category-icon-grid button, .move-actions button {
   display: grid; place-items: center; min-height: 44px; border: 1px solid transparent;
   border-radius: var(--radius-control); color: var(--color-text-primary); background: var(--color-bg-subtle);
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    border-color var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-settle);
+}
+.category-icon-grid button:active:not(:disabled), .move-actions button:active:not(:disabled) {
+  transform: scale(0.96);
+  transition-duration: var(--motion-press-in);
 }
 .category-icon-grid button[aria-pressed='true'] { border-color: var(--color-brand); background: var(--color-brand-soft); }
 .move-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .move-actions button:disabled { color: var(--color-text-disabled); }
+
+@media (prefers-reduced-motion: reduce) {
+  .kind-pill.is-animated,
+  .fold-control .app-icon {
+    transition: none;
+  }
+
+  .category-child {
+    animation: none;
+  }
+
+  .category-icon-grid button:active:not(:disabled),
+  .move-actions button:active:not(:disabled) {
+    transform: none;
+  }
+}
 </style>

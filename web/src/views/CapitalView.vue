@@ -480,6 +480,20 @@ function netTone(value: number): string {
   box-shadow: var(--shadow-card);
   color: var(--color-text-primary);
   place-items: center;
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-settle);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .header-action:hover {
+    background: var(--color-bg-hover);
+  }
+}
+
+.header-action:active {
+  transform: scale(0.95);
+  transition-duration: var(--motion-press-in);
 }
 
 .hero {
@@ -649,6 +663,14 @@ function netTone(value: number): string {
   box-shadow: 0 12px 28px rgba(72, 64, 194, 0.22);
   color: var(--color-on-brand);
   text-align: left;
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-settle);
+}
+
+.set-goal:active {
+  transform: scale(0.98);
+  transition-duration: var(--motion-press-in);
 }
 
 .set-goal-icon {
@@ -694,18 +716,12 @@ function netTone(value: number): string {
   margin-left: auto;
   border-radius: 50%;
   background: var(--color-accent-mint);
-  animation: goal-pulse 2s ease-out infinite;
-}
-
-@keyframes goal-pulse {
-  0% { box-shadow: 0 0 0 0 rgba(124, 231, 177, 0.55); }
-  70% { box-shadow: 0 0 0 8px rgba(124, 231, 177, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(124, 231, 177, 0); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .set-goal-pulse {
-    animation: none;
+  .header-action:active,
+  .set-goal:active {
+    transform: none;
   }
 }
 

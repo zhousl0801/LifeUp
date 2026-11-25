@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, shallowRef, watch } from 'vue'
 import LoadingState from './LoadingState.vue'
 import { todayInBusinessTimeZone } from '../utils/format'
 import type { MarketDay, TradingDay } from '../types/plan'
@@ -16,6 +16,22 @@ const emit = defineEmits<{ prev: []; next: []; retry: [] }>()
 
 const today = todayInBusinessTimeZone()
 const weekdays = ['一', '二', '三', '四', '五', '六', '日']
+const monthDirection = shallowRef<-1 | 0 | 1>(0)
+const monthKey = computed(() => `${props.year}-${props.month}`)
+const gridMotionClass = computed(() => {
+  if (monthDirection.value === -1) return 'is-prev'
+  if (monthDirection.value === 1) return 'is-next'
+  return ''
+})
+
+watch(
+  () => props.year * 12 + props.month,
+  (next, prev) => {
+    if (prev !== undefined && next !== prev) {
+      monthDirection.value = next > prev ? 1 : -1
+    }
+  }
+)
 
 const monthLabel = computed(() => `${props.year}年${props.month}月`)
 const leadingBlanks = computed(() => {
@@ -106,16 +122,18 @@ function closureTitle(market: MarketDay): string {
       <span><i class="legend-dot hk" />港股休市</span>
     </div>
 
-    <LoadingState v-if="loading" variant="list" :rows="4" compact label="正在读取日历" />
-    <div v-else-if="error" class="calendar-state error">
-      <span>{{ error }}</span>
-      <button type="button" class="text-button" @click="emit('retry')">重试</button>
-    </div>
-    <template v-else>
+    <div class="calendar-body">
       <div class="calendar-weekdays">
         <span v-for="weekday in weekdays" :key="weekday">{{ weekday }}</span>
       </div>
-      <div class="calendar-grid">
+      <div v-if="loading" class="calendar-loading-shell">
+        <LoadingState variant="list" :rows="4" compact label="正在读取日历" />
+      </div>
+      <div v-else-if="error" class="calendar-state error">
+        <span>{{ error }}</span>
+        <button type="button" class="text-button" @click="emit('retry')">重试</button>
+      </div>
+      <div v-else :key="monthKey" class="calendar-grid" :class="gridMotionClass">
         <div
           v-for="(day, index) in cells"
           :key="day?.date ?? `blank-${index}`"
@@ -138,15 +156,17 @@ function closureTitle(market: MarketDay): string {
           </template>
         </div>
       </div>
-      <p class="calendar-summary">
-        <template v-if="overseasClosedDays.length">
-          本月有 {{ overseasClosedDays.length }} 天因海外休市，三地交易日计划顺延。
-        </template>
-        <template v-else>
-          本月中国交易日三地均开市。
+      <p class="calendar-summary" :class="{ 'is-placeholder': loading || Boolean(error) }">
+        <template v-if="!loading && !error">
+          <template v-if="overseasClosedDays.length">
+            本月有 {{ overseasClosedDays.length }} 天因海外休市，三地交易日计划顺延。
+          </template>
+          <template v-else>
+            本月中国交易日三地均开市。
+          </template>
         </template>
       </p>
-    </template>
+    </div>
 
     <details v-if="coverage.length" class="calendar-sources">
       <summary>日历来源与覆盖</summary>
@@ -228,10 +248,20 @@ function closureTitle(market: MarketDay): string {
   color: var(--color-brand);
   font-size: 1.125rem;
   line-height: 1;
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-settle);
 }
 
-.calendar-nav button:hover {
-  background: var(--color-brand-soft);
+@media (hover: hover) and (pointer: fine) {
+  .calendar-nav button:hover {
+    background: var(--color-brand-soft);
+  }
+}
+
+.calendar-nav button:active {
+  transform: scale(0.92);
+  transition-duration: var(--motion-press-in);
 }
 
 .calendar-nav b {
@@ -318,10 +348,44 @@ function closureTitle(market: MarketDay): string {
   text-align: center;
 }
 
+.calendar-body {
+  min-height: 332px;
+}
+
+.calendar-loading-shell {
+  min-height: 262px;
+  padding-top: 6px;
+  box-sizing: border-box;
+}
+
+.calendar-summary.is-placeholder {
+  min-height: 1.5em;
+}
+
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 2px;
+  min-height: 262px;
+  align-content: start;
+}
+
+.calendar-grid.is-prev {
+  animation: plan-cal-prev var(--motion-content-in) var(--ease-enter);
+}
+
+.calendar-grid.is-next {
+  animation: plan-cal-next var(--motion-content-in) var(--ease-enter);
+}
+
+@keyframes plan-cal-prev {
+  from { opacity: 0; transform: translate3d(-8px, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes plan-cal-next {
+  from { opacity: 0; transform: translate3d(8px, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
 .calendar-cell {
@@ -409,14 +473,35 @@ function closureTitle(market: MarketDay): string {
 }
 
 .calendar-sources > summary::after {
+  display: inline-block;
   content: '⌄';
   margin-left: 4px;
   color: var(--color-brand);
+  transition: transform var(--motion-feedback) var(--ease-move);
 }
 
 .calendar-sources[open] > summary::after {
-  display: inline-block;
   transform: rotate(180deg);
+}
+
+.calendar-sources[open] > :not(summary) {
+  animation: motion-collapse-in var(--motion-collapse-in) var(--ease-enter);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .calendar-grid.is-prev,
+  .calendar-grid.is-next,
+  .calendar-sources[open] > :not(summary) {
+    animation: none;
+  }
+
+  .calendar-nav button:active {
+    transform: none;
+  }
+
+  .calendar-sources > summary::after {
+    transition: none;
+  }
 }
 
 .calendar-source {

@@ -4,6 +4,7 @@ import type { ECharts } from 'echarts/core'
 import type { EChartsOption } from 'echarts'
 import { useEChart } from '../composables/useEChart'
 import { useAmountPrivacy } from '../composables/useAmountPrivacy'
+import { isReducedMotion } from '../composables/useReducedMotion'
 import { formatMoney, sumAmounts } from '../utils/format'
 import { chartFontSize, chartTheme } from '../utils/chartTheme'
 import type { EntryPeriod, EntryStatsPoint } from '../types/entry'
@@ -26,12 +27,6 @@ const emit = defineEmits<{
 const { amountsMasked } = useAmountPrivacy()
 const container = ref<HTMLElement | null>(null)
 
-function prefersReducedMotion(): boolean {
-  return typeof window !== 'undefined'
-    && typeof window.matchMedia === 'function'
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
-}
-
 function formatAxisMoney(value: number): string {
   const abs = Math.abs(value)
   if (abs >= 10000) {
@@ -45,7 +40,7 @@ function formatAxisMoney(value: number): string {
 
 function buildOption(): EChartsOption {
   const theme = chartTheme()
-  const animate = !prefersReducedMotion()
+  const animate = !isReducedMotion()
   const labels = props.points.map((point) => point.label)
   const xInterval = props.period === 'month' ? 4 : 0
 
@@ -56,7 +51,8 @@ function buildOption(): EChartsOption {
 
     return {
       animation: animate,
-      animationDuration: 280,
+      animationDuration: 220,
+      animationEasing: 'cubicOut',
       grid: { left: 46, right: 12, top: 28, bottom: 26 },
       legend: {
         top: 0,
@@ -154,7 +150,8 @@ function buildOption(): EChartsOption {
 
   return {
     animation: animate,
-    animationDuration: 280,
+    animationDuration: 220,
+    animationEasing: 'cubicOut',
     grid: { left: 46, right: 12, top: 20, bottom: 24 },
     tooltip: {
       trigger: 'axis',

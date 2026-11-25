@@ -500,30 +500,32 @@ function goBack(): void {
                 </small>
               </span>
             </label>
-            <div v-if="form.monthlyEnabled" class="monthly-fields">
-              <div class="form-row">
+            <Transition name="collapse-reveal">
+              <div v-if="form.monthlyEnabled" class="monthly-fields">
+                <div class="form-row">
+                  <label class="form-field">
+                    <span>每月金额（元）</span>
+                    <input
+                      v-model="form.monthlyAmount"
+                      type="text"
+                      inputmode="decimal"
+                      autocomplete="off"
+                      placeholder="0.00"
+                      @input="formError = ''"
+                    />
+                  </label>
+                  <label class="form-field">
+                    <span>每月日期</span>
+                    <input v-model="form.monthlyDay" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" autocomplete="off" placeholder="15" @input="formError = ''" />
+                  </label>
+                </div>
                 <label class="form-field">
-                  <span>每月金额（元）</span>
-                  <input
-                    v-model="form.monthlyAmount"
-                    type="text"
-                    inputmode="decimal"
-                    autocomplete="off"
-                    placeholder="0.00"
-                    @input="formError = ''"
-                  />
+                  <span>执行时间</span>
+                  <input v-model="form.monthlyTime" type="time" @input="formError = ''" />
                 </label>
-                <label class="form-field">
-                  <span>每月日期</span>
-                  <input v-model="form.monthlyDay" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" autocomplete="off" placeholder="15" @input="formError = ''" />
-                </label>
+                <small class="form-hint">当月没有该日期时按当月最后一天执行。</small>
               </div>
-              <label class="form-field">
-                <span>执行时间</span>
-                <input v-model="form.monthlyTime" type="time" @input="formError = ''" />
-              </label>
-              <small class="form-hint">当月没有该日期时按当月最后一天执行。</small>
-            </div>
+            </Transition>
           </section>
         </template>
 

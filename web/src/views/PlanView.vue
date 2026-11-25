@@ -19,6 +19,7 @@ import { createFundPosition, fetchFundOverview } from '../api/funds'
 import { fetchSalaryProfile } from '../api/salary'
 import { ApiError, getApiErrorMessage } from '../api/client'
 import { useFundSearch } from '../composables/useFundSearch'
+import { isReducedMotion } from '../composables/useReducedMotion'
 import { toast } from '../composables/useMessage'
 import { useUnsavedSheet } from '../composables/useUnsavedSheet'
 import AppIcon from '../components/AppIcon.vue'
@@ -494,7 +495,10 @@ function goOccurrencePage(page: number): void {
 
   if (target !== occurrencePage.value) {
     void loadOccurrences(target).then(() => {
-      occurrenceSection.value?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
+      occurrenceSection.value?.scrollIntoView?.({
+        block: 'start',
+        behavior: isReducedMotion() ? 'auto' : 'smooth'
+      })
     })
   }
 }
@@ -942,7 +946,8 @@ function goBack(): void {
           >＋ 新增</button>
         </header>
 
-        <div v-if="isGroupExpanded(group.key)" class="plan-group-body">
+        <Transition name="collapse-reveal">
+          <div v-if="isGroupExpanded(group.key)" class="plan-group-body">
           <template v-if="group.key === 'fund'">
             <div v-if="fundPlanGroups.length" class="fund-plan-list">
               <article
@@ -1092,7 +1097,8 @@ function goBack(): void {
               </footer>
             </article>
           </template>
-        </div>
+          </div>
+        </Transition>
       </section>
 
       <template v-if="actionable.length">
@@ -1164,47 +1170,49 @@ function goBack(): void {
           <span class="section-chevron" :class="{ open: occurrencesExpanded }" aria-hidden="true">⌄</span>
         </span>
       </button>
-      <template v-if="occurrencesExpanded">
-        <div v-if="occurrenceError" class="occurrence-state">
-          <span>{{ occurrenceError }}</span>
-          <LoadingButton class="text-button" :loading="occurrenceLoading" loading-label="加载中…" @click="loadOccurrences()">重试</LoadingButton>
+      <Transition name="collapse-reveal">
+        <div v-if="occurrencesExpanded" class="occurrence-panel">
+          <div v-if="occurrenceError" class="occurrence-state">
+            <span>{{ occurrenceError }}</span>
+            <LoadingButton class="text-button" :loading="occurrenceLoading" loading-label="加载中…" @click="loadOccurrences()">重试</LoadingButton>
+          </div>
+          <template v-else>
+            <section
+              v-if="occurrenceItems.length"
+              class="occurrence-list"
+              :class="{ 'is-loading': occurrenceLoading }"
+            >
+              <article v-for="occurrence in occurrenceItems" :key="occurrence.id" class="occurrence-card">
+                <div>
+                  <strong>{{ planDisplayName(occurrence.planId, occurrence.planName) }}</strong>
+                  <small>
+                    {{ occurrence.dueDate }} {{ occurrence.dueTime.slice(0, 5) }} · ¥{{ formatMoney(occurrence.amount) }} ·
+                    <span :class="statusClass(occurrence.status)">{{ statusLabel(occurrence.status) }}</span>
+                  </small>
+                  <small v-if="occurrence.errorMessage" class="occurrence-error">{{ occurrence.errorMessage }}</small>
+                </div>
+              </article>
+            </section>
+            <LoadingState v-else-if="occurrenceLoading" variant="list" :rows="3" compact label="正在读取执行记录" />
+            <p v-else class="summary-note">还没有执行记录。</p>
+            <nav v-if="occurrenceTotal > occurrencePageSize" class="occurrence-pagination" aria-label="执行记录分页">
+              <button
+                type="button"
+                class="pagination-button"
+                :disabled="occurrencePage <= 1 || occurrenceLoading"
+                @click="goOccurrencePage(occurrencePage - 1)"
+              >上一页</button>
+              <span class="pagination-status">第 {{ occurrencePage }} / {{ occurrenceTotalPages }} 页</span>
+              <button
+                type="button"
+                class="pagination-button"
+                :disabled="occurrencePage >= occurrenceTotalPages || occurrenceLoading"
+                @click="goOccurrencePage(occurrencePage + 1)"
+              >下一页</button>
+            </nav>
+          </template>
         </div>
-        <template v-else>
-          <section
-            v-if="occurrenceItems.length"
-            class="occurrence-list"
-            :class="{ 'is-loading': occurrenceLoading }"
-          >
-            <article v-for="occurrence in occurrenceItems" :key="occurrence.id" class="occurrence-card">
-              <div>
-                <strong>{{ planDisplayName(occurrence.planId, occurrence.planName) }}</strong>
-                <small>
-                  {{ occurrence.dueDate }} {{ occurrence.dueTime.slice(0, 5) }} · ¥{{ formatMoney(occurrence.amount) }} ·
-                  <span :class="statusClass(occurrence.status)">{{ statusLabel(occurrence.status) }}</span>
-                </small>
-                <small v-if="occurrence.errorMessage" class="occurrence-error">{{ occurrence.errorMessage }}</small>
-              </div>
-            </article>
-          </section>
-          <LoadingState v-else-if="occurrenceLoading" variant="list" :rows="3" compact label="正在读取执行记录" />
-          <p v-else class="summary-note">还没有执行记录。</p>
-          <nav v-if="occurrenceTotal > occurrencePageSize" class="occurrence-pagination" aria-label="执行记录分页">
-            <button
-              type="button"
-              class="pagination-button"
-              :disabled="occurrencePage <= 1 || occurrenceLoading"
-              @click="goOccurrencePage(occurrencePage - 1)"
-            >上一页</button>
-            <span class="pagination-status">第 {{ occurrencePage }} / {{ occurrenceTotalPages }} 页</span>
-            <button
-              type="button"
-              class="pagination-button"
-              :disabled="occurrencePage >= occurrenceTotalPages || occurrenceLoading"
-              @click="goOccurrencePage(occurrencePage + 1)"
-            >下一页</button>
-          </nav>
-        </template>
-      </template>
+      </Transition>
     </template>
 
     <BottomSheet
@@ -1442,15 +1450,20 @@ function goBack(): void {
   background: var(--color-bg-surface);
   color: var(--color-brand);
   box-shadow: var(--shadow-card);
-  transition: background var(--motion-fast) ease, transform var(--motion-fast) ease;
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-move);
 }
 
-.header-action:hover:not(:disabled) {
-  background: var(--color-bg-hover);
+@media (hover: hover) and (pointer: fine) {
+  .header-action:hover:not(:disabled) {
+    background: var(--color-bg-hover);
+  }
 }
 
 .header-action:active:not(:disabled) {
   transform: scale(.94);
+  transition-duration: var(--motion-press-in);
 }
 
 .header-action:disabled {
@@ -1463,7 +1476,7 @@ function goBack(): void {
 }
 
 .spinning {
-  animation: spin .9s linear infinite;
+  animation: spin var(--motion-busy-cycle) var(--ease-linear) infinite;
 }
 
 @keyframes spin {
@@ -1517,7 +1530,7 @@ function goBack(): void {
   color: var(--color-text-secondary);
   font-size: 0.875rem;
   line-height: 1;
-  transition: transform .15s ease;
+  transition: transform var(--motion-feedback) var(--ease-move);
 }
 
 .section-chevron.open {
@@ -1574,7 +1587,7 @@ function goBack(): void {
   color: var(--color-text-secondary);
   font-size: 0.875rem;
   line-height: 1;
-  transition: transform .15s ease;
+  transition: transform var(--motion-feedback) var(--ease-move);
 }
 
 .group-chevron.open {
@@ -1635,10 +1648,21 @@ function goBack(): void {
   color: var(--color-brand);
   font-size: var(--text-caption);
   font-weight: 700;
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-move);
 }
 
-.group-add:hover {
+@media (hover: hover) and (pointer: fine) {
+  .group-add:hover {
+    background: var(--color-brand-soft-hover);
+  }
+}
+
+.group-add:active {
   background: var(--color-brand-soft-hover);
+  transform: scale(0.97);
+  transition-duration: var(--motion-press-in);
 }
 
 .fund-plan-list {
@@ -1747,10 +1771,21 @@ function goBack(): void {
   font-size: var(--text-caption);
   font-weight: 600;
   white-space: nowrap;
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    opacity var(--motion-press-out) var(--ease-move);
 }
 
-.link-button:hover:not(:disabled) {
+@media (hover: hover) and (pointer: fine) {
+  .link-button:hover:not(:disabled) {
+    background: var(--color-brand-soft);
+  }
+}
+
+.link-button:active:not(:disabled) {
   background: var(--color-brand-soft);
+  opacity: 0.8;
+  transition-duration: var(--motion-press-in);
 }
 
 .link-button:disabled {
@@ -1771,10 +1806,20 @@ function goBack(): void {
   font-size: var(--text-caption);
   font-weight: 700;
   white-space: nowrap;
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-move);
 }
 
-.small-button:hover:not(:disabled) {
-  background: var(--color-brand-soft-hover);
+@media (hover: hover) and (pointer: fine) {
+  .small-button:hover:not(:disabled) {
+    background: var(--color-brand-soft-hover);
+  }
+}
+
+.small-button:active:not(:disabled) {
+  transform: scale(0.97);
+  transition-duration: var(--motion-press-in);
 }
 
 .small-button:disabled {
@@ -1800,11 +1845,15 @@ function goBack(): void {
   color: var(--color-text-secondary);
   font-size: 0.875rem;
   content: '⌄';
-  transition: transform .15s ease;
+  transition: transform var(--motion-feedback) var(--ease-move);
 }
 
 .fund-details[open] > summary::after {
   transform: rotate(180deg);
+}
+
+.fund-details[open] > .fund-plan-rows {
+  animation: motion-collapse-in var(--motion-collapse-in) var(--ease-enter);
 }
 
 .fund-summary-copy {
@@ -1937,7 +1986,7 @@ function goBack(): void {
   display: flex;
   flex-direction: column;
   gap: 9px;
-  transition: opacity .15s ease;
+  transition: opacity var(--motion-feedback) var(--ease-move);
 }
 
 .occurrence-list.is-loading {
@@ -1973,6 +2022,20 @@ function goBack(): void {
   font-size: var(--text-caption);
   font-weight: 600;
   box-shadow: var(--shadow-card);
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-move);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .pagination-button:hover:not(:disabled) {
+    background: var(--color-bg-hover);
+  }
+}
+
+.pagination-button:active:not(:disabled) {
+  transform: scale(0.97);
+  transition-duration: var(--motion-press-in);
 }
 
 .pagination-button:disabled {
@@ -2190,5 +2253,33 @@ function goBack(): void {
 
 .trading-rule-details .form-field {
   margin-top: 10px;
+}
+
+.trading-rule-details[open] > .form-field {
+  animation: motion-collapse-in var(--motion-collapse-in) var(--ease-enter);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinning {
+    animation: none;
+  }
+
+  .header-action:active:not(:disabled),
+  .group-add:active,
+  .small-button:active:not(:disabled),
+  .pagination-button:active:not(:disabled) {
+    transform: none;
+  }
+
+  .section-chevron,
+  .group-chevron,
+  .fund-details > summary::after {
+    transition: none;
+  }
+
+  .fund-details[open] > .fund-plan-rows,
+  .trading-rule-details[open] > .form-field {
+    animation: none;
+  }
 }
 </style>

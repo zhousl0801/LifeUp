@@ -1,7 +1,15 @@
 import { nextTick } from 'vue'
 import { createRouter, createWebHashHistory } from 'vue-router'
+import { commitRouteMotion } from '../utils/routeMotion'
 import { syncStatusBarColor } from '../utils/theme'
 import HomeView from '../views/HomeView.vue'
+
+let popstatePending = false
+if (typeof window !== 'undefined') {
+  window.addEventListener('popstate', () => {
+    popstatePending = true
+  })
+}
 
 const router = createRouter({
   history: createWebHashHistory(import.meta.env.BASE_URL),
@@ -85,7 +93,13 @@ const router = createRouter({
 })
 
 // 新页面渲染完成后再读取顶部色条颜色，使状态栏 theme-color 与当前页面顶部同色。
-router.afterEach(() => {
+router.afterEach((to, from, failure) => {
+  const isBack = popstatePending
+  popstatePending = false
+  if (failure) {
+    return
+  }
+  commitRouteMotion(to, from, isBack)
   void nextTick().then(syncStatusBarColor)
 })
 

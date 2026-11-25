@@ -217,10 +217,18 @@ async function disableSalary(): Promise<void> {
   font-weight: 500;
   text-align: left;
   text-decoration: none;
+  transition: background-color var(--motion-feedback) var(--ease-move);
 }
 
-.list-row:hover {
+@media (hover: hover) and (pointer: fine) {
+  .list-row:hover {
+    background: var(--color-bg-hover);
+  }
+}
+
+.list-row:active {
   background: var(--color-bg-hover);
+  transition-duration: var(--motion-press-in);
 }
 
 .list-row b {

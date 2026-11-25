@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import type { ECharts } from 'echarts/core'
 import type { EChartsOption } from 'echarts'
 import { useEChart } from '../composables/useEChart'
+import { isReducedMotion } from '../composables/useReducedMotion'
 import { formatMoney } from '../utils/format'
 import { chartTheme } from '../utils/chartTheme'
 
@@ -55,13 +56,12 @@ const activeSlice = computed(() =>
 
 function buildOption(): EChartsOption {
   const theme = chartTheme()
-  const animate = !(typeof window !== 'undefined'
-    && typeof window.matchMedia === 'function'
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+  const animate = !isReducedMotion()
 
   return {
     animation: animate,
-    animationDuration: 260,
+    animationDuration: 220,
+    animationEasing: 'cubicOut',
     tooltip: { show: false },
     series: [
       {

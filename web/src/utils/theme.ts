@@ -71,12 +71,14 @@ export function syncStatusBarColor(): void {
     return
   }
 
-  const scrim = document.querySelector<HTMLElement>('.status-bar-scrim')
-  if (!scrim) {
+  // 优先读取无过渡探针，确保色条处于 background-color 过渡中时仍立即同步最终目标色值。
+  const target = document.querySelector<HTMLElement>('.status-bar-scrim-probe')
+    ?? document.querySelector<HTMLElement>('.status-bar-scrim')
+  if (!target) {
     return
   }
 
-  const color = window.getComputedStyle(scrim).backgroundColor
+  const color = window.getComputedStyle(target).backgroundColor
   if (!color || color === 'transparent' || color === 'rgba(0, 0, 0, 0)') {
     return
   }

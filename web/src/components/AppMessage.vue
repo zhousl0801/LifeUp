@@ -93,4 +93,10 @@ const { resolvedTheme } = useTheme()
     max-width: 100%;
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-sonner-toaster].lifeup-toaster [data-sonner-toast].lifeup-toast {
+    transition: opacity var(--motion-reduced-fade) linear !important;
+  }
+}
 </style>

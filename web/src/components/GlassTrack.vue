@@ -7,7 +7,8 @@ export function resetProgressMemory(): void {
 </script>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, useTemplateRef, watch } from 'vue'
+import { isReducedMotion, useReducedMotion } from '../composables/useReducedMotion'
 import type { CapitalMilestone, CapitalStatus, CapitalYearLabel } from '../types/capital'
 import { clampPercent, formatMilestoneTitle, formatMonthLabel, progressAlignment } from '../utils/capital'
 
@@ -23,7 +24,11 @@ const props = defineProps<{
   ariaSummary: string
 }>()
 
+const trackRef = useTemplateRef<HTMLElement>('track')
+const reducedMotion = useReducedMotion()
+const trackWidth = shallowRef(0)
 const displayedProgress = ref(0)
+const targetProgress = shallowRef(clampPercent(props.progressPercent))
 const displayLabel = ref(props.currentLabel)
 const visibleMilestones = ref<CapitalMilestone[]>([])
 const newMilestoneKeys = ref<string[]>([])
@@ -34,13 +39,22 @@ const popoverLeft = ref(0)
 const animating = ref(false)
 let frameId = 0
 let brightTimer: number | undefined
+let resizeObserver: ResizeObserver | null = null
 const newStarTimers: number[] = []
 
 const alignment = computed(() => progressAlignment(displayedProgress.value))
 const isNoTarget = computed(() => props.status === 'noTarget')
 const isReached = computed(() => props.status === 'reached')
 const labelText = computed(() => (isReached.value ? '已达成' : displayLabel.value))
-const trackStyle = computed(() => ({ '--progress': `${displayedProgress.value}%` }))
+const hasMeasuredWidth = computed(() => trackWidth.value > 0)
+const trackStyle = computed(() => {
+  const ratio = displayedProgress.value / 100
+  return {
+    '--progress': `${displayedProgress.value}%`,
+    '--progress-ratio': String(ratio),
+    ...(trackWidth.value > 0 ? { '--progress-px': `${ratio * trackWidth.value}px` } : {})
+  }
+})
 
 function milestoneKey(milestone: CapitalMilestone): string {
   return `${milestone.thresholdAmount}:${milestone.progressPercent}`
@@ -83,17 +97,18 @@ function revealMilestones(progress: number, pop: boolean): void {
 
     const timer = window.setTimeout(() => {
       newMilestoneKeys.value = newMilestoneKeys.value.filter((item) => item !== key)
-    }, 320)
+    }, 220)
     newStarTimers.push(timer)
   }
 }
 
 function animateTo(target: number, duration: number, withBeam: boolean, pop: boolean): void {
   cancelAnimationFrame(frameId)
+  targetProgress.value = target
   animating.value = true
   showBeam.value = withBeam
 
-  if (duration <= 0 || prefersReducedMotion()) {
+  if (duration <= 0 || isReducedMotion()) {
     displayedProgress.value = target
     revealMilestones(target, pop)
     finish(withBeam)
@@ -137,7 +152,7 @@ function finish(withBeam: boolean): void {
     window.clearTimeout(brightTimer)
     brightTimer = window.setTimeout(() => {
       cursorBright.value = false
-    }, 380)
+    }, 220)
   }
 }
 
@@ -150,17 +165,25 @@ function closePopover(): void {
   selectedMilestone.value = null
 }
 
-function prefersReducedMotion(): boolean {
-  return typeof window !== 'undefined'
-    && typeof window.matchMedia === 'function'
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+function syncTrackWidth(): void {
+  const width = trackRef.value?.clientWidth ?? 0
+  if (width > 0) {
+    trackWidth.value = width
+  }
 }
 
 onMounted(() => {
   document.addEventListener('click', closePopover)
+  syncTrackWidth()
+  if (typeof ResizeObserver !== 'undefined' && trackRef.value) {
+    resizeObserver = new ResizeObserver(syncTrackWidth)
+    resizeObserver.observe(trackRef.value)
+  }
+
   const target = clampPercent(props.progressPercent)
+  targetProgress.value = target
   const remembered = lastKnownProgress
-  const from = remembered === null ? 0 : clampPercent(remembered)
+  const from = remembered === null ? target : clampPercent(remembered)
   const withBeam = props.animateUpdates && remembered !== null && target > from
 
   displayedProgress.value = from
@@ -173,8 +196,17 @@ onMounted(() => {
     return
   }
 
-  const pop = remembered === null || withBeam
-  animateTo(target, withBeam ? 800 : remembered === null ? 900 : 600, withBeam, pop)
+  animateTo(target, withBeam ? 280 : 220, withBeam, withBeam)
+})
+
+watch(reducedMotion, (reduced) => {
+  if (!reduced || !animating.value) {
+    return
+  }
+  cancelAnimationFrame(frameId)
+  displayedProgress.value = targetProgress.value
+  revealMilestones(targetProgress.value, false)
+  finish(false)
 })
 
 watch(
@@ -188,7 +220,7 @@ watch(
     }
 
     const withBeam = props.animateUpdates && target > from
-    animateTo(target, withBeam ? 800 : 600, withBeam, withBeam)
+    animateTo(target, withBeam ? 280 : 220, withBeam, withBeam)
   }
 )
 
@@ -218,13 +250,15 @@ watch(
 onBeforeUnmount(() => {
   document.removeEventListener('click', closePopover)
   cancelAnimationFrame(frameId)
+  resizeObserver?.disconnect()
+  resizeObserver = null
   window.clearTimeout(brightTimer)
   newStarTimers.forEach((timer) => window.clearTimeout(timer))
 })
 </script>
 
 <template>
-  <div class="glass" :class="{ 'is-reached': isReached }" role="group" :aria-label="ariaSummary" :style="trackStyle">
+  <div ref="track" class="glass" :class="{ 'is-reached': isReached, 'is-gpu-track': hasMeasuredWidth }" role="group" :aria-label="ariaSummary" :style="trackStyle">
     <span class="glass-slot" aria-hidden="true">
       <span v-if="!isNoTarget" class="glass-fill"></span>
     </span>
@@ -263,10 +297,12 @@ onBeforeUnmount(() => {
       </span>
     </template>
 
-    <div v-if="selectedMilestone" class="glass-pop" :style="{ left: `${popoverLeft}%` }" @click.stop>
-      <b>{{ milestoneDate(selectedMilestone) }}</b>
-      <span>{{ maskedTitle(selectedMilestone) }}</span>
-    </div>
+    <Transition name="popover-fade">
+      <div v-if="selectedMilestone" class="glass-pop" :style="{ left: `${popoverLeft}%` }" @click.stop>
+        <b>{{ milestoneDate(selectedMilestone) }}</b>
+        <span>{{ maskedTitle(selectedMilestone) }}</span>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -310,10 +346,12 @@ onBeforeUnmount(() => {
   top: 0;
   bottom: 0;
   left: 0;
-  width: var(--progress);
+  width: 100%;
   border-radius: 999px;
   background: linear-gradient(90deg, #6FE3B4 0%, #8FE8D6 45%, #C8F0FF 100%);
   box-shadow: 0 0 18px rgba(126, 231, 210, 0.55), 0 0 4px rgba(255, 255, 255, 0.35);
+  transform-origin: left center;
+  transform: scaleX(var(--progress-ratio, 0));
 }
 
 .glass-fill::after {
@@ -334,11 +372,16 @@ onBeforeUnmount(() => {
   z-index: 3;
   width: 4px;
   height: 28px;
-  transform: translateX(-50%);
+  transform: translate3d(-50%, 0, 0);
   border-radius: 999px;
   background: #FFFFFF;
   box-shadow: 0 0 12px rgba(255, 255, 255, 0.85), 0 0 4px #FFFFFF;
-  transition: box-shadow 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: box-shadow var(--motion-data) var(--ease-move);
+}
+
+.glass.is-gpu-track .glass-cursor {
+  left: 0;
+  transform: translate3d(calc(var(--progress-px, 0px) - 50%), 0, 0);
 }
 
 .glass-cursor.is-bright {
@@ -351,7 +394,7 @@ onBeforeUnmount(() => {
   left: var(--progress);
   z-index: 4;
   padding: 5px 9px;
-  transform: translateX(-50%);
+  transform: translate3d(-50%, 0, 0);
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 10px;
   background: rgba(42, 34, 112, 0.92);
@@ -363,11 +406,24 @@ onBeforeUnmount(() => {
 }
 
 .glass-label.left {
-  transform: translateX(0);
+  transform: translate3d(0, 0, 0);
 }
 
 .glass-label.right {
-  transform: translateX(-100%);
+  transform: translate3d(-100%, 0, 0);
+}
+
+.glass.is-gpu-track .glass-label {
+  left: 0;
+  transform: translate3d(calc(var(--progress-px, 0px) - 50%), 0, 0);
+}
+
+.glass.is-gpu-track .glass-label.left {
+  transform: translate3d(var(--progress-px, 0px), 0, 0);
+}
+
+.glass.is-gpu-track .glass-label.right {
+  transform: translate3d(calc(var(--progress-px, 0px) - 100%), 0, 0);
 }
 
 .glass-star {
@@ -390,11 +446,11 @@ onBeforeUnmount(() => {
 }
 
 .glass-star.is-new {
-  animation: star-pop 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: star-pop var(--motion-data) var(--ease-enter) both;
 }
 
 @keyframes star-pop {
-  from { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+  from { transform: translate(-50%, -50%) scale(0.6); opacity: 0; }
   to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
 }
 
@@ -436,11 +492,16 @@ onBeforeUnmount(() => {
   z-index: 3;
   width: 18px;
   height: 16px;
-  transform: translateX(-50%);
+  transform: translate3d(-50%, 0, 0);
   border-radius: 999px;
   background: radial-gradient(ellipse at center, #FFFFFF 0%, #BDEBFF 35%, rgba(189, 235, 255, 0) 72%);
   filter: blur(0.4px);
   pointer-events: none;
+}
+
+.glass.is-gpu-track .glass-beam {
+  left: 0;
+  transform: translate3d(calc(var(--progress-px, 0px) - 50%), 0, 0);
 }
 
 .glass-hint {

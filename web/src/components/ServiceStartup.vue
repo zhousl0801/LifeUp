@@ -69,20 +69,24 @@ onBeforeUnmount(stopChecking)
 </script>
 
 <template>
-  <main v-if="state !== 'checking'" class="page service-startup">
-    <div class="startup-status">
-      <div role="status">
-        <span v-if="state === 'waiting'" class="loading-orbit startup-orbit" aria-hidden="true" />
-        <h1 class="startup-title">{{ state === 'waiting' ? '正在连接服务' : '暂时无法连接' }}</h1>
-        <p class="startup-detail">
-          {{ state === 'waiting' ? '服务启动可能需要约一分钟，连上后会自动加载。' : '请检查网络，或稍后再试。' }}
-        </p>
-      </div>
-      <button v-if="state === 'unavailable'" class="secondary-button" type="button" @click="connect">
-        重新连接
-      </button>
-    </div>
-  </main>
+  <Transition name="content-fade">
+    <main v-if="state !== 'checking'" class="page service-startup">
+      <Transition name="content-fade" mode="out-in">
+        <div :key="state" class="startup-status">
+          <div role="status">
+            <span v-if="state === 'waiting'" class="loading-orbit startup-orbit" aria-hidden="true" />
+            <h1 class="startup-title">{{ state === 'waiting' ? '正在连接服务' : '暂时无法连接' }}</h1>
+            <p class="startup-detail">
+              {{ state === 'waiting' ? '连接后会自动加载。' : '请检查网络，或稍后再试。' }}
+            </p>
+          </div>
+          <button v-if="state === 'unavailable'" class="secondary-button" type="button" @click="connect">
+            重新连接
+          </button>
+        </div>
+      </Transition>
+    </main>
+  </Transition>
 </template>
 
 <style scoped>

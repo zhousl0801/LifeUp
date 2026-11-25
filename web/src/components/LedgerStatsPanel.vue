@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, useTemplateRef, watch } from 'vue'
 import { fetchEntryPeriod } from '../api/entries'
 import { getApiErrorMessage } from '../api/client'
 import { useAmountPrivacy } from '../composables/useAmountPrivacy'
+import { useSlidingIndicator } from '../composables/useSlidingIndicator'
 import type { EntryCategory } from '../types/category'
 import type {
   EntryKind,
@@ -58,6 +59,18 @@ const emit = defineEmits<{
 const selectedPoint = ref<EntryStatsPoint | null>(null)
 const activeCategory = ref<string | null>(null)
 const expandedGroup = ref<string | null>(null)
+const modeTrackRef = useTemplateRef<HTMLElement>('modeTrack')
+const groupSwitchRef = useTemplateRef<HTMLElement>('groupSwitch')
+const sheetSortRef = useTemplateRef<HTMLElement>('sheetSort')
+
+const { ready: modePillReady, animated: modePillAnimated, indicatorStyle: modePillStyle } = useSlidingIndicator(
+  modeTrackRef,
+  () => props.mode
+)
+const { ready: groupPillReady, animated: groupPillAnimated, indicatorStyle: groupPillStyle } = useSlidingIndicator(
+  groupSwitchRef,
+  () => props.byGroup
+)
 
 interface SheetContext {
   title: string
@@ -71,6 +84,11 @@ interface SheetContext {
 const sheetOpen = ref(false)
 const sheetContext = ref<SheetContext | null>(null)
 const sheetSort = ref<'amountDesc' | 'dateDesc'>('amountDesc')
+const { ready: sortPillReady, animated: sortPillAnimated, indicatorStyle: sortPillStyle } = useSlidingIndicator(
+  sheetSortRef,
+  sheetSort,
+  { watchExtra: sheetOpen }
+)
 const sheetEntries = ref<LedgerEntry[]>([])
 const sheetTotalCount = ref(0)
 const sheetLoading = ref(false)
@@ -375,7 +393,14 @@ function resolveIconKey(kind: EntryKind, category: string, fallback?: string | n
   <div class="stats-stack" :class="{ refreshing: loading }">
     <!-- ① 收支结余总览卡 -->
     <section class="stats-card stats-panel">
-      <div class="mode-tabs" role="tablist" aria-label="图表视角">
+      <div ref="modeTrack" class="mode-tabs" :class="{ 'has-pill': modePillReady }" role="tablist" aria-label="图表视角">
+        <span
+          v-if="modePillReady"
+          class="mode-pill"
+          :class="{ 'is-animated': modePillAnimated }"
+          :style="modePillStyle"
+          aria-hidden="true"
+        />
         <button type="button" role="tab" :aria-selected="mode === 'expense'" :class="{ active: mode === 'expense' }" @click="emit('update:mode', 'expense')">支出</button>
         <button type="button" role="tab" :aria-selected="mode === 'income'" :class="{ active: mode === 'income' }" @click="emit('update:mode', 'income')">收入</button>
         <button type="button" role="tab" :aria-selected="mode === 'balance'" :class="{ active: mode === 'balance' }" @click="emit('update:mode', 'balance')">结余</button>
@@ -454,24 +479,26 @@ function resolveIconKey(kind: EntryKind, category: string, fallback?: string | n
       />
       <p v-else class="state-inline">该周期还没有记录。</p>
 
-      <button
-        v-if="selectedPoint"
-        type="button"
-        class="point-callout"
-        @click="openPointSheet(selectedPoint)"
-      >
-        <span class="point-callout-copy">
-          <strong>{{ selectedPoint.label }}</strong>
-          <template v-if="mode === 'balance'">
-            收 {{ maskMoney(selectedPoint.income) }} · 支 {{ maskMoney(selectedPoint.expense) }}
-          </template>
-          <template v-else>
-            {{ mode === 'income' ? '收入' : '支出' }} {{ maskMoney(selectedPoint[mode]) }}
-            <template v-if="period === 'month' && selectedPoint.category && selectedPoint[mode] > 0">（{{ selectedPoint.category }}等）</template>
-          </template>
-        </span>
-        <span class="point-callout-action">看明细 ›</span>
-      </button>
+      <Transition name="collapse-reveal">
+        <button
+          v-if="selectedPoint"
+          type="button"
+          class="point-callout"
+          @click="openPointSheet(selectedPoint)"
+        >
+          <span class="point-callout-copy">
+            <strong>{{ selectedPoint.label }}</strong>
+            <template v-if="mode === 'balance'">
+              收 {{ maskMoney(selectedPoint.income) }} · 支 {{ maskMoney(selectedPoint.expense) }}
+            </template>
+            <template v-else>
+              {{ mode === 'income' ? '收入' : '支出' }} {{ maskMoney(selectedPoint[mode]) }}
+              <template v-if="period === 'month' && selectedPoint.category && selectedPoint[mode] > 0">（{{ selectedPoint.category }}等）</template>
+            </template>
+          </span>
+          <span class="point-callout-action">看明细 ›</span>
+        </button>
+      </Transition>
     </section>
 
     <!-- ③ 分类构成与排行卡 -->
@@ -481,7 +508,14 @@ function resolveIconKey(kind: EntryKind, category: string, fallback?: string | n
           <h2>{{ categoryKind === 'income' ? '收入构成' : '支出构成' }}</h2>
           <span class="tiny">{{ statsCategories.length }} 类</span>
         </div>
-        <div class="mini-switch" role="group" aria-label="分类汇总层级">
+        <div ref="groupSwitch" class="mini-switch" :class="{ 'has-pill': groupPillReady }" role="group" aria-label="分类汇总层级">
+          <span
+            v-if="groupPillReady"
+            class="mini-pill"
+            :class="{ 'is-animated': groupPillAnimated }"
+            :style="groupPillStyle"
+            aria-hidden="true"
+          />
           <button type="button" :class="{ active: byGroup }" @click="emit('update:byGroup', true)">一级</button>
           <button type="button" :class="{ active: !byGroup }" @click="emit('update:byGroup', false)">二级</button>
         </div>
@@ -525,7 +559,7 @@ function resolveIconKey(kind: EntryKind, category: string, fallback?: string | n
                   </span>
                 </span>
                 <span class="rank-bar">
-                  <span :style="{ width: `${Math.max(category.share, 1)}%`, background: categoryColors.get(category.category) }" />
+                  <span :style="{ transform: `scaleX(${Math.max(category.share, 1) / 100})`, background: categoryColors.get(category.category) }" />
                 </span>
                 <span class="rank-sub">
                   <small>{{ category.count }} 笔 · {{ category.share.toFixed(1) }}%</small>
@@ -534,26 +568,28 @@ function resolveIconKey(kind: EntryKind, category: string, fallback?: string | n
               </span>
             </button>
 
-            <div v-if="byGroup && expandedGroup === category.category" class="sub-list">
-              <button
-                v-for="child in childrenByGroup.get(category.category) ?? []"
-                :key="child.category"
-                type="button"
-                class="sub-row"
-                @click="openCategorySheet(child.category)"
-              >
-                <span class="sub-mark">
-                  <CategoryIcon
-                    :name="child.category"
-                    :icon-key="resolveIconKey(categoryKind, child.category, child.iconKey)"
-                    :size="15"
-                  />
-                </span>
-                <span class="sub-name">{{ child.category }}</span>
-                <span class="sub-meta">{{ child.count }} 笔 · {{ child.share.toFixed(1) }}%</span>
-                <b class="sub-amount">¥{{ formatMoney(child.amount) }}</b>
-              </button>
-            </div>
+            <Transition name="collapse-reveal">
+              <div v-if="byGroup && expandedGroup === category.category" class="sub-list">
+                <button
+                  v-for="child in childrenByGroup.get(category.category) ?? []"
+                  :key="child.category"
+                  type="button"
+                  class="sub-row"
+                  @click="openCategorySheet(child.category)"
+                >
+                  <span class="sub-mark">
+                    <CategoryIcon
+                      :name="child.category"
+                      :icon-key="resolveIconKey(categoryKind, child.category, child.iconKey)"
+                      :size="15"
+                    />
+                  </span>
+                  <span class="sub-name">{{ child.category }}</span>
+                  <span class="sub-meta">{{ child.count }} 笔 · {{ child.share.toFixed(1) }}%</span>
+                  <b class="sub-amount">¥{{ formatMoney(child.amount) }}</b>
+                </button>
+              </div>
+            </Transition>
           </div>
         </div>
       </template>
@@ -603,7 +639,14 @@ function resolveIconKey(kind: EntryKind, category: string, fallback?: string | n
     >
       <div class="sheet-toolbar">
         <span class="tiny">共 {{ sheetTotalCount }} 笔</span>
-        <div class="mini-switch" role="group" aria-label="明细排序">
+        <div ref="sheetSort" class="mini-switch" :class="{ 'has-pill': sortPillReady }" role="group" aria-label="明细排序">
+          <span
+            v-if="sortPillReady"
+            class="mini-pill"
+            :class="{ 'is-animated': sortPillAnimated }"
+            :style="sortPillStyle"
+            aria-hidden="true"
+          />
           <button type="button" :class="{ active: sheetSort === 'amountDesc' }" @click="toggleSheetSort('amountDesc')">按金额</button>
           <button type="button" :class="{ active: sheetSort === 'dateDesc' }" @click="toggleSheetSort('dateDesc')">按时间</button>
         </div>
@@ -668,6 +711,7 @@ function resolveIconKey(kind: EntryKind, category: string, fallback?: string | n
 }
 
 .mode-tabs {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 2px;
@@ -677,7 +721,25 @@ function resolveIconKey(kind: EntryKind, category: string, fallback?: string | n
   background: var(--color-bg-subtle);
 }
 
+.mode-pill {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-surface);
+  box-shadow: 0 2px 8px var(--color-shadow);
+  transform-origin: left center;
+  pointer-events: none;
+}
+
+.mode-pill.is-animated {
+  transition: transform var(--motion-segment) var(--ease-move);
+}
+
 .mode-tabs button {
+  position: relative;
+  z-index: 1;
   min-height: 36px;
   border: 0;
   border-radius: var(--radius-pill);
@@ -685,7 +747,7 @@ function resolveIconKey(kind: EntryKind, category: string, fallback?: string | n
   color: var(--color-text-secondary);
   font-size: var(--text-footnote);
   font-weight: 600;
-  transition: background var(--motion-fast) ease, color var(--motion-fast) ease;
+  transition: color var(--motion-feedback) var(--ease-move);
 }
 
 .mode-tabs button.active {
@@ -693,6 +755,11 @@ function resolveIconKey(kind: EntryKind, category: string, fallback?: string | n
   color: var(--color-brand);
   font-weight: 700;
   box-shadow: 0 2px 8px var(--color-shadow);
+}
+
+.mode-tabs.has-pill button.active {
+  background: transparent;
+  box-shadow: none;
 }
 
 .hero-metric-top {
@@ -839,14 +906,35 @@ function resolveIconKey(kind: EntryKind, category: string, fallback?: string | n
 }
 
 .mini-switch {
-  display: inline-flex;
+  position: relative;
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   gap: 2px;
   padding: 2px;
   border-radius: var(--radius-pill);
   background: var(--color-bg-subtle);
 }
 
+.mini-pill {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-surface);
+  box-shadow: 0 1px 4px var(--color-shadow);
+  transform-origin: left center;
+  pointer-events: none;
+}
+
+.mini-pill.is-animated {
+  transition: transform var(--motion-segment) var(--ease-move);
+}
+
 .mini-switch button {
+  position: relative;
+  z-index: 1;
   min-height: 30px;
   padding: 0 11px;
   border: 0;
@@ -855,6 +943,7 @@ function resolveIconKey(kind: EntryKind, category: string, fallback?: string | n
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
   font-weight: 600;
+  transition: color var(--motion-feedback) var(--ease-move);
 }
 
 .mini-switch button.active {
@@ -862,6 +951,11 @@ function resolveIconKey(kind: EntryKind, category: string, fallback?: string | n
   color: var(--color-brand);
   font-weight: 700;
   box-shadow: 0 1px 4px var(--color-shadow);
+}
+
+.mini-switch.has-pill button.active {
+  background: transparent;
+  box-shadow: none;
 }
 
 .point-callout {
@@ -909,10 +1003,17 @@ function resolveIconKey(kind: EntryKind, category: string, fallback?: string | n
   background: transparent;
   color: inherit;
   text-align: left;
+  transition: background-color var(--motion-press-out) var(--ease-settle);
 }
 
-.rank-row:hover,
-.rank-row.highlighted {
+@media (hover: hover) and (pointer: fine) {
+  .rank-row:hover {
+    background: var(--color-bg-hover);
+  }
+}
+
+.rank-row.highlighted,
+.rank-row:active {
   background: var(--color-bg-hover);
 }
 
@@ -987,8 +1088,11 @@ function resolveIconKey(kind: EntryKind, category: string, fallback?: string | n
 
 .rank-bar span {
   display: block;
+  width: 100%;
   height: 100%;
   border-radius: var(--radius-tag);
+  transform-origin: left center;
+  transition: transform var(--motion-data) var(--ease-move);
 }
 
 .rank-sub {
@@ -1070,14 +1174,22 @@ function resolveIconKey(kind: EntryKind, category: string, fallback?: string | n
   background: transparent;
   color: inherit;
   text-align: left;
+  transition: background-color var(--motion-feedback) var(--ease-move);
 }
 
 .top-row + .top-row {
   border-top: 1px solid var(--color-border-subtle);
 }
 
-.top-row:hover {
+@media (hover: hover) and (pointer: fine) {
+  .top-row:hover {
+    background: var(--color-bg-hover);
+  }
+}
+
+.top-row:active {
   background: var(--color-bg-hover);
+  transition-duration: var(--motion-press-in);
 }
 
 .top-mark {
@@ -1139,5 +1251,13 @@ function resolveIconKey(kind: EntryKind, category: string, fallback?: string | n
   color: var(--color-text-secondary);
   font-size: var(--text-footnote);
   line-height: 1.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mode-pill.is-animated,
+  .mini-pill.is-animated,
+  .rank-bar span {
+    transition: none;
+  }
 }
 </style>

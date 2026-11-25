@@ -123,12 +123,19 @@ useEChart(container, buildOption, {
 </script>
 
 <template>
-  <div ref="container" class="fund-return-chart" role="img" :aria-label="chartLabel" />
+  <div ref="container" :data-range="range" class="fund-return-chart" role="img" :aria-label="chartLabel" />
 </template>
 
 <style scoped>
 .fund-return-chart {
   width: 100%;
   height: 220px;
+  animation: motion-feedback-in var(--motion-feedback) var(--ease-enter);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fund-return-chart {
+    animation-duration: var(--motion-reduced-fade);
+  }
 }
 </style>

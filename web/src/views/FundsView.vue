@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { navigateBack } from '../utils/navigation'
 import Decimal from 'decimal.js'
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, useTemplateRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useSlidingIndicator } from '../composables/useSlidingIndicator'
 import {
   arriveFundSell,
   assignFundGroup,
@@ -116,6 +117,14 @@ const confirmingBuyId = ref<string | null>(null)
 const duplicatePrompt = ref<{ position: FundPosition; shares: number; cost: number } | null>(null)
 const activeGroup = ref<GroupScope>('all')
 const activeView = ref<PortfolioView>(normalizeView(route.params.view))
+const viewTabsRef = useTemplateRef<HTMLElement>('viewTabs')
+const {
+  ready: viewPillReady,
+  animated: viewPillAnimated,
+  indicatorStyle: viewPillStyle
+} = useSlidingIndicator(viewTabsRef, activeView, {
+  activeSelector: 'button.active'
+})
 const expandedFund = ref<string | null>(null)
 const groupSheetOpen = ref(false)
 const pendingGroupRemoval = ref<{ id: string; name: string } | null>(null)
@@ -1469,7 +1478,14 @@ function goBack(): void {
         </div>
       </section>
 
-      <div class="view-tabs ui-segmented" role="tablist" aria-label="投资视图">
+      <div ref="viewTabs" class="view-tabs ui-segmented" :class="{ 'has-pill': viewPillReady }" role="tablist" aria-label="投资视图">
+        <span
+          v-if="viewPillReady"
+          class="view-tabs-pill"
+          :class="{ 'is-animated': viewPillAnimated }"
+          :style="viewPillStyle"
+          aria-hidden="true"
+        />
         <button type="button" role="tab" :aria-selected="activeView === 'positions'" :class="{ active: activeView === 'positions' }" @click="setView('positions')">持仓明细</button>
         <button type="button" role="tab" :aria-selected="activeView === 'returns'" :class="{ active: activeView === 'returns' }" @click="setView('returns')">收益日历</button>
         <button
@@ -1563,62 +1579,64 @@ function goBack(): void {
               </div>
             </header>
 
-            <div v-if="expandedFund === fund.key" class="fund-detail">
-              <section
-                v-for="(fundClass, index) in fund.classes"
-                :key="fundClass.key ?? index"
-                class="fund-class"
-              >
-                <header class="fund-class-head">
-                  <strong>{{ fundClass.shareClass ? `${fundClass.shareClass} 类` : '未标类别' }}</strong>
-                  <span>{{ formatQuantity(fundClass.shares) }} 份 · 成本 {{ maskMoney(fundClass.cost) }}</span>
-                </header>
-                <div class="fund-class-values">
-                  <div>
-                    <span>估值</span>
-                    <b>{{ maskMoney(fundClass.value) }}</b>
-                  </div>
-                  <div>
-                    <span>持有盈亏</span>
-                    <b :class="amountsMasked ? '' : amountTone(fundClass.holdingProfit)">
-                      {{ maskSignedMoney(fundClass.holdingProfit) }}
-                    </b>
-                  </div>
-                  <div>
-                    <span>已实现盈亏</span>
-                    <b :class="amountsMasked ? '' : amountTone(fundClass.realizedProfit)">
-                      {{ maskSignedMoney(fundClass.realizedProfit) }}
-                    </b>
-                  </div>
-                </div>
-                <p class="fund-class-meta">
-                  {{ fundClass.netValue === null ? '净值来源不一致' : `净值 ${formatQuantity(fundClass.netValue)}` }}
-                </p>
-                <div class="holding-actions">
-                  <div v-for="holding in fundClass.platforms" :key="holding.positionId" class="holding-action-row">
-                    <div class="holding-copy">
-                      <strong>{{ holding.platform || '未标平台' }}</strong>
-                      <small v-if="fundClass.platforms.length > 1">{{ formatQuantity(holding.shares) }} 份</small>
+            <Transition name="collapse-reveal">
+              <div v-if="expandedFund === fund.key" class="fund-detail">
+                <section
+                  v-for="(fundClass, index) in fund.classes"
+                  :key="fundClass.key ?? index"
+                  class="fund-class"
+                >
+                  <header class="fund-class-head">
+                    <strong>{{ fundClass.shareClass ? `${fundClass.shareClass} 类` : '未标类别' }}</strong>
+                    <span>{{ formatQuantity(fundClass.shares) }} 份 · 成本 {{ maskMoney(fundClass.cost) }}</span>
+                  </header>
+                  <div class="fund-class-values">
+                    <div>
+                      <span>估值</span>
+                      <b>{{ maskMoney(fundClass.value) }}</b>
                     </div>
-                    <div class="holding-buttons">
-                      <button type="button" @click="openSheet('buy', holding.positionId)">买入</button>
-                      <button type="button" @click="openSheet('sell', holding.positionId)">卖出</button>
-                      <button type="button" @click="openSheet('shares', holding.positionId)">调整份额</button>
+                    <div>
+                      <span>持有盈亏</span>
+                      <b :class="amountsMasked ? '' : amountTone(fundClass.holdingProfit)">
+                        {{ maskSignedMoney(fundClass.holdingProfit) }}
+                      </b>
+                    </div>
+                    <div>
+                      <span>已实现盈亏</span>
+                      <b :class="amountsMasked ? '' : amountTone(fundClass.realizedProfit)">
+                        {{ maskSignedMoney(fundClass.realizedProfit) }}
+                      </b>
                     </div>
                   </div>
-                </div>
-                <p class="fund-class-code">
-                  {{ fundClass.code ?? fundClass.platforms[0]?.code ?? '未填代码' }} ·
-                  {{ fundClass.identityBasis ?? (fundClass.platforms[0]?.code ? '按基金代码和类别匹配' : '按规范化基金名称和类别匹配') }}
-                </p>
-              </section>
+                  <p class="fund-class-meta">
+                    {{ fundClass.netValue === null ? '净值来源不一致' : `净值 ${formatQuantity(fundClass.netValue)}` }}
+                  </p>
+                  <div class="holding-actions">
+                    <div v-for="holding in fundClass.platforms" :key="holding.positionId" class="holding-action-row">
+                      <div class="holding-copy">
+                        <strong>{{ holding.platform || '未标平台' }}</strong>
+                        <small v-if="fundClass.platforms.length > 1">{{ formatQuantity(holding.shares) }} 份</small>
+                      </div>
+                      <div class="holding-buttons">
+                        <button type="button" @click="openSheet('buy', holding.positionId)">买入</button>
+                        <button type="button" @click="openSheet('sell', holding.positionId)">卖出</button>
+                        <button type="button" @click="openSheet('shares', holding.positionId)">调整份额</button>
+                      </div>
+                    </div>
+                  </div>
+                  <p class="fund-class-code">
+                    {{ fundClass.code ?? fundClass.platforms[0]?.code ?? '未填代码' }} ·
+                    {{ fundClass.identityBasis ?? (fundClass.platforms[0]?.code ? '按基金代码和类别匹配' : '按规范化基金名称和类别匹配') }}
+                  </p>
+                </section>
 
-              <p v-if="fund.classes.length > 1" class="summary-note">
-                同一基金的 A/C 类分别列示份额和净值，不合并份额，也不平均净值。
-                <template v-if="!fund.hasEffectiveQuotes"> 部分持仓行情依据不足，估值仅供参考。</template>
-              </p>
-              <p v-else-if="!fund.hasEffectiveQuotes" class="summary-note">部分持仓行情依据不足，估值仅供参考。</p>
-            </div>
+                <p v-if="fund.classes.length > 1" class="summary-note">
+                  同一基金的 A/C 类分别列示份额和净值，不合并份额，也不平均净值。
+                  <template v-if="!fund.hasEffectiveQuotes"> 部分持仓行情依据不足，估值仅供参考。</template>
+                </p>
+                <p v-else-if="!fund.hasEffectiveQuotes" class="summary-note">部分持仓行情依据不足，估值仅供参考。</p>
+              </div>
+            </Transition>
           </article>
         </section>
 
@@ -2131,7 +2149,24 @@ function goBack(): void {
   border-radius: var(--radius-card);
   background: var(--color-bg-surface);
   box-shadow: var(--shadow-float);
+  transform-origin: top right;
 }
+
+.investment-actions[open] > .funds-actions {
+  animation: funds-popover-in var(--motion-content-in) var(--ease-enter);
+}
+
+@keyframes funds-popover-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -4px, 0) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
 .funds-actions button {
   min-height: 44px;
   padding: 0 14px;
@@ -2171,6 +2206,22 @@ function goBack(): void {
   font-size: var(--text-footnote);
   font-weight: 500;
   white-space: nowrap;
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    color var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-move);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .group-pill:hover:not(.active) {
+    background: var(--color-bg-hover);
+    color: var(--color-text-primary);
+  }
+}
+
+.group-pill:active {
+  transform: scale(0.97);
+  transition-duration: var(--motion-press-in);
 }
 
 .group-pill.active {
@@ -2191,6 +2242,14 @@ function goBack(): void {
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
   white-space: nowrap;
+  transition:
+    color var(--motion-feedback) var(--ease-move),
+    opacity var(--motion-press-out) var(--ease-move);
+}
+
+.group-manage:active {
+  opacity: 0.72;
+  transition-duration: var(--motion-press-in);
 }
 
 .group-manage .app-icon {
@@ -2199,6 +2258,7 @@ function goBack(): void {
 }
 
 .view-tabs {
+  position: relative;
   display: flex;
   gap: 2px;
   margin-bottom: 10px;
@@ -2208,7 +2268,24 @@ function goBack(): void {
   background: var(--color-bg-surface);
 }
 
+.view-tabs-pill {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-brand-soft);
+  transform-origin: left center;
+  pointer-events: none;
+}
+
+.view-tabs-pill.is-animated {
+  transition: transform var(--motion-segment) var(--ease-move);
+}
+
 .view-tabs button {
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2221,6 +2298,9 @@ function goBack(): void {
   font-size: var(--text-footnote);
   font-weight: 500;
   white-space: nowrap;
+  transition:
+    color var(--motion-feedback) var(--ease-move),
+    background-color var(--motion-feedback) var(--ease-move);
 }
 
 .tab-badge {
@@ -2245,8 +2325,14 @@ function goBack(): void {
   font-weight: 600;
 }
 
-.view-tabs button:hover:not(.active) {
-  color: var(--color-text-primary);
+.view-tabs.has-pill button.active {
+  background: transparent;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .view-tabs button:hover:not(.active) {
+    color: var(--color-text-primary);
+  }
 }
 
 .view-tabs button.active::after {
@@ -2269,9 +2355,16 @@ function goBack(): void {
   gap: 10px;
   padding: 16px;
   cursor: pointer;
+  transition: background-color var(--motion-feedback) var(--ease-move);
 }
-.fund-card > header:hover {
+@media (hover: hover) and (pointer: fine) {
+  .fund-card > header:hover {
+    background: var(--color-bg-hover);
+  }
+}
+.fund-card > header:active {
   background: var(--color-bg-hover);
+  transition-duration: var(--motion-press-in);
 }
 .fund-heading {
   display: flex;
@@ -2366,6 +2459,7 @@ function goBack(): void {
   height: 17px;
   margin-top: 3px;
   color: var(--color-text-secondary);
+  transition: transform var(--motion-feedback) var(--ease-move);
 }
 .expand-mark.expanded {
   transform: rotate(90deg);
@@ -2526,8 +2620,8 @@ function goBack(): void {
   font-weight: 600;
   white-space: nowrap;
   transition:
-    transform 200ms cubic-bezier(0.22, 1.35, 0.36, 1),
-    background-color var(--motion-fast) ease;
+    transform var(--motion-press-out) var(--ease-move),
+    background-color var(--motion-feedback) var(--ease-move);
 }
 
 .holding-action-row button::before,
@@ -2554,17 +2648,20 @@ function goBack(): void {
 .holding-action-row button::after {
   box-shadow: inset 0 0 4px 1px rgba(255, 255, 255, var(--color-btn-soft-glow));
   opacity: var(--glossy-light);
-  transition: opacity 140ms ease;
+  transition: opacity var(--motion-feedback) var(--ease-move);
 }
 
-.holding-action-row button:hover:not(:disabled) {
-  background: var(--color-btn-soft-bg-hover);
+@media (hover: hover) and (pointer: fine) {
+  .holding-action-row button:hover:not(:disabled) {
+    background: var(--color-btn-soft-bg-hover);
+  }
 }
 
 .holding-action-row button:active:not(:disabled) {
-  --glossy-light: 0.52;
+  --glossy-light: 0.56;
   background: var(--color-btn-soft-bg-hover);
-  transform: scale(0.96);
+  transform: scale(0.97);
+  transition-duration: var(--motion-press-in);
 }
 
 @media (max-width: 340px) {
@@ -2676,14 +2773,22 @@ function goBack(): void {
   background: transparent;
   color: var(--color-text-primary);
   text-align: left;
+  transition: background-color var(--motion-feedback) var(--ease-move);
 }
 
 .fund-search-result:last-child {
   border-bottom: 0;
 }
 
+@media (hover: hover) and (pointer: fine) {
+  .fund-search-result:hover {
+    background: var(--color-bg-hover);
+  }
+}
+
 .fund-search-result:active {
   background: var(--color-brand-soft);
+  transition-duration: var(--motion-press-in);
 }
 
 .fund-search-result span {
@@ -2749,6 +2854,10 @@ function goBack(): void {
   font-size: var(--text-caption);
   font-weight: 600;
   white-space: nowrap;
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    color var(--motion-feedback) var(--ease-move),
+    box-shadow var(--motion-feedback) var(--ease-move);
 }
 
 .sign-toggle button[aria-pressed='true'] {
@@ -2852,5 +2961,21 @@ function goBack(): void {
   min-height: 48px;
   border-radius: var(--radius-pill);
   font-size: 0.9375rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .investment-actions[open] > .funds-actions {
+    animation: none;
+  }
+
+  .view-tabs-pill.is-animated,
+  .expand-mark {
+    transition: none;
+  }
+
+  .group-pill:active,
+  .holding-action-row button:active:not(:disabled) {
+    transform: none;
+  }
 }
 </style>

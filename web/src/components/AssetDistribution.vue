@@ -419,28 +419,13 @@ function changeTone(row: DistributionRow): string {
 .card-glow-edge {
   transform-box: view-box;
   transform: translateX(var(--share));
-  transition: transform .48s cubic-bezier(.22, 1, .36, 1);
+  transition: transform var(--motion-data) var(--ease-move);
 }
 
 .card-glow-wave {
   transform-box: view-box;
   transform-origin: center;
   transform: scaleY(1.2);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .card-glow-wave {
-    animation: card-glow-float 6s ease-in-out infinite alternate;
-  }
-
-  .distribution-card:nth-child(even) .card-glow-wave {
-    animation-delay: -3s;
-  }
-}
-
-@keyframes card-glow-float {
-  from { transform: translateY(-7%) scaleY(1.2); }
-  to { transform: translateY(7%) scaleY(1.2); }
 }
 
 .card-content {
@@ -662,6 +647,12 @@ function changeTone(row: DistributionRow): string {
   padding: 14px 0;
   color: inherit;
   text-decoration: none;
+  transition: opacity var(--motion-press-out) var(--ease-settle);
+}
+
+.asset-link:not(.static):active {
+  opacity: 0.72;
+  transition-duration: var(--motion-press-in);
 }
 
 .asset-link.static {
@@ -774,11 +765,21 @@ function changeTone(row: DistributionRow): string {
   line-height: 1;
   text-decoration: none;
   white-space: nowrap;
-  transition: background .15s ease, color .15s ease;
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    color var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-settle);
 }
 
-.row-action:hover {
-  background: var(--color-brand-soft-hover);
+.row-action:active:not(:disabled) {
+  transform: scale(0.97);
+  transition-duration: var(--motion-press-in);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .row-action:hover {
+    background: var(--color-brand-soft-hover);
+  }
 }
 
 .row-action.subtle {
@@ -788,9 +789,11 @@ function changeTone(row: DistributionRow): string {
   font-weight: 500;
 }
 
-.row-action.subtle:hover {
-  background: var(--color-brand-soft);
-  color: var(--color-brand);
+@media (hover: hover) and (pointer: fine) {
+  .row-action.subtle:hover {
+    background: var(--color-brand-soft);
+    color: var(--color-brand);
+  }
 }
 
 .row-action:focus-visible {

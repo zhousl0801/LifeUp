@@ -693,6 +693,18 @@ function technicalSummaryItems(summary: BackupSummary): { label: string; value: 
   font-weight: 500;
 }
 
+.date-filter-details[open] > :not(summary),
+.tech-details[open] > :not(summary) {
+  animation: motion-collapse-in var(--motion-collapse-in) var(--ease-enter);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .date-filter-details[open] > :not(summary),
+  .tech-details[open] > :not(summary) {
+    animation: none;
+  }
+}
+
 .rollback-box {
   margin-top: 14px;
   padding: 12px;

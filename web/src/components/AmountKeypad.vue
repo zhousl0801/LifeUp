@@ -48,6 +48,8 @@ function press(key: AmountKey): void {
 }
 
 .keypad button {
+  position: relative;
+  overflow: hidden;
   min-height: clamp(44px, 6dvh, 52px);
   border: 0;
   border-radius: var(--radius-control);
@@ -55,10 +57,37 @@ function press(key: AmountKey): void {
   color: var(--color-text-primary);
   font-size: 1.25rem;
   font-variant-numeric: tabular-nums;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform var(--motion-press-out) var(--ease-settle);
+}
+
+.keypad button::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--color-brand-soft);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-press-out) var(--ease-settle);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .keypad button:hover:not(:disabled)::after {
+    opacity: 0.45;
+  }
 }
 
 .keypad button:active:not(:disabled) {
-  background: var(--color-brand-soft);
+  transform: scale(0.985);
+  transition-duration: var(--motion-press-in);
+  transition-timing-function: var(--ease-exit);
+}
+
+.keypad button:active:not(:disabled)::after {
+  opacity: 1;
+  transition-duration: var(--motion-press-in);
 }
 
 .keypad button:disabled {
@@ -75,5 +104,19 @@ function press(key: AmountKey): void {
 
 .operator-pair button {
   padding-inline: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .keypad button {
+    transition: none;
+  }
+
+  .keypad button:active:not(:disabled) {
+    transform: none;
+  }
+
+  .keypad button::after {
+    transition-duration: var(--motion-reduced-fade);
+  }
 }
 </style>

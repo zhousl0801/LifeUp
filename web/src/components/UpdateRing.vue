@@ -98,14 +98,14 @@ const valueText = computed(() => props.indeterminate
 .update-ring-value {
   stroke: currentColor;
   stroke-linecap: round;
-  transition: stroke-dashoffset var(--motion-base) var(--ease-standard);
+  transition: stroke-dashoffset var(--motion-data) var(--ease-move);
 }
 
 .update-ring.is-indeterminate .update-ring-value {
   stroke-dasharray: 14 50;
   stroke-dashoffset: 0;
   transform-origin: 10px 10px;
-  animation: update-ring-spin 900ms linear infinite;
+  animation: update-ring-spin var(--motion-busy-cycle) var(--ease-linear) infinite;
 }
 
 @keyframes update-ring-spin {

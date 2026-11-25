@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, useTemplateRef, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { fetchEntryPeriod, fetchEntryStats } from '../api/entries'
 import { fetchCategories } from '../api/categories'
 import { ApiError, getApiErrorMessage } from '../api/client'
 import { useAmountPrivacy } from '../composables/useAmountPrivacy'
 import { toast } from '../composables/useMessage'
+import { useSlidingIndicator } from '../composables/useSlidingIndicator'
 import AppNav from '../components/AppNav.vue'
 import AppIcon from '../components/AppIcon.vue'
 import CategoryIcon from '../components/CategoryIcon.vue'
@@ -65,7 +66,20 @@ const period = ref<EntryPeriod>(
 )
 const anchor = ref(savedContext?.anchor ?? ledgerDate(route.query.date) ?? today)
 const view = ref<'calendar' | 'list' | 'chart'>(initialView)
+const periodDirection = shallowRef<-1 | 0 | 1>(0)
 const selectedDate = ref(savedContext?.selectedDate ?? anchor.value)
+const chartPeriodTrackRef = useTemplateRef<HTMLElement>('chartPeriodTrack')
+const listPeriodTrackRef = useTemplateRef<HTMLElement>('listPeriodTrack')
+const { ready: chartPeriodPillReady, animated: chartPeriodPillAnimated, indicatorStyle: chartPeriodPillStyle } = useSlidingIndicator(
+  chartPeriodTrackRef,
+  period,
+  { watchExtra: view }
+)
+const { ready: listPeriodPillReady, animated: listPeriodPillAnimated, indicatorStyle: listPeriodPillStyle } = useSlidingIndicator(
+  listPeriodTrackRef,
+  period,
+  { watchExtra: view }
+)
 const displayExpense = computed(() =>
   period.value === 'month' || view.value !== 'list' ? stats.value?.expense ?? null : summary.value?.expense ?? null)
 const statsKind = ref<StatsChartMode>(savedContext?.statsKind ?? 'expense')
@@ -387,6 +401,7 @@ function shiftPeriod(direction: -1 | 1): void {
     return
   }
 
+  periodDirection.value = direction
   anchor.value = shiftAnchor(anchor.value, period.value, direction)
   if (view.value === 'calendar') {
     selectedDate.value = anchor.value.slice(0, 7) === today.slice(0, 7) ? today : anchor.value
@@ -431,7 +446,14 @@ function openEntry(entryId?: string): void {
     </section>
 
     <section v-if="view === 'chart'" class="chart-toolbar-card">
-      <div class="period-tabs" role="group" aria-label="图表周期">
+      <div ref="chartPeriodTrack" class="period-tabs" :class="{ 'has-pill': chartPeriodPillReady }" role="group" aria-label="图表周期">
+        <span
+          v-if="chartPeriodPillReady"
+          class="period-pill"
+          :class="{ 'is-animated': chartPeriodPillAnimated }"
+          :style="chartPeriodPillStyle"
+          aria-hidden="true"
+        />
         <button v-for="item in chartPeriodOptions" :key="item.value" type="button"
           :class="{ active: period === item.value }" @click="setPeriod(item.value)">{{ item.label }}</button>
       </div>
@@ -455,10 +477,17 @@ function openEntry(entryId?: string): void {
       </header>
       <template v-if="view === 'calendar'">
         <p v-if="statsError" class="state-inline">{{ statsError }} <button type="button" @click="loadStats">重试</button></p>
-        <LedgerCalendar :month="anchor" :selected="selectedDate" :today="today"
+        <LedgerCalendar :month="anchor" :selected="selectedDate" :today="today" :direction="periodDirection"
           :points="stats?.points ?? []" @select="selectedDate = $event" />
       </template>
-      <div v-else class="period-tabs" role="group" aria-label="账本周期">
+      <div v-else ref="listPeriodTrack" class="period-tabs" :class="{ 'has-pill': listPeriodPillReady }" role="group" aria-label="账本周期">
+        <span
+          v-if="listPeriodPillReady"
+          class="period-pill"
+          :class="{ 'is-animated': listPeriodPillAnimated }"
+          :style="listPeriodPillStyle"
+          aria-hidden="true"
+        />
         <button v-for="item in periodOptions" :key="item.value" type="button"
           :class="{ active: period === item.value }" @click="setPeriod(item.value)">{{ item.label }}</button>
       </div>
@@ -639,7 +668,12 @@ function openEntry(entryId?: string): void {
   min-height: 36px; padding: 0 10px; border: 0; border-radius: var(--radius-pill);
   background: var(--color-bg-subtle); color: var(--color-text-secondary);
   font-size: var(--text-caption); font-weight: 600; white-space: nowrap;
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    color var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-settle);
 }
+.view-pill:active { transform: scale(0.97); transition-duration: var(--motion-press-in); }
 .view-pill .app-icon { width: 14px; height: 14px; }
 .view-pill[aria-pressed='true'] {
   background: color-mix(in srgb, var(--ledger-accent) 15%, var(--color-bg-surface));
@@ -720,14 +754,35 @@ function openEntry(entryId?: string): void {
 }
 
 .period-tabs {
-  display: flex;
+  position: relative;
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   gap: 2px;
   padding: 3px;
   border-radius: var(--radius-pill);
   background: var(--color-bg-subtle);
 }
 
+.period-pill {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-surface);
+  box-shadow: 0 2px 8px var(--color-shadow);
+  transform-origin: left center;
+  pointer-events: none;
+}
+
+.period-pill.is-animated {
+  transition: transform var(--motion-segment) var(--ease-move);
+}
+
 .period-tabs button {
+  position: relative;
+  z-index: 1;
   min-height: 38px;
   padding: 0 14px;
   border: 0;
@@ -736,6 +791,7 @@ function openEntry(entryId?: string): void {
   color: var(--color-text-secondary);
   font-size: var(--text-footnote);
   font-weight: 600;
+  transition: color var(--motion-feedback) var(--ease-move);
 }
 
 .period-tabs button.active {
@@ -743,6 +799,11 @@ function openEntry(entryId?: string): void {
   color: var(--color-brand);
   font-weight: 700;
   box-shadow: 0 2px 8px var(--color-shadow);
+}
+
+.period-tabs.has-pill button.active {
+  background: transparent;
+  box-shadow: none;
 }
 
 .period-nav {
@@ -760,10 +821,20 @@ function openEntry(entryId?: string): void {
   color: var(--color-brand);
   font-size: 1.125rem;
   line-height: 1;
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-settle);
 }
 
-.period-nav button:hover:not(:disabled) {
-  background: var(--color-brand-soft);
+@media (hover: hover) and (pointer: fine) {
+  .period-nav button:hover:not(:disabled) {
+    background: var(--color-brand-soft);
+  }
+}
+
+.period-nav button:active:not(:disabled) {
+  transform: scale(0.92);
+  transition-duration: var(--motion-press-in);
 }
 
 .period-nav button:disabled {
@@ -903,6 +974,7 @@ function openEntry(entryId?: string): void {
 }
 
 .entry-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -912,15 +984,36 @@ function openEntry(entryId?: string): void {
   border-bottom: 1px solid var(--color-border-subtle);
   background: transparent;
   text-align: left;
+  transition: background-color var(--motion-press-out) var(--ease-settle);
 }
 
 .entry-row:last-child {
   border-bottom: 0;
 }
 
-.entry-row:hover,
-.entry-row.entry-highlighted {
+@media (hover: hover) and (pointer: fine) {
+  .entry-row:hover {
+    background: var(--color-bg-hover);
+  }
+}
+
+.entry-row:active {
   background: var(--color-bg-hover);
+  transition-duration: var(--motion-press-in);
+}
+
+.entry-row.entry-highlighted::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--color-brand) 12%, transparent);
+  pointer-events: none;
+  animation: entry-highlight-fade var(--motion-highlight) var(--ease-settle) forwards;
+}
+
+@keyframes entry-highlight-fade {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 .entry-mark {
@@ -967,5 +1060,20 @@ function openEntry(entryId?: string): void {
   font-weight: 700;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .period-pill.is-animated {
+    transition: none;
+  }
+
+  .view-pill:active,
+  .period-nav button:active:not(:disabled) {
+    transform: none;
+  }
+
+  .entry-row.entry-highlighted::after {
+    animation-duration: var(--motion-reduced-fade);
+  }
 }
 </style>

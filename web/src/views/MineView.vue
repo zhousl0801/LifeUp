@@ -261,14 +261,22 @@ function chooseTheme(value: ThemeMode): void {
   font-weight: 500;
   text-align: left;
   text-decoration: none;
+  transition: background-color var(--motion-press-out) var(--ease-settle);
 }
 
 .list-row + .list-row {
   border-top: 1px solid var(--color-border-subtle);
 }
 
-.list-row:hover {
+@media (hover: hover) and (pointer: fine) {
+  .list-row:hover {
+    background: var(--color-bg-hover);
+  }
+}
+
+.list-row:active {
   background: var(--color-bg-hover);
+  transition-duration: var(--motion-press-in);
 }
 
 .list-row b {
@@ -407,6 +415,15 @@ function chooseTheme(value: ThemeMode): void {
   background: var(--color-bg-subtle);
   color: var(--color-text-primary);
   text-align: left;
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    color var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-settle);
+}
+
+.theme-option:active {
+  transform: scale(0.985);
+  transition-duration: var(--motion-press-in);
 }
 
 .theme-option.active {
@@ -442,6 +459,9 @@ function chooseTheme(value: ThemeMode): void {
   border: 1.5px solid var(--color-border-default);
   border-radius: 50%;
   color: var(--color-on-brand);
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    border-color var(--motion-feedback) var(--ease-move);
 }
 
 .theme-check.checked {
@@ -452,6 +472,12 @@ function chooseTheme(value: ThemeMode): void {
 .theme-check .app-icon {
   width: 14px;
   height: 14px;
+  animation: theme-check-pop var(--motion-feedback) var(--ease-enter);
+}
+
+@keyframes theme-check-pop {
+  from { opacity: 0; transform: scale(0.75); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 .theme-note {
@@ -459,6 +485,16 @@ function chooseTheme(value: ThemeMode): void {
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
   line-height: 1.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-option:active {
+    transform: none;
+  }
+
+  .theme-check .app-icon {
+    animation: motion-feedback-in var(--motion-reduced-fade) var(--ease-linear);
+  }
 }
 
 </style>

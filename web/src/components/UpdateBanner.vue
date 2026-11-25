@@ -2,11 +2,13 @@
 import { useRegisterSW } from 'virtual:pwa-register/vue'
 import { activeWriteCount, pendingMutationCount } from '../api/client'
 import { toast } from '../composables/useMessage'
+import { useRouteMotion } from '../utils/routeMotion'
 
 const { needRefresh, updateServiceWorker } = useRegisterSW({ immediate: true })
+const { hasOpenSheet } = useRouteMotion()
 
 function applyUpdate(): void {
-  if (activeWriteCount.value > 0 || pendingMutationCount.value > 0 || document.querySelector('[role="dialog"]')) {
+  if (activeWriteCount.value > 0 || pendingMutationCount.value > 0 || hasOpenSheet.value) {
     toast.info('当前有正在保存或编辑的内容，完成后再更新更稳妥')
     return
   }
@@ -15,11 +17,13 @@ function applyUpdate(): void {
 </script>
 
 <template>
-  <aside v-if="needRefresh" class="update-banner" role="status">
-    <span>新版本已就绪</span>
-    <button type="button" class="update-action" @click="applyUpdate">更新应用</button>
-    <button type="button" class="update-dismiss" @click="needRefresh = false">稍后</button>
-  </aside>
+  <Transition name="banner-fade">
+    <aside v-if="needRefresh" class="update-banner" role="status">
+      <span>新版本已就绪</span>
+      <button type="button" class="update-action" @click="applyUpdate">更新应用</button>
+      <button type="button" class="update-dismiss" @click="needRefresh = false">稍后</button>
+    </aside>
+  </Transition>
 </template>
 
 <style scoped>

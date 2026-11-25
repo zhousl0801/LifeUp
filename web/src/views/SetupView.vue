@@ -231,6 +231,16 @@ function clearErrors(): void {
   border-radius: 16px;
 }
 
+.past-dates[open] > .past-dates-fields {
+  animation: motion-collapse-in var(--motion-collapse-in) var(--ease-enter);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .past-dates[open] > .past-dates-fields {
+    animation: none;
+  }
+}
+
 .past-dates-fields > .field:last-child {
   border-bottom: 0;
 }

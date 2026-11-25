@@ -1,5 +1,6 @@
 import { formatMoney, MaskedMoney } from './format'
 import { chartFontSize, chartTheme, type ChartThemeVariant } from './chartTheme'
+import { isReducedMotion } from '../composables/useReducedMotion'
 import type { AssetTrend, AssetTrendPoint, TrendRange } from '../types/trend'
 
 interface DailyAssetPoint {
@@ -43,12 +44,6 @@ export function trendAxisLabel(date: string, range: TrendRange): string {
 export function trendTooltip(point: DailyAssetPoint, amountsMasked = false): string {
   const label = point.source.totalAssets === null ? '已记录资产' : '总资产'
   return `${point.date}<br/>${label} ${trendAmountLabel(point, amountsMasked)}`
-}
-
-function prefersReducedMotion(): boolean {
-  return typeof window !== 'undefined'
-    && typeof window.matchMedia === 'function'
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 }
 
 export function buildTrendPlaceholderDates(endDate: string, count = 7): string[] {
@@ -139,12 +134,12 @@ export function buildTrendOption(
   const dates = series.points.map((point) => point.date)
   const values = series.points.map((point) => point.value)
   const isHero = variant === 'hero'
-  const reducedMotion = prefersReducedMotion()
+  const reducedMotion = isReducedMotion()
 
   return {
     animation: !reducedMotion,
     animationDuration: 0,
-    animationDurationUpdate: reducedMotion ? 0 : 550,
+    animationDurationUpdate: reducedMotion ? 0 : 280,
     animationEasingUpdate: 'cubicOut',
     grid: isHero
       ? { left: 7, right: 7, top: 10, bottom: 8 }

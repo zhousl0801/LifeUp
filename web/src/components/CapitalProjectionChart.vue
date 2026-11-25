@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, useTemplateRef } from 'vue'
 import type { EChartsOption } from 'echarts'
 import type { CapitalProjectionPoint } from '../types/capital'
 import { useEChart } from '../composables/useEChart'
+import { useSlidingIndicator } from '../composables/useSlidingIndicator'
 import { buildCapitalChartOption, buildMonthlyChartOption, monthlySummary } from '../utils/capitalChart'
 import { MaskedMoney, formatMoney, formatSignedMoney } from '../utils/format'
 
@@ -20,6 +21,12 @@ const emit = defineEmits<{
 }>()
 
 const container = ref<HTMLElement | null>(null)
+const chipsRef = useTemplateRef<HTMLElement>('chips')
+const { ready: chipPillReady, animated: chipPillAnimated, indicatorStyle: chipPillStyle } = useSlidingIndicator(
+  chipsRef,
+  () => props.view,
+  { activeSelector: '.on' }
+)
 const summary = computed(() => monthlySummary(props.points))
 const title = computed(() => (props.view === 'monthly' ? '每月积累' : '积累曲线'))
 const chartLabel = computed(() => props.view === 'monthly'
@@ -76,7 +83,14 @@ useEChart(container, buildOption, {
         <span class="card-title">{{ title }}</span>
         <span class="forecast-tag">预测</span>
       </div>
-      <div class="chips" role="tablist" aria-label="积累图表视图">
+      <div ref="chips" class="chips" :class="{ 'has-pill': chipPillReady }" role="tablist" aria-label="积累图表视图">
+        <span
+          v-if="chipPillReady"
+          class="chips-pill"
+          :class="{ 'is-animated': chipPillAnimated }"
+          :style="chipPillStyle"
+          aria-hidden="true"
+        />
         <button
           type="button"
           class="chip"
@@ -100,10 +114,12 @@ useEChart(container, buildOption, {
       </div>
     </div>
 
-    <div v-if="view === 'monthly'" class="chart-summary">
-      <span>首年月均</span>
-      <b>{{ masked(summary.average) }}</b>
-      <span>其中收益 {{ amountsMasked ? MaskedMoney : formatMoney(summary.investment) }}</span>
+    <div class="chart-stage" :key="view">
+      <div v-if="view === 'monthly'" class="chart-summary">
+        <span>首年月均</span>
+        <b>{{ masked(summary.average) }}</b>
+        <span>其中收益 {{ amountsMasked ? MaskedMoney : formatMoney(summary.investment) }}</span>
+      </div>
     </div>
 
     <div ref="container" class="capital-chart" :class="{ 'is-monthly': view === 'monthly' }" role="img" :aria-label="chartLabel" />
@@ -154,27 +170,60 @@ useEChart(container, buildOption, {
 }
 
 .chips {
-  display: flex;
-  gap: 6px;
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-subtle);
+}
+
+.chips-pill {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-brand-soft);
+  transform-origin: left center;
+  pointer-events: none;
+}
+
+.chips-pill.is-animated {
+  transition: transform var(--motion-segment) var(--ease-move);
 }
 
 .chip {
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
-  min-height: 44px;
+  justify-content: center;
+  min-height: 40px;
   padding: 6px 10px;
   border: 0;
   border-radius: var(--radius-pill);
-  background: var(--color-bg-subtle);
+  background: transparent;
   color: var(--color-text-secondary);
   font-size: 12px;
   font-weight: 500;
+  white-space: nowrap;
+  transition: color var(--motion-feedback) var(--ease-move);
 }
 
 .chip.on {
   background: var(--color-brand-soft);
   color: var(--color-brand);
   font-weight: 600;
+}
+
+.chips.has-pill .chip.on {
+  background: transparent;
+}
+
+.chart-stage {
+  animation: motion-feedback-in var(--motion-feedback) var(--ease-enter);
 }
 
 .chart-summary {
@@ -198,7 +247,17 @@ useEChart(container, buildOption, {
 }
 
 .capital-chart.is-monthly {
-  height: 142px;
+  height: 160px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chips-pill.is-animated {
+    transition: none;
+  }
+
+  .chart-stage {
+    animation-duration: var(--motion-reduced-fade);
+  }
 }
 
 .legend {

@@ -965,14 +965,22 @@ function goBack(): void {
   background: transparent;
   color: inherit;
   text-align: left;
+  transition: background-color var(--motion-feedback) var(--ease-move);
 }
 
 .position-row:last-child {
   border-bottom: 0;
 }
 
-.position-row:hover {
-  background: var(--color-bg-subtle);
+@media (hover: hover) and (pointer: fine) {
+  .position-row:hover {
+    background: var(--color-bg-subtle);
+  }
+}
+
+.position-row:active {
+  background: var(--color-bg-hover);
+  transition-duration: var(--motion-press-in);
 }
 
 .position-main,
@@ -1060,10 +1068,15 @@ function goBack(): void {
   color: var(--color-text-secondary);
   font-size: 1rem;
   content: '⌄';
+  transition: transform var(--motion-feedback) var(--ease-move);
 }
 
 .closed-block[open] summary::after {
   transform: rotate(180deg);
+}
+
+.closed-block[open] .closed-list {
+  animation: motion-collapse-in var(--motion-collapse-in) var(--ease-enter);
 }
 
 .closed-list {
@@ -1258,5 +1271,15 @@ function goBack(): void {
 .sell-preview span {
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .closed-block summary::after {
+    transition: none;
+  }
+
+  .closed-block[open] .closed-list {
+    animation: none;
+  }
 }
 </style>

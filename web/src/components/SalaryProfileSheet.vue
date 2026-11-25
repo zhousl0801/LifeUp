@@ -317,7 +317,7 @@ function confirmDisableProfile(): void {
   background: var(--color-bg-surface);
   border-bottom: 1px solid var(--color-border-subtle);
   min-width: 0;
-  transition: background-color 0.15s ease;
+  transition: background-color var(--motion-feedback) var(--ease-move);
 }
 
 .salary-field:focus-within {

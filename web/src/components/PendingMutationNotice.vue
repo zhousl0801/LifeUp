@@ -80,14 +80,16 @@ async function check(retry: boolean): Promise<void> {
 </script>
 
 <template>
-  <aside v-if="hasPending || message" class="pending-notice" role="status">
-    <p>{{ isChecking ? '正在确认刚才那笔记录是否已保存…' : '刚才那笔记录还没确认是否保存，内容已保留，不会重复记账。' }}</p>
-    <p v-if="message" class="pending-error">{{ message }}</p>
-    <div class="pending-actions">
-      <button type="button" :disabled="isChecking" @click="check(false)">立即确认</button>
-      <button type="button" :disabled="isChecking" @click="check(true)">重新保存</button>
-    </div>
-  </aside>
+  <Transition name="notice-fade">
+    <aside v-if="hasPending || message" class="pending-notice" role="status">
+      <p>{{ isChecking ? '正在确认待处理的保存结果…' : '保存结果待确认，内容已保留，不会重复记账。' }}</p>
+      <p v-if="message" class="pending-error">{{ message }}</p>
+      <div class="pending-actions">
+        <button type="button" :disabled="isChecking" @click="check(false)">立即确认</button>
+        <button type="button" :disabled="isChecking" @click="check(true)">重新保存</button>
+      </div>
+    </aside>
+  </Transition>
 </template>
 
 <style scoped>

@@ -50,10 +50,47 @@
   --shadow-float: 0 0 0 1px var(--color-surface-border), 0 18px 40px var(--color-shadow-strong);
   --shadow-hero: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 24px 48px var(--color-shadow-hero);
 
-  /* 动效：快、准、少。 */
-  --motion-fast: 150ms;
-  --motion-base: 250ms;
-  --motion-sheet: 320ms;
-  --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  /* 统一动效语言：快、轻、克制、无过冲、可打断。 */
+  --motion-none: 0ms;
+  --motion-press-in: 70ms;
+  --motion-press-out: 110ms;
+  --motion-feedback: 120ms;
+  --motion-segment: 180ms;
+  --motion-content-in: 160ms;
+  --motion-content-out: 100ms;
+  --motion-collapse-in: 200ms;
+  --motion-collapse-out: 150ms;
+  --motion-route: 220ms;
+  --motion-sheet-in: 280ms;
+  --motion-sheet-out: 200ms;
+  --motion-dialog-in: 200ms;
+  --motion-dialog-out: 150ms;
+  --motion-data: 220ms;
+  --motion-highlight: 650ms;
+  --motion-busy-delay: 150ms;
+  --motion-busy-cycle: 900ms;
+  --motion-shimmer-cycle: 1400ms;
+  --motion-sweep-cycle: 1800ms;
+  --motion-reduced-fade: 70ms;
+
+  --goal-pill-bg: var(--color-bg-surface);
+  --goal-pill-fg: var(--color-brand);
+
+  --ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --ease-move: cubic-bezier(0.2, 0.75, 0.25, 1);
+  --ease-settle: cubic-bezier(0.22, 0.8, 0.24, 1);
+  --ease-linear: linear;
+
+  /* 兼容别名，收敛至统一动效体系。 */
+  --motion-fast: var(--motion-feedback);
+  --motion-base: var(--motion-data);
+  --motion-sheet: var(--motion-sheet-in);
+  --ease-standard: var(--ease-move);
+  --ease-sheet: var(--ease-enter);
+}
+
+:root[data-color-scheme='dark'] {
+  --goal-pill-bg: var(--color-brand-soft);
+  --goal-pill-fg: var(--color-text-primary);
 }

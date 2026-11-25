@@ -40,9 +40,9 @@ defineEmits<{ refresh: [] }>()
     0 2px 6px var(--sync-shadow, var(--color-btn-soft-shadow)),
     0 0 0 1px var(--sync-ring, var(--color-btn-soft-ring));
   transition:
-    background var(--motion-fast) ease,
-    box-shadow var(--motion-fast) ease,
-    transform 220ms cubic-bezier(0.22, 1.35, 0.36, 1);
+    background-color var(--motion-feedback) var(--ease-move),
+    box-shadow var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-settle);
 }
 
 .sync-button::before,
@@ -69,7 +69,7 @@ defineEmits<{ refresh: [] }>()
 .sync-button::after {
   box-shadow: inset 0 0 5px 1px rgba(255, 255, 255, var(--sync-glow));
   opacity: var(--glossy-light);
-  transition: opacity 140ms ease;
+  transition: opacity var(--motion-feedback) var(--ease-move);
 }
 
 .on-hero {
@@ -84,13 +84,16 @@ defineEmits<{ refresh: [] }>()
   --sync-glow: 0.18;
 }
 
-.sync-button:hover:not(:disabled) {
-  background: var(--sync-hover, var(--color-btn-soft-bg-hover));
+@media (hover: hover) and (pointer: fine) {
+  .sync-button:hover:not(:disabled) {
+    background: var(--sync-hover, var(--color-btn-soft-bg-hover));
+  }
 }
 
 .sync-button:active:not(:disabled) {
   --glossy-light: 0.52;
-  transform: scale(0.94);
+  transform: scale(0.95);
+  transition-duration: var(--motion-press-in);
 }
 
 .sync-button:disabled {
@@ -105,11 +108,15 @@ defineEmits<{ refresh: [] }>()
 
 @media (prefers-reduced-motion: no-preference) {
   .spinning {
-    animation: spin .9s linear infinite;
+    animation: spin var(--motion-busy-cycle) var(--ease-linear) infinite;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .sync-button {
+    transition: background-color var(--motion-reduced-fade) var(--ease-linear);
+  }
+
   .sync-button:active:not(:disabled) {
     transform: none;
   }

@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { fetchAssetTrend, fetchDayChange, fetchMonthChange } from '../api/ledger'
 import { refreshQuotes } from '../api/quotes'
 import { getApiErrorMessage } from '../api/client'
 import { toast } from '../composables/useMessage'
+import { useSlidingIndicator } from '../composables/useSlidingIndicator'
 import QuoteRefreshButton from '../components/QuoteRefreshButton.vue'
 import AppNav from '../components/AppNav.vue'
 import AmountVisibilityButton from '../components/AmountVisibilityButton.vue'
@@ -44,6 +45,8 @@ let trendSequence = 0
 const dayChange = ref<MonthChange | null>(null)
 const monthChange = ref<MonthChange | null>(null)
 const changeScope = ref<'day' | 'month'>('day')
+const scopeTrackRef = useTemplateRef<HTMLElement>('scopeTrack')
+const rangeTrackRef = useTemplateRef<HTMLElement>('rangeTrack')
 const dayChangeError = ref('')
 const monthChangeError = ref('')
 const changeSheetOpen = ref(false)
@@ -75,6 +78,16 @@ const daysRecorded = computed(() => {
 })
 
 const trendReady = computed(() => daysRecorded.value >= 7)
+const { ready: scopePillReady, animated: scopePillAnimated, indicatorStyle: scopePillStyle } = useSlidingIndicator(
+  scopeTrackRef,
+  changeScope,
+  { watchExtra: overview }
+)
+const { ready: rangePillReady, animated: rangePillAnimated, indicatorStyle: rangePillStyle } = useSlidingIndicator(
+  rangeTrackRef,
+  trendRange,
+  { watchExtra: [overview, trendReady] }
+)
 const trendProgress = computed(() => Math.min(100, Math.round(daysRecorded.value / 7 * 100)))
 const updateDate = computed(() => trend.value?.to ?? today)
 const totalAmountParts = computed(() => {
@@ -393,7 +406,14 @@ onBeforeUnmount(() => {
               <b>暂时算不出来</b>
               <span class="info-mark">ⓘ</span>
             </button>
-            <div class="change-scope" role="group" aria-label="资产变化范围">
+            <div ref="scopeTrack" class="change-scope" :class="{ 'has-pill': scopePillReady }" role="group" aria-label="资产变化范围">
+              <span
+                v-if="scopePillReady"
+                class="scope-pill"
+                :class="{ 'is-animated': scopePillAnimated }"
+                :style="scopePillStyle"
+                aria-hidden="true"
+              />
               <button
                 type="button"
                 :class="{ active: changeScope === 'day' }"
@@ -442,12 +462,19 @@ onBeforeUnmount(() => {
           <div v-else class="trend-wait">
             <p>记录满 7 天后显示趋势</p>
             <div class="progress" role="progressbar" :aria-valuenow="daysRecorded" aria-valuemin="0" aria-valuemax="7">
-              <span :style="{ width: `${trendProgress}%` }" />
+              <span :style="{ transform: `scaleX(${trendProgress / 100})` }" />
             </div>
             <small>已记录 {{ Math.min(daysRecorded, 7) }}/7 天</small>
           </div>
 
-          <div v-if="trendReady" class="hero-range" role="group" aria-label="趋势范围">
+          <div v-if="trendReady" ref="rangeTrack" class="hero-range" :class="{ 'has-pill': rangePillReady }" role="group" aria-label="趋势范围">
+            <span
+              v-if="rangePillReady"
+              class="range-pill"
+              :class="{ 'is-animated': rangePillAnimated }"
+              :style="rangePillStyle"
+              aria-hidden="true"
+            />
             <button
               v-for="option in rangeOptions"
               :key="option.value"
@@ -738,6 +765,20 @@ onBeforeUnmount(() => {
   color: var(--color-hero-text-secondary);
   font-size: var(--text-footnote);
   line-height: 1.4;
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-settle);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .hero-change:hover {
+    background: var(--color-hero-surface-strong);
+  }
+}
+
+.hero-change:active {
+  transform: scale(0.97);
+  transition-duration: var(--motion-press-in);
 }
 
 .hero-change b {
@@ -766,14 +807,33 @@ onBeforeUnmount(() => {
 }
 
 .change-scope {
-  display: inline-flex;
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 2px;
   padding: 3px;
   border-radius: var(--radius-pill);
   background: var(--color-hero-chip);
 }
 
+.scope-pill {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-hero-active);
+  transform-origin: left center;
+  pointer-events: none;
+}
+
+.scope-pill.is-animated {
+  transition: transform var(--motion-segment) var(--ease-move);
+}
+
 .change-scope button {
+  position: relative;
+  z-index: 1;
   min-height: 30px;
   padding: 0 8px;
   border: 0;
@@ -782,12 +842,17 @@ onBeforeUnmount(() => {
   color: var(--color-hero-text-secondary);
   font-size: var(--text-caption);
   font-variant-numeric: tabular-nums;
+  transition: color var(--motion-feedback) var(--ease-move);
 }
 
 .change-scope button.active {
   background: var(--color-hero-active);
   color: var(--color-hero-active-text);
   font-weight: 600;
+}
+
+.change-scope.has-pill button.active {
+  background: transparent;
 }
 
 .info-mark {
@@ -884,14 +949,18 @@ onBeforeUnmount(() => {
 
 .progress span {
   display: block;
+  width: 100%;
   height: 100%;
   border-radius: var(--radius-pill);
   background: var(--color-hero-line);
-  transition: width 0.2s ease;
+  transform-origin: left center;
+  transition: transform var(--motion-data) var(--ease-move);
 }
 
 .hero-range {
-  display: flex;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 2px;
   margin-top: 12px;
   padding: 4px;
@@ -899,8 +968,24 @@ onBeforeUnmount(() => {
   background: var(--color-hero-chip);
 }
 
+.range-pill {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-hero-active);
+  transform-origin: left center;
+  pointer-events: none;
+}
+
+.range-pill.is-animated {
+  transition: transform var(--motion-segment) var(--ease-move);
+}
+
 .range-button {
-  flex: 1;
+  position: relative;
+  z-index: 1;
   min-height: 38px;
   padding: 0 6px;
   border: 0;
@@ -909,16 +994,23 @@ onBeforeUnmount(() => {
   color: var(--color-hero-text-secondary);
   font-size: var(--text-caption);
   font-weight: 600;
+  transition: color var(--motion-feedback) var(--ease-move);
 }
 
-.range-button:hover:not(:disabled):not(.active) {
-  color: var(--color-hero-text);
+@media (hover: hover) and (pointer: fine) {
+  .range-button:hover:not(:disabled):not(.active) {
+    color: var(--color-hero-text);
+  }
 }
 
 .range-button.active {
   background: var(--color-hero-active);
   color: var(--color-hero-active-text);
   font-weight: 700;
+}
+
+.hero-range.has-pill .range-button.active {
+  background: transparent;
 }
 
 .month-flow {
@@ -992,7 +1084,6 @@ onBeforeUnmount(() => {
 .month-flow-segment {
   flex: none;
   height: 100%;
-  transition: width var(--motion-sheet) var(--ease-standard), height var(--motion-fast) ease;
 }
 
 .month-flow-segment.income {
@@ -1014,8 +1105,14 @@ onBeforeUnmount(() => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .month-flow-segment {
+  .scope-pill.is-animated,
+  .range-pill.is-animated,
+  .progress span {
     transition: none;
+  }
+
+  .hero-change:active {
+    transform: none;
   }
 }
 
@@ -1085,13 +1182,19 @@ onBeforeUnmount(() => {
 }
 
 .breakdown-item summary span::after {
+  display: inline-block;
   margin-inline-start: var(--space-1);
   color: var(--color-text-secondary);
   content: '⌄';
+  transition: transform var(--motion-feedback) var(--ease-move);
 }
 
 .breakdown-item[open] summary span::after {
-  content: '⌃';
+  transform: rotate(180deg);
+}
+
+.breakdown-item[open] .calculation-details {
+  animation: motion-collapse-in var(--motion-collapse-in) var(--ease-enter);
 }
 
 .calculation-details {
@@ -1151,5 +1254,15 @@ onBeforeUnmount(() => {
   color: var(--color-text-secondary);
   font-size: var(--text-caption);
   line-height: 1.7;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .breakdown-item summary span::after {
+    transition: none;
+  }
+
+  .breakdown-item[open] .calculation-details {
+    animation: none;
+  }
 }
 </style>

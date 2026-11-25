@@ -60,7 +60,8 @@ const groupAssetFunds = computed(() =>
     :close-disabled="busy"
     @close="emit('close')"
   >
-    <div v-if="managedGroup" class="group-detail">
+    <Transition name="content-fade" mode="out-in">
+    <div v-if="managedGroup" :key="managedGroup.id" class="group-detail">
       <button type="button" class="group-back" @click="emit('backToList')">
         <AppIcon name="chevron-back" />
         全部分组
@@ -171,6 +172,7 @@ const groupAssetFunds = computed(() =>
 
       <p class="summary-note">分组只改变查看范围，不影响持仓、成本和收益。</p>
     </div>
+    </Transition>
 
     <p v-if="error" class="form-error" role="alert">{{ error }}</p>
   </BottomSheet>
@@ -311,6 +313,11 @@ const groupAssetFunds = computed(() =>
   background: var(--color-bg-subtle);
   color: var(--color-text-primary);
   text-align: left;
+  transition: background-color var(--motion-feedback) var(--ease-move);
+}
+
+.group-asset-row:active:not(:disabled) {
+  background: var(--color-bg-hover);
 }
 
 .group-asset-row.selected {
@@ -348,7 +355,7 @@ const groupAssetFunds = computed(() =>
   border: 2px solid var(--color-brand);
   border-right-color: transparent;
   border-radius: 50%;
-  animation: group-check-spin 0.7s linear infinite;
+  animation: group-check-spin var(--motion-busy-cycle) var(--ease-linear) infinite;
 }
 
 .group-check.checked .group-check-spinner {
@@ -371,6 +378,9 @@ const groupAssetFunds = computed(() =>
   border: 1.5px solid var(--color-border-default);
   border-radius: 50%;
   color: var(--color-on-brand);
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    border-color var(--motion-feedback) var(--ease-move);
 }
 
 .group-check.checked {
@@ -381,6 +391,12 @@ const groupAssetFunds = computed(() =>
 .group-check .app-icon {
   width: 14px;
   height: 14px;
+  animation: check-pop var(--motion-feedback) var(--ease-enter);
+}
+
+@keyframes check-pop {
+  from { opacity: 0; transform: scale(0.75); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 .group-manage-list {
@@ -401,10 +417,27 @@ const groupAssetFunds = computed(() =>
   background: var(--color-bg-subtle);
   color: var(--color-text-primary);
   text-align: left;
+  transition: background-color var(--motion-feedback) var(--ease-move);
 }
 
-.group-manage-row:hover {
+@media (hover: hover) and (pointer: fine) {
+  .group-manage-row:hover {
+    background: var(--color-bg-hover);
+  }
+}
+
+.group-manage-row:active {
   background: var(--color-bg-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .group-check-spinner {
+    animation: none;
+  }
+
+  .group-check .app-icon {
+    animation: motion-feedback-in var(--motion-reduced-fade) var(--ease-linear);
+  }
 }
 
 .group-manage-row > span {

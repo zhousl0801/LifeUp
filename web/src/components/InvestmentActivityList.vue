@@ -94,10 +94,18 @@ const emit = defineEmits<{
 
 .activity-row.is-clickable {
   cursor: pointer;
+  transition: background-color var(--motion-feedback) var(--ease-move);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .activity-row.is-clickable:hover {
+    background: var(--color-bg-hover);
+  }
 }
 
 .activity-row.is-clickable:active {
   background: var(--color-brand-soft);
+  transition-duration: var(--motion-press-in);
 }
 
 .activity-type {

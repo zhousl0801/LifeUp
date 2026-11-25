@@ -23,15 +23,30 @@ defineEmits<{ back: [] }>()
   background: var(--color-bg-surface);
   box-shadow: var(--shadow-card);
   color: var(--color-text-primary);
-  transition: background var(--motion-fast) ease, transform var(--motion-fast) ease;
+  transition:
+    background-color var(--motion-feedback) var(--ease-move),
+    transform var(--motion-press-out) var(--ease-settle);
 }
 
-.back-button:hover {
-  background: var(--color-bg-hover);
+@media (hover: hover) and (pointer: fine) {
+  .back-button:hover {
+    background: var(--color-bg-hover);
+  }
 }
 
 .back-button:active {
-  transform: scale(.94);
+  transform: scale(0.95);
+  transition-duration: var(--motion-press-in);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .back-button {
+    transition: background-color var(--motion-reduced-fade) var(--ease-linear);
+  }
+
+  .back-button:active {
+    transform: none;
+  }
 }
 
 .back-button :deep(.app-icon) {
