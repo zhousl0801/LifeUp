@@ -9,6 +9,7 @@ const props = defineProps<{
   etaMonth: string | null
   targetAmount: number | null
   amountsMasked: boolean
+  isFireMode?: boolean
 }>()
 
 const expanded = ref<number[]>([])
@@ -87,6 +88,10 @@ function signed(value: number): string {
             <span>净储蓄 <b>{{ amount(row.netSavings) }}</b></span>
             <span>公积金缴存 <b>{{ amount(row.providentDeposit) }}</b></span>
             <span>投资收益 <b>{{ amount(row.return) }}</b></span>
+            <template v-if="isFireMode && row.passiveMonthlyCashflow != null">
+              <span>年末被动月薪 <b>{{ amountsMasked ? '••••' : `¥${formatMoney(row.passiveMonthlyCashflow)}/月` }}</b></span>
+              <span v-if="row.freedomPercent != null">自由度 <b>{{ row.freedomPercent.toFixed(1) }}%</b></span>
+            </template>
           </div>
         </Transition>
       </div>
@@ -99,6 +104,7 @@ function signed(value: number): string {
 
 <style scoped>
 .capital-card {
+  font-variant-numeric: tabular-nums;
   margin-top: 14px;
   padding: 17px;
   border-radius: var(--radius-card);

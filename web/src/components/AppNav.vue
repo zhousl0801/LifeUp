@@ -49,9 +49,10 @@ const { ready: pillReady, animated: pillAnimated, indicatorStyle } = useSlidingI
       </RouterLink>
       <RouterLink class="nav-item" :class="{ active: isGoal }" to="/capital">
         <span class="nav-icon-slot" aria-hidden="true">
-          <svg class="nav-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="4" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+          <svg class="nav-icon nav-icon-outline" viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5Z" /></svg>
+          <svg class="nav-icon nav-icon-filled" viewBox="0 0 24 24"><path d="M12 2.6c.45 2.4 1.9 4.7 3.85 6.3C17.8 10.45 19 12.45 19 15a7 7 0 1 1-14 0c0-1.25.45-2.45 1.15-3.2.55 1.55 1.55 2.45 2.65 2.45 1.25 0 2.15-1 2.15-2.3 0-1.35-.45-2-.95-3-.95-1.95-.2-3.9 2-6.35Z" fill="currentColor" /><path class="knockout" d="M12.2 12.4c1.3 1.2 2 2.4 2 3.8a2.2 2.2 0 1 1-4.4 0c0-.9.4-1.7 1.1-2.4.25.65.65.95 1.05.95.45 0 .65-.55.25-2.35Z" /></svg>
         </span>
-        <span>目标</span>
+        <span>FIRE</span>
       </RouterLink>
       <RouterLink class="nav-item" :class="{ active: isMine }" to="/mine">
         <span class="nav-icon-slot" aria-hidden="true">

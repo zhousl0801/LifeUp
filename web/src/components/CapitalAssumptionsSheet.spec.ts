@@ -1,3 +1,4 @@
+import { fireFixture } from '../test/fireFixture'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
@@ -54,6 +55,7 @@ function mountSheet(overrides: Partial<{
   saving: boolean
   serverError: string | null
   hasSalaryProfile: boolean
+  fire: typeof fireFixture
 }> = {}) {
   view = mount(CapitalAssumptionsSheet, {
     props: {
@@ -388,4 +390,61 @@ describe('CapitalAssumptionsSheet', () => {
     await flushPromises()
     expect(view!.emitted('preview')?.length ?? 0).toBe(previewsBeforeAdvance)
   })
+})
+
+it('cycles FIRE categories and preserves custom fields in the saved payload', async () => {
+  const wrapper = mountSheet({ settings: { ...settings, goalMode: 'fire' }, fire: fireFixture })
+  await bodySnapshot()
+  expect(document.querySelector('[aria-label="标准退休月支出"]')).toBeNull()
+  findButton('支出分类校准').click()
+  await nextTick()
+  findButton('房租').click()
+  await nextTick()
+  expect(findButton('房租').getAttribute('data-state')).toBe('standard')
+  findButton('房租').click()
+  await setInput('标准退休月支出', '4500.25')
+  findButton('3.5%').click()
+  await nextTick()
+  findButton('保存并重新计算').click()
+  expect(wrapper.emitted('save')?.[0]?.[0]).toMatchObject({
+    goalMode: 'fire', targetAmount: 1000000, safeWithdrawalRatePercent: 3.5,
+    excludedExpenseCategories: ['房租'], leanExpenseCategories: [], fireMonthlyExpenseOverride: 4500.25
+  })
+})
+
+it('validates FIRE inputs and preserves both drafts when previewing a mode switch', async () => {
+  vi.useFakeTimers()
+  const wrapper = mountSheet({
+    settings: { ...settings, goalMode: 'fire', fireMode: 'lean', safeWithdrawalRatePercent: 4 },
+    fire: fireFixture
+  })
+  await bodySnapshot()
+
+  await setInput('安全提取率', '3.555')
+  await setInput('Coast 目标年份', '2201')
+  findButton('支出分类校准').click()
+  await nextTick()
+  await setInput('Lean 退休月支出', '-1')
+  vi.advanceTimersByTime(300)
+  expect(wrapper.emitted('preview')).toBeUndefined()
+  expect(await bodySnapshot()).toContain('安全提取率须为 1% 至 15%')
+  expect(await bodySnapshot()).toContain('Coast 目标年份须为 2025 至 2200 的整数')
+  expect(await bodySnapshot()).toContain('Lean 退休月支出：金额必须不小于零')
+
+  await setInput('安全提取率', '1')
+  await setInput('Coast 目标年份', '2200')
+  await setInput('Lean 退休月支出', '0')
+  findButton('自定义目标').click()
+  await nextTick()
+  expect(input('目标金额').value).toBe('100')
+  vi.advanceTimersByTime(300)
+  expect(wrapper.emitted('preview')?.at(-1)?.[0]).toMatchObject({
+    goalMode: 'custom', fireMode: 'lean', safeWithdrawalRatePercent: 1,
+    coastTargetYear: 2200, leanMonthlyExpenseOverride: 0, targetAmount: 1000000
+  })
+  findButton('FIRE 模式').click()
+  await nextTick()
+  expect(input('安全提取率').value).toBe('1')
+  document.querySelector<HTMLButtonElement>('.sheet-close')!.click()
+  expect(await bodySnapshot()).toContain('放弃修改？')
 })

@@ -1,3 +1,4 @@
+import { fireFixture } from '../test/fireFixture'
 import { flushPromises, mount } from '@vue/test-utils'
 import { expect, test, vi } from 'vitest'
 import type { CapitalProjectionPoint } from '../types/capital'
@@ -125,5 +126,28 @@ test('masks the target label and monthly tooltip', async () => {
   expect(tooltip).not.toContain('6,800.00')
   expect(tooltip).not.toContain('6800')
 
+  view.unmount()
+})
+
+test('defaults to FIRE cashflow and highlights the first annual-expense crossover', async () => {
+  runtime.load.mockResolvedValue({ init: () => chart })
+  const view = mount(CapitalProjectionChart, {
+    props: {
+      points: points.slice(0, 3).map((point, index) => ({
+        ...point, passiveAnnualCashflow: [60000, 73000, 74000][index], expectedAnnualExpense: 72000
+      })),
+      fire: fireFixture, targetAmount: 1800000, amountsMasked: true, currentTotal: 693000, currentMonth: '2026-11'
+    }
+  })
+  await flushPromises()
+  expect(view.get('[aria-selected="true"]').text()).toBe('现金流')
+  const option = chart.setOption.mock.calls.at(-1)![0] as ChartOption & {
+    series: Array<{ markPoint?: { data: { coord: [string, number] }[] } }>
+  }
+  expect(option.series.map((item) => item.name)).toEqual(['被动年现金流', '预期年支出'])
+  expect(option.series[0]!.data).toEqual([27720, 60000, 73000, 74000])
+  expect(option.series[0]!.markPoint?.data[0]?.coord).toEqual(['2027-01', 73000])
+  expect(option.tooltip.formatter([{ dataIndex: 0 }])).toContain('38.5%')
+  expect(option.tooltip.formatter([{ dataIndex: 0 }])).not.toContain('27,720')
   view.unmount()
 })

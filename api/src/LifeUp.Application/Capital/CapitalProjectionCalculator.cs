@@ -1,15 +1,37 @@
+using System.Globalization;
 using LifeUp.Domain.Ledgers;
 
 namespace LifeUp.Application.Capital;
 
 public sealed class CapitalProjectionCalculator
 {
+    public const decimal DefaultSafeWithdrawalRatePercent = 4m;
+
     private const int MaximumMonths = 1200;
     private const int DisplayYears = 10;
     private const int MaximumPoints = 120;
     private const int MonthlyPointsKept = 12;
+    private const decimal ProjectionBalanceLimit = decimal.MaxValue / 1024m;
 
     public CapitalProjectionResult Calculate(CapitalProjectionInput input)
+    {
+        return Calculate(input, dynamicFire: false);
+    }
+
+    public CapitalProjectionResult CalculateFire(CapitalProjectionInput input)
+    {
+        return Calculate(input, dynamicFire: true);
+    }
+
+    internal CapitalProjectionResult CalculateFireWithPortfolioReturn(CapitalProjectionInput input, decimal annualReturnPercent)
+    {
+        return Calculate(input, dynamicFire: true, annualReturnPercent);
+    }
+
+    private static CapitalProjectionResult Calculate(
+        CapitalProjectionInput input,
+        bool dynamicFire,
+        decimal? portfolioAnnualReturnPercent = null)
     {
         var notes = new List<string>
         {
@@ -29,19 +51,31 @@ public sealed class CapitalProjectionCalculator
         var blendedReturn = total > 0m
             ? Round((investment * input.InvestmentAnnualReturnPercent + provident * input.ProvidentAnnualReturnPercent) / total)
             : 0m;
+        var expenseGrowth = input.ExpenseGrowthPercent / 100m;
+        var withdrawalRate = (input.SafeWithdrawalRatePercent
+            ?? (dynamicFire ? DefaultSafeWithdrawalRatePercent : 0m)) / 100m;
+        var annualExpense = NonNegative(input.FireMonthlyExpense ?? 0m) * 12m;
+        var targetAmount = input.TargetAmount;
+        if (dynamicFire)
+        {
+            targetAmount = annualExpense > 0m ? Round(annualExpense / withdrawalRate) : null;
+        }
 
-        if (investment == 0m && input.InvestmentAnnualReturnPercent != 0m)
+        if (investment == 0m && input.InvestmentAnnualReturnPercent != 0m && portfolioAnnualReturnPercent is null)
         {
             notes.Add("当前没有投资资产，投资年化暂不生效。");
         }
 
-        if (input.TargetAmount is decimal startTarget && total >= startTarget)
+        var reachedAtStart = dynamicFire
+            ? annualExpense > 0m && total * withdrawalRate >= annualExpense
+            : targetAmount is decimal startTarget && total >= startTarget;
+        if (reachedAtStart)
         {
             notes.Add("目标已达成。");
 
             return new CapitalProjectionResult(
                 CapitalProjectionStatus.Reached,
-                startTarget,
+                targetAmount,
                 0m,
                 100m,
                 null,
@@ -59,8 +93,13 @@ public sealed class CapitalProjectionCalculator
             ? MonthlyRate(investmentRate * investment / nonProvident)
             : 0m;
         var providentMonthlyRate = MonthlyRate(providentRate);
+        if (portfolioAnnualReturnPercent is decimal portfolioReturn)
+        {
+            nonProvidentRate = providentMonthlyRate = MonthlyRate(portfolioReturn / 100m);
+            blendedReturn = portfolioReturn;
+        }
+
         var incomeGrowth = input.IncomeGrowthPercent / 100m;
-        var expenseGrowth = input.ExpenseGrowthPercent / 100m;
         var firstMonth = new DateOnly(input.AsOfDate.Year, input.AsOfDate.Month, 1).AddMonths(1);
         var nonProvidentBalance = nonProvident;
         var providentBalance = provident;
@@ -71,7 +110,7 @@ public sealed class CapitalProjectionCalculator
         var depleted = false;
         string? etaMonth = null;
         int? monthsRemaining = null;
-        var iterationLimit = input.TargetAmount is null ? DisplayYears * 12 : MaximumMonths;
+        var iterationLimit = targetAmount is null ? DisplayYears * 12 : MaximumMonths;
 
         while (monthIndex < iterationLimit)
         {
@@ -92,8 +131,8 @@ public sealed class CapitalProjectionCalculator
             nonProvidentBalance += nonProvidentReturn;
             providentBalance += providentReturn;
             var capitalBeforeContributions = nonProvidentBalance + providentBalance;
-            nonProvidentBalance += netSavings + bonus;
-            providentBalance += providentDeposit;
+            nonProvidentBalance = Math.Min(ProjectionBalanceLimit, nonProvidentBalance + netSavings + bonus);
+            providentBalance = Math.Min(ProjectionBalanceLimit, providentBalance + providentDeposit);
 
             if (nonProvidentBalance < 0m)
             {
@@ -119,11 +158,16 @@ public sealed class CapitalProjectionCalculator
 
             monthIndex++;
             var capital = Round(capitalAfterContributions);
+            var expectedAnnualExpense = Round(GrowAnnualExpense(annualExpense, expenseGrowth, yearOffset));
+            var passiveAnnualCashflow = Round(capital * withdrawalRate);
+            var monthKey = month.ToString("yyyy-MM", CultureInfo.InvariantCulture);
             points.Add(new CapitalProjectionPoint(
-                month.ToString("yyyy-MM"),
+                monthKey,
                 capital,
                 Round(actualNet),
-                Round(monthReturn)));
+                Round(monthReturn),
+                passiveAnnualCashflow,
+                expectedAnnualExpense));
 
             if (!years.TryGetValue(month.Year, out var year))
             {
@@ -135,50 +179,50 @@ public sealed class CapitalProjectionCalculator
             year.ProvidentDeposit += providentDeposit;
             year.Return += monthReturn;
             year.YearEndCapital = capital;
+            year.PassiveMonthlyCashflow = Round(passiveAnnualCashflow / 12m);
+            year.FreedomPercent = ProgressPercent(passiveAnnualCashflow, expectedAnnualExpense);
 
-            if (input.TargetAmount is decimal target && capital >= target)
+            var reachedThisMonth = dynamicFire
+                ? targetAmount is not null && (passiveAnnualCashflow >= expectedAnnualExpense
+                    || capital >= Round(expectedAnnualExpense / withdrawalRate))
+                : targetAmount is decimal target && capital >= target;
+            if (reachedThisMonth)
             {
                 reached = true;
-                etaMonth = month.ToString("yyyy-MM");
+                etaMonth = monthKey;
                 monthsRemaining = monthIndex;
                 year.IsGoalYear = true;
                 break;
             }
 
-            if (depleted)
+            if (depleted && (!dynamicFire || targetAmount is not null))
             {
                 break;
             }
         }
 
-        var status = ResolveStatus(input.TargetAmount, reached, depleted, points);
+        var status = dynamicFire && targetAmount is null
+            ? CapitalProjectionStatus.NoTarget
+            : ResolveStatus(targetAmount, reached, depleted && !(dynamicFire && reached), points);
         AddStatusNotes(notes, status, points);
-        var displayMonthLimit = input.TargetAmount is null
-            ? DisplayYears * 12
-            : monthsRemaining is int displayMonths && displayMonths <= DisplayYears * 12
-                ? displayMonths
-                : DisplayYears * 12;
+        var displayMonthLimit = dynamicFire && reached ? points.Count : DisplayYears * 12;
         var displayYearLimit = input.AsOfDate.Year + DisplayYears;
 
-        if (input.TargetAmount is not null
-            && monthsRemaining is int goalMonths
-            && goalMonths <= DisplayYears * 12)
+        if (monthsRemaining is int goalMonths && (dynamicFire || goalMonths <= DisplayYears * 12))
         {
             displayYearLimit = firstMonth.AddMonths(goalMonths - 1).Year;
         }
 
         var displayPoints = SelectPoints(points, displayMonthLimit);
         var displayYears = BuildYears(years, displayYearLimit);
-        var progress = input.TargetAmount is decimal progressTarget && progressTarget > 0m
-            ? decimal.Round(Math.Min(100m, total / progressTarget * 100m), 1, MidpointRounding.AwayFromZero)
-            : 0m;
-        var remaining = input.TargetAmount is decimal remainingTarget
+        var progress = ProgressPercent(total, targetAmount ?? 0m);
+        var remaining = targetAmount is decimal remainingTarget
             ? Round(Math.Max(0m, remainingTarget - total))
-            : (decimal?)null;
+            : dynamicFire ? 0m : (decimal?)null;
 
         return new CapitalProjectionResult(
             status,
-            input.TargetAmount,
+            targetAmount ?? (dynamicFire ? 0m : (decimal?)null),
             remaining,
             progress,
             etaMonth,
@@ -187,7 +231,69 @@ public sealed class CapitalProjectionCalculator
             blendedReturn,
             displayPoints,
             displayYears,
-            notes);
+            notes)
+        {
+            MonthlyPoints = points
+        };
+    }
+
+    public static CoastFireDto CalculateCoast(
+        CapitalProjectionInput input,
+        CapitalProjectionResult projection,
+        int? coastTargetYear)
+    {
+        var targetYear = coastTargetYear ?? input.AsOfDate.Year + 25;
+        var targetYearSource = coastTargetYear.HasValue ? "user" : "default";
+        var unachievable = new CoastFireDto(targetYear, targetYearSource, false, false, null, 0m, null, null, null);
+        var years = targetYear - input.AsOfDate.Year;
+        var annualExpense = (input.FireMonthlyExpense ?? 0m) * 12m;
+        var returnRate = projection.BlendedAnnualReturnPercent / 100m;
+        var expenseGrowth = input.ExpenseGrowthPercent / 100m;
+
+        if (years < 1)
+        {
+            return unachievable with { Note = "目标年份需晚于当前年份" };
+        }
+
+        if (annualExpense <= 0m)
+        {
+            return unachievable with { Note = "请先设定或记录有效生活支出" };
+        }
+
+        if (returnRate <= 0m || returnRate <= expenseGrowth)
+        {
+            return unachievable with { Note = "当前组合年化不高于支出年增长，暂无法仅靠复利滑行" };
+        }
+
+        var withdrawalRate = (input.SafeWithdrawalRatePercent ?? DefaultSafeWithdrawalRatePercent) / 100m;
+        var coastThreshold = (double)(annualExpense / withdrawalRate)
+            * Math.Pow((double)((1m + expenseGrowth) / (1m + returnRate)), years);
+        var threshold = Round((decimal)coastThreshold);
+        var capital = NonNegative(input.Cash) + NonNegative(input.Investment) + NonNegative(input.Provident);
+        var reached = capital >= threshold;
+        var result = new CoastFireDto(
+            targetYear, targetYearSource, true, reached, threshold,
+            threshold > 0m ? ProgressPercent(capital, threshold) : 100m,
+            null, reached ? 0 : null, null);
+
+        if (reached)
+        {
+            return result;
+        }
+
+        var monthLimit = Math.Min(projection.MonthlyPoints.Count, years * 12 - 1);
+        for (var index = 0; index < monthLimit; index++)
+        {
+            var point = projection.MonthlyPoints[index];
+            var months = index + 1;
+            var monthlyThreshold = coastThreshold * Math.Pow((double)(1m + returnRate), months / 12d);
+            if ((double)point.Capital >= monthlyThreshold)
+            {
+                return result with { EtaMonth = point.Month, MonthsRemaining = months };
+            }
+        }
+
+        return result;
     }
 
     private static CapitalProjectionStatus ResolveStatus(
@@ -298,7 +404,9 @@ public sealed class CapitalProjectionCalculator
                 Round(pair.Value.ProvidentDeposit),
                 Round(pair.Value.Return),
                 Round(pair.Value.NetSavings + pair.Value.ProvidentDeposit + pair.Value.Return),
-                pair.Value.IsGoalYear))
+                pair.Value.IsGoalYear,
+                pair.Value.PassiveMonthlyCashflow,
+                pair.Value.FreedomPercent))
             .ToList();
     }
 
@@ -338,7 +446,29 @@ public sealed class CapitalProjectionCalculator
         return value < 0m ? 0m : value;
     }
 
-    private static decimal Round(decimal value)
+    private static decimal GrowAnnualExpense(decimal amount, decimal annualGrowth, int yearOffset)
+    {
+        if (amount == 0m || yearOffset <= 0 || annualGrowth == 0m)
+        {
+            return amount;
+        }
+
+        var factor = Math.Pow((double)(1m + annualGrowth), yearOffset);
+        var limit = ProjectionBalanceLimit / amount;
+        return factor >= (double)limit ? ProjectionBalanceLimit : amount * (decimal)factor;
+    }
+
+    private static decimal ProgressPercent(decimal value, decimal target)
+    {
+        return target > 0m ? Round1(Math.Min(value, target) / target * 100m) : 0m;
+    }
+
+    internal static decimal Round1(decimal value)
+    {
+        return decimal.Round(value, 1, MidpointRounding.AwayFromZero);
+    }
+
+    internal static decimal Round(decimal value)
     {
         return decimal.Round(value, 2, MidpointRounding.AwayFromZero);
     }
@@ -354,5 +484,9 @@ public sealed class CapitalProjectionCalculator
         public decimal Return { get; set; }
 
         public bool IsGoalYear { get; set; }
+
+        public decimal PassiveMonthlyCashflow { get; set; }
+
+        public decimal FreedomPercent { get; set; }
     }
 }

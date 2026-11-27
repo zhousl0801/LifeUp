@@ -54,7 +54,7 @@ public static class CapitalMilestoneBuilder
         return $"{amount.ToString("N0", CultureInfo.InvariantCulture)} 元";
     }
 
-    private static decimal? ReadValue(AssetTrendPointDto point, bool coverageComplete)
+    internal static decimal? ReadValue(AssetTrendPointDto point, bool coverageComplete)
     {
         return coverageComplete ? point.TotalAssets : point.KnownTotalAssets;
     }

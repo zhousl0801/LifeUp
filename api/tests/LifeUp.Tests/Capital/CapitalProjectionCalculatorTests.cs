@@ -238,4 +238,153 @@ public sealed class CapitalProjectionCalculatorTests
 
         Assert.Contains(result.Notes, note => note.Contains("投资年化"));
     }
+
+    [Fact]
+    public void CalculateFire_WhenExpensesGrowInJanuary_WaitsForCashflowCrossover()
+    {
+        var input = new CapitalProjectionInput(
+            AsOf, 200_000m, 0m, 0m, 250_000m,
+            60_000m, 0m, 0m, 0m, 10m, 0m, 0m, FireMonthlyExpense: 1_000m);
+
+        var projection = new CapitalProjectionCalculator().CalculateFire(input);
+
+        Assert.Equal(CapitalProjectionStatus.OnTrack, projection.Status);
+        Assert.Equal(300_000m, projection.TargetAmount);
+        Assert.Equal(100_000m, projection.Remaining);
+        Assert.Equal(66.7m, projection.ProgressPercent);
+        Assert.Equal(3, projection.MonthsRemaining);
+        Assert.Equal("2027-02", projection.EtaMonth);
+        Assert.Equal(12_000m, projection.Points[0].ExpectedAnnualExpense);
+        Assert.Equal(13_200m, projection.Points[1].ExpectedAnnualExpense);
+        Assert.Equal(12_800m, projection.Points[1].PassiveAnnualCashflow);
+        Assert.Equal(15_200m, projection.Points[^1].PassiveAnnualCashflow);
+        Assert.Equal(1_266.67m, projection.Years[^1].PassiveMonthlyCashflow);
+        Assert.Equal(86.7m, projection.Years[0].FreedomPercent);
+        Assert.Equal(100m, projection.Years[^1].FreedomPercent);
+        Assert.True(projection.Years[^1].IsGoalYear);
+    }
+
+    [Fact]
+    public void CalculateFire_PreservesCrossoverBeyondTenYearsWhenSampling()
+    {
+        var input = new CapitalProjectionInput(
+            AsOf, 0m, 0m, 0m, null,
+            1_200m, 0m, 0m, 0m, 0m, 0m, 0m, FireMonthlyExpense: 1_000m, SafeWithdrawalRatePercent: 5m);
+
+        var projection = new CapitalProjectionCalculator().CalculateFire(input);
+
+        Assert.Equal(240_000m, projection.TargetAmount);
+        Assert.Equal(200, projection.MonthsRemaining);
+        Assert.InRange(projection.Points.Count, 13, 120);
+        Assert.Equal("2026-12", projection.Points[0].Month);
+        Assert.Equal(projection.EtaMonth, projection.Points[^1].Month);
+        Assert.Equal(12_000m, projection.Points[^1].PassiveAnnualCashflow);
+        Assert.Equal(12_000m, projection.Points[^1].ExpectedAnnualExpense);
+        Assert.True(projection.Years[^1].IsGoalYear);
+    }
+
+    [Fact]
+    public void CalculateFire_ZeroExpenseReturnsTenYearsEvenIfAccumulationDepletes()
+    {
+        var input = new CapitalProjectionInput(
+            AsOf, 100m, 0m, 0m, 300m,
+            0m, 100m, 0m, 0m, 0m, 0m, 0m, FireMonthlyExpense: 0m);
+
+        var projection = new CapitalProjectionCalculator().CalculateFire(input);
+
+        Assert.Equal(CapitalProjectionStatus.NoTarget, projection.Status);
+        Assert.Equal(0m, projection.TargetAmount);
+        Assert.Equal(0m, projection.ProgressPercent);
+        Assert.Equal(120, projection.Points.Count);
+        Assert.Equal("2036-11", projection.Points[^1].Month);
+        Assert.All(projection.Years, year => Assert.Equal(0m, year.FreedomPercent));
+    }
+
+    [Fact]
+    public void CalculateFire_AlreadyReachedUsesWithdrawalRateAndNoEta()
+    {
+        var input = new CapitalProjectionInput(
+            AsOf, 240_000m, 0m, 0m, null,
+            0m, 0m, 0m, 0m, 0m, 0m, 0m, FireMonthlyExpense: 1_000m, SafeWithdrawalRatePercent: 5m);
+
+        var projection = new CapitalProjectionCalculator().CalculateFire(input);
+
+        Assert.Equal(CapitalProjectionStatus.Reached, projection.Status);
+        Assert.Equal(100m, projection.ProgressPercent);
+        Assert.Equal(0, projection.MonthsRemaining);
+        Assert.Null(projection.EtaMonth);
+    }
+
+    [Fact]
+    public void Calculate_CustomKeepsFixedTargetAndAddsCashflowMetrics()
+    {
+        var input = new CapitalProjectionInput(
+            AsOf, 0m, 0m, 0m, 100_000m,
+            10_000m, 0m, 0m, 0m, 0m, 0m, 0m, FireMonthlyExpense: 1_000m, SafeWithdrawalRatePercent: 5m);
+
+        var projection = new CapitalProjectionCalculator().Calculate(input);
+
+        Assert.Equal(100_000m, projection.TargetAmount);
+        Assert.Equal(10, projection.MonthsRemaining);
+        Assert.Equal(5_000m, projection.Points[^1].PassiveAnnualCashflow);
+        Assert.Equal(12_000m, projection.Points[^1].ExpectedAnnualExpense);
+        Assert.Equal(416.67m, projection.Years[^1].PassiveMonthlyCashflow);
+        Assert.Equal(41.7m, projection.Years[^1].FreedomPercent);
+    }
+
+    [Theory]
+    [InlineData(10_000, false)]
+    [InlineData(160_000, true)]
+    public void CalculateCoast_ReturnsThresholdAndFirstEligibleMonth(decimal investment, bool alreadyReached)
+    {
+        var input = new CapitalProjectionInput(
+            AsOf, 0m, investment, 0m, null,
+            3_000m, 0m, 0m, 0m, 2m, 6m, 0m, FireMonthlyExpense: 1_000m);
+        var projection = new CapitalProjectionCalculator().CalculateFire(input);
+
+        var coast = CapitalProjectionCalculator.CalculateCoast(input, projection, null);
+
+        var expected = 300_000d * Math.Pow(1.02d / 1.06d, 25);
+        Assert.Equal(2051, coast.TargetYear);
+        Assert.Equal("default", coast.TargetYearSource);
+        Assert.True(coast.Achievable);
+        Assert.Equal(Math.Round((decimal)expected, 2), coast.ThresholdCapital);
+        Assert.Equal(alreadyReached, coast.Reached);
+        if (alreadyReached)
+        {
+            Assert.Null(coast.EtaMonth);
+            Assert.Equal(0, coast.MonthsRemaining);
+            Assert.Equal(100m, coast.ProgressPercent);
+        }
+        else
+        {
+            var firstEligible = projection.Points
+                .Select((point, index) => (point, months: index + 1))
+                .First(item => (double)item.point.Capital >= expected * Math.Pow(1.06d, item.months / 12d));
+            Assert.Equal(firstEligible.point.Month, coast.EtaMonth);
+            Assert.Equal(firstEligible.months, coast.MonthsRemaining);
+            Assert.True(coast.MonthsRemaining < projection.MonthsRemaining);
+        }
+    }
+
+    [Theory]
+    [InlineData(2026, 1_000, 6, "目标年份需晚于当前年份")]
+    [InlineData(2050, 0, 6, "请先设定或记录有效生活支出")]
+    [InlineData(2050, 1_000, 2, "当前组合年化不高于支出年增长，暂无法仅靠复利滑行")]
+    public void CalculateCoast_ReturnsReasonWhenNotAchievable(int year, decimal expense, decimal annualReturn, string note)
+    {
+        var input = new CapitalProjectionInput(
+            AsOf, 0m, 10_000m, 0m, null,
+            0m, 0m, 0m, 0m, 2m, annualReturn, 0m, FireMonthlyExpense: expense);
+        var projection = new CapitalProjectionCalculator().CalculateFire(input);
+
+        var coast = CapitalProjectionCalculator.CalculateCoast(input, projection, year);
+
+        Assert.False(coast.Achievable);
+        Assert.Equal("user", coast.TargetYearSource);
+        Assert.Equal(note, coast.Note);
+        Assert.Null(coast.ThresholdCapital);
+        Assert.Null(coast.EtaMonth);
+        Assert.Equal(0m, coast.ProgressPercent);
+    }
 }

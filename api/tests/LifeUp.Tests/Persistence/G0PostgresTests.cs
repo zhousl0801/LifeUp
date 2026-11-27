@@ -142,7 +142,8 @@ public sealed class G0PostgresTests
         Assert.Equal(1, (await context.Ledgers.SingleAsync()).SingletonSlot);
         Assert.Empty(await context.MutationReceipts.ToListAsync());
         Assert.Empty(await context.Database.GetPendingMigrationsAsync());
-        Assert.Equal(18, await context.EntryCategories.CountAsync());
+        Assert.Equal(18, await context.EntryCategories.CountAsync(category => !category.IsGroup));
+        Assert.Equal(6, await context.EntryCategories.CountAsync(category => category.IsGroup));
     }
 
     [PostgresFact]

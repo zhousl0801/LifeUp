@@ -17,7 +17,7 @@ const { ready: pillReady, animated: pillAnimated, indicatorStyle } = useSlidingI
 </script>
 
 <template>
-  <nav ref="track" class="goal-tabs" :class="{ 'has-pill': pillReady }" aria-label="目标页分段">
+  <nav ref="track" class="goal-tabs" :class="{ 'has-pill': pillReady }" aria-label="FIRE 页分段">
     <span
       v-if="pillReady"
       class="goal-tabs-pill"
@@ -25,7 +25,7 @@ const { ready: pillReady, animated: pillAnimated, indicatorStyle } = useSlidingI
       :style="indicatorStyle"
       aria-hidden="true"
     />
-    <RouterLink class="goal-tab" :class="{ active: isCapital }" to="/capital">资本积累</RouterLink>
+    <RouterLink class="goal-tab" :class="{ active: isCapital }" to="/capital">FIRE</RouterLink>
     <RouterLink class="goal-tab" :class="{ active: isPlans }" to="/plans">自动记账</RouterLink>
   </nav>
 </template>

@@ -31,7 +31,7 @@ public sealed class CapitalGoalServiceTests
     public async Task SaveAsync_PersistsGoalAndEffectiveSourcesBecomeUser()
     {
         var (repository, service, _) = await CreateAsync(new DateOnly(2026, 11, 1), 100_000m);
-        var goal = new CapitalGoal(1_000_000m, 12_000m, 7_200m, 2_000m, 3m, 2m, 5m, 1.5m);
+        var goal = new CapitalGoal(1_000_000m, 12_000m, 7_200m, 2_000m, 3m, 2m, 5m, 1.5m, GoalMode: "custom");
 
         var saved = await service.SaveAsync(goal, CancellationToken.None);
 
@@ -81,7 +81,7 @@ public sealed class CapitalGoalServiceTests
     {
         var (_, service, _) = await CreateAsync(new DateOnly(2026, 11, 1), 376_000m);
         await service.SaveAsync(
-            new CapitalGoal(1_000_000m, 12_000m, 7_200m, 2_000m, 3m, 2m, 5m, 1.5m),
+            new CapitalGoal(1_000_000m, 12_000m, 7_200m, 2_000m, 3m, 2m, 5m, 1.5m, GoalMode: "custom"),
             CancellationToken.None);
 
         var overview = await service.GetAsync(CancellationToken.None);

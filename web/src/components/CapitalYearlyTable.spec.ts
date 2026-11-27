@@ -65,3 +65,16 @@ test('masks amounts when requested', () => {
   expect(view.text()).not.toContain('384,050.00')
   expect(view.text()).toContain('¥••••')
 })
+
+test('shows FIRE cashflow and freedom in expanded years and masks only the amount', async () => {
+  const view = mount(CapitalYearlyTable, {
+    props: {
+      years: [{ ...years[0]!, passiveMonthlyCashflow: 2300, freedomPercent: 38.3 }],
+      etaMonth: null, targetAmount: 1800000, amountsMasked: true, isFireMode: true
+    }
+  })
+  await view.get('.row-main').trigger('click')
+  expect(view.get('.details').text()).toContain('年末被动月薪 ••••')
+  expect(view.get('.details').text()).toContain('38.3%')
+  expect(view.text()).not.toContain('2,300.00')
+})

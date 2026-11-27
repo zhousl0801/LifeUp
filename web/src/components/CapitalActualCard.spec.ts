@@ -42,3 +42,15 @@ test('masks amounts when requested', () => {
   expect(view.text()).toContain('¥••••')
   expect(view.text()).not.toContain('3,200.00')
 })
+
+test('compares actual expenses to the FIRE baseline even when amounts are masked', async () => {
+  const view = mount(CapitalActualCard, {
+    props: { actual: { ...actual, actualExpense: 4800 }, amountsMasked: false, isFireMode: true, fireBaselineMonthlyExpense: 6000 }
+  })
+  expect(view.text()).toContain('占 FIRE 基准（¥6,000.00/月）的 80%')
+  await view.setProps({ amountsMasked: true })
+  expect(view.text()).toContain('本月支出 ••••')
+  expect(view.text()).not.toContain('6,000.00')
+  await view.setProps({ actual: { ...actual, actualExpense: 6200 } })
+  expect(view.text()).toContain('高于 FIRE 基准')
+})

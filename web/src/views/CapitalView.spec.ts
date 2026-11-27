@@ -1,3 +1,4 @@
+import { fireFixture } from '../test/fireFixture'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -407,4 +408,58 @@ test('keeps the sheet open and shows a 409 error', async () => {
 
   expect(sheet.props('open')).toBe(true)
   expect(view.find('.server-error').text()).toContain('账本刚有新变化')
+})
+
+test('renders FIRE freedom and persists the selected Lean track', async () => {
+  mocks.save.mockResolvedValue(overview({ fire: { ...fireFixture, activeMode: 'lean' } }))
+  const view = await mountView(overview({ fire: fireFixture }))
+  expect(view.get('h1').text()).toBe('FIRE')
+  expect(view.text()).toContain('38.5%')
+  expect(view.text()).toContain('还需 7 年 4 个月')
+  expect(view.text()).toContain('Coast FIRE 已达')
+  await view.get('[data-fire-mode="lean"]').trigger('click')
+  await flushPromises()
+  expect(mocks.save).toHaveBeenLastCalledWith({ ...settings, goalMode: 'fire', fireMode: 'lean' })
+  expect(view.text()).toContain('59.2%')
+  view.unmount()
+})
+
+test('opens FIRE assumptions from the no-target guidance', async () => {
+  const noTarget = {
+    ...fireFixture,
+    standard: {
+      ...fireFixture.standard, status: 'noTarget' as const, monthlyExpense: 0, annualExpense: 0,
+      targetCapital: 0, progressPercent: 0, etaMonth: null, monthsRemaining: null
+    }
+  }
+  const view = await mountView(overview({ fire: noTarget }))
+  expect(view.text()).toContain('待补充支出')
+  const callToAction = view.get('.set-goal')
+  expect(callToAction.text()).toContain('设置 FIRE 支出基准')
+  await callToAction.trigger('click')
+  expect(view.findComponent(CapitalAssumptionsSheet).props('open')).toBe(true)
+  view.unmount()
+})
+
+test('renders FIRE reached card without empty projection cards', async () => {
+  const reachedFire = {
+    ...fireFixture,
+    currentPassiveMonthlyCashflow: 6_500,
+    standard: {
+      ...fireFixture.standard,
+      status: 'reached' as const,
+      monthlyCashflowGap: 0,
+      progressPercent: 100,
+      etaMonth: null,
+      monthsRemaining: 0
+    }
+  }
+  const view = await mountView(overview({
+    fire: reachedFire,
+    projection: { ...baseProjection, status: 'reached', points: [], years: [] }
+  }))
+
+  expect(view.text()).toContain('已达成 标准 FIRE')
+  expect(view.find('.chart-stub').exists()).toBe(false)
+  view.unmount()
 })

@@ -6,6 +6,8 @@ import { amountTone, MaskedMoney, formatMoney, formatSignedMoney } from '../util
 const props = defineProps<{
   actual: CapitalActualMonth
   amountsMasked: boolean
+  isFireMode?: boolean
+  fireBaselineMonthlyExpense?: number | null
 }>()
 
 const emit = defineEmits<{
@@ -44,6 +46,22 @@ const diffText = computed(() => {
 
   return `比假设${direction} ${amount}，${props.actual.note ?? '主要来自本月投资市值变动'}`
 })
+const fireExpense = computed(() => {
+  const expense = props.actual.actualExpense
+  const baseline = props.fireBaselineMonthlyExpense
+  if (!props.isFireMode || expense == null || baseline == null || baseline <= 0) return null
+
+  const amount = (value: number) => props.amountsMasked ? '••••' : `¥${formatMoney(value)}`
+  const above = expense > baseline
+  const baselineText = props.amountsMasked ? amount(baseline) : `${amount(baseline)}/月`
+  const percent = Number((expense / baseline * 100).toFixed(1))
+  return {
+    above,
+    text: `本月支出 ${amount(expense)} · ${above
+      ? `高于 FIRE 基准 ${baselineText}`
+      : `占 FIRE 基准（${baselineText}）的 ${percent}%`}`
+  }
+})
 </script>
 
 <template>
@@ -63,6 +81,7 @@ const diffText = computed(() => {
         <b class="v flat">{{ expectedText }}</b>
       </div>
       <p class="diff">{{ diffText }}</p>
+      <p v-if="fireExpense" class="fire-expense" :class="{ 'is-above': fireExpense.above }">{{ fireExpense.text }}</p>
     </div>
   </section>
 </template>
@@ -134,5 +153,17 @@ const diffText = computed(() => {
   border-top: 1px solid var(--color-border-subtle);
   color: var(--color-text-secondary);
   font-size: 12px;
+}
+.fire-expense {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+}
+
+.fire-expense.is-above {
+  color: var(--color-tint-amber-fg);
 }
 </style>

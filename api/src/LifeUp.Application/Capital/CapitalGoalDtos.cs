@@ -26,7 +26,15 @@ public sealed record CapitalGoalSettingsDto(
     decimal? ProvidentAnnualReturnPercent,
     decimal? AnnualBonus,
     int? BonusPayoutMonth,
-    bool UseSalaryProfile)
+    bool UseSalaryProfile,
+    string GoalMode = "fire",
+    string FireMode = "standard",
+    decimal? SafeWithdrawalRatePercent = null,
+    IReadOnlyList<string>? ExcludedExpenseCategories = null,
+    IReadOnlyList<string>? LeanExpenseCategories = null,
+    decimal? FireMonthlyExpenseOverride = null,
+    decimal? LeanMonthlyExpenseOverride = null,
+    int? CoastTargetYear = null)
 {
     public static CapitalGoalSettingsDto From(CapitalGoal? goal)
     {
@@ -43,7 +51,15 @@ public sealed record CapitalGoalSettingsDto(
                 goal.ProvidentAnnualReturnPercent,
                 goal.AnnualBonus,
                 goal.BonusPayoutMonth,
-                goal.UseSalaryProfile);
+                goal.UseSalaryProfile,
+                goal.GoalMode,
+                goal.FireMode,
+                goal.SafeWithdrawalRatePercent,
+                goal.ExcludedExpenseCategories,
+                goal.LeanExpenseCategories,
+                goal.FireMonthlyExpenseOverride,
+                goal.LeanMonthlyExpenseOverride,
+                goal.CoastTargetYear);
     }
 }
 
@@ -60,7 +76,9 @@ public sealed record CapitalProjectionPointDto(
     string Month,
     decimal Capital,
     decimal NetAccumulation,
-    decimal Return);
+    decimal Return,
+    decimal PassiveAnnualCashflow = 0m,
+    decimal ExpectedAnnualExpense = 0m);
 
 public sealed record CapitalYearRowDto(
     int Year,
@@ -69,7 +87,9 @@ public sealed record CapitalYearRowDto(
     decimal ProvidentDeposit,
     decimal Return,
     decimal Total,
-    bool IsGoalYear);
+    bool IsGoalYear,
+    decimal PassiveMonthlyCashflow = 0m,
+    decimal FreedomPercent = 0m);
 
 public sealed record CapitalMilestoneDto(
     decimal ThresholdAmount,
@@ -98,7 +118,8 @@ public sealed record CapitalActualMonthDto(
     decimal? MarketValueChange,
     decimal ExpectedNetDeposit,
     bool IsComplete,
-    string? Note);
+    string? Note,
+    decimal? ActualExpense = null);
 
 public sealed record CapitalOverviewDto(
     CapitalGoalSettingsDto Settings,
@@ -106,7 +127,8 @@ public sealed record CapitalOverviewDto(
     CapitalCurrentDto Current,
     CapitalProjectionDto Projection,
     CapitalActualMonthDto ActualMonth,
-    bool HasSalaryProfile);
+    bool HasSalaryProfile,
+    FireOverviewDto Fire);
 
 public sealed record UpdateCapitalGoalRequest(
     decimal? TargetAmount,
@@ -119,4 +141,12 @@ public sealed record UpdateCapitalGoalRequest(
     decimal? ProvidentAnnualReturnPercent,
     decimal? AnnualBonus = null,
     int? BonusPayoutMonth = null,
-    bool UseSalaryProfile = false);
+    bool UseSalaryProfile = false,
+    string? GoalMode = "fire",
+    string? FireMode = "standard",
+    decimal? SafeWithdrawalRatePercent = null,
+    IReadOnlyList<string>? ExcludedExpenseCategories = null,
+    IReadOnlyList<string>? LeanExpenseCategories = null,
+    decimal? FireMonthlyExpenseOverride = null,
+    decimal? LeanMonthlyExpenseOverride = null,
+    int? CoastTargetYear = null);

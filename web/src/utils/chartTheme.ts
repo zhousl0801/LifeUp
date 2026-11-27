@@ -5,6 +5,9 @@ import { resolvedTheme } from './theme'
  * 浅色 / 深色图表的色值与 docs/design/ui-color-tokens.css 的语义值对应。
  */
 const light = {
+  mint: '#10B981',
+  mintArea: 'rgba(16, 185, 129, 0.16)',
+  amber: '#F59E0B',
   brand: '#4F46E5',
   property: '#0EA5E9',
   propertyArea: 'rgba(14, 165, 233, 0.34)',
@@ -23,6 +26,9 @@ const light = {
 } as const
 
 const dark = {
+  mint: '#34D399',
+  mintArea: 'rgba(52, 211, 153, 0.20)',
+  amber: '#FBBF24',
   brand: '#818CF8',
   property: '#38BDF8',
   propertyArea: 'rgba(56, 189, 248, 0.38)',
@@ -41,6 +47,9 @@ const dark = {
 } as const
 
 const hero = {
+  mint: dark.mint,
+  mintArea: dark.mintArea,
+  amber: dark.amber,
   brand: '#7CE7B1',
   property: '#38BDF8',
   propertyArea: 'rgba(56, 189, 248, 0.38)',

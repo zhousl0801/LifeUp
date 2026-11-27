@@ -102,6 +102,14 @@ public sealed class CapitalController : ControllerBase
             request.ProvidentAnnualReturnPercent,
             request.AnnualBonus,
             request.BonusPayoutMonth,
-            request.UseSalaryProfile);
+            request.UseSalaryProfile,
+            request.GoalMode ?? "fire",
+            request.FireMode ?? "standard",
+            request.SafeWithdrawalRatePercent,
+            request.ExcludedExpenseCategories,
+            request.LeanExpenseCategories,
+            request.FireMonthlyExpenseOverride,
+            request.LeanMonthlyExpenseOverride,
+            request.CoastTargetYear);
     }
 }

@@ -25,14 +25,16 @@ async function createTestRouter(path: string) {
   return router
 }
 
-test('renders 目标 instead of 计划 and highlights it on both routes', async () => {
+test('renders FIRE instead of 计划 and highlights it on both routes', async () => {
   const router = await createTestRouter('/capital')
   const view = mount(AppNav, { global: { plugins: [router] } })
-  const goal = () => view.findAll('.nav-item').find((item) => item.text() === '目标')!
+  const goal = () => view.findAll('.nav-item').find((item) => item.text() === 'FIRE')!
 
-  expect(view.findAll('.nav-item').map((item) => item.text())).toContain('目标')
+  expect(view.findAll('.nav-item').map((item) => item.text())).toContain('FIRE')
   expect(view.findAll('.nav-item').map((item) => item.text())).not.toContain('计划')
   expect(goal().classes()).toContain('active')
+  expect(goal().find('svg.nav-icon-outline').exists()).toBe(true)
+  expect(goal().find('svg.nav-icon-filled').exists()).toBe(true)
   expect(goal().attributes('href')).toContain('capital')
 
   await router.push('/plans')

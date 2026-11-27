@@ -12,8 +12,12 @@ export type FieldKey =
   | 'providentAnnualReturnPercent'
   | 'annualBonus'
   | 'bonusPayoutMonth'
+  | 'safeWithdrawalRatePercent'
+  | 'coastTargetYear'
+  | 'fireMonthlyExpenseOverride'
+  | 'leanMonthlyExpenseOverride'
 
-export const amountFields: FieldKey[] = ['monthlyIncome', 'monthlyExpense', 'monthlyProvidentDeposit', 'annualBonus']
+export const amountFields: FieldKey[] = ['monthlyIncome', 'monthlyExpense', 'monthlyProvidentDeposit', 'annualBonus', 'fireMonthlyExpenseOverride', 'leanMonthlyExpenseOverride']
 export const monthFields: FieldKey[] = ['bonusPayoutMonth']
 export const percentFields: FieldKey[] = [
   'incomeGrowthPercent',
@@ -21,7 +25,7 @@ export const percentFields: FieldKey[] = [
   'investmentAnnualReturnPercent',
   'providentAnnualReturnPercent'
 ]
-export const fieldKeys: FieldKey[] = ['targetAmount', ...amountFields, ...monthFields, ...percentFields]
+export const fieldKeys: FieldKey[] = ['targetAmount', ...amountFields, ...monthFields, ...percentFields, 'safeWithdrawalRatePercent', 'coastTargetYear']
 export const investmentPresets = [
   { label: '纳指100 20年 ≈13%', value: 13 },
   { label: '标普500 20年 ≈10%', value: 10 }
@@ -60,7 +64,7 @@ export function formatWan(value: number | null): string {
 }
 
 export function toAssumptionsForm(settings: CapitalGoalSettings): Record<FieldKey, string> {
-  const value = (number: number | null) => (number === null ? '' : String(number))
+  const value = (number: number | null | undefined) => (number == null ? '' : String(number))
 
   return {
     targetAmount: formatWan(settings.targetAmount),
@@ -72,7 +76,11 @@ export function toAssumptionsForm(settings: CapitalGoalSettings): Record<FieldKe
     investmentAnnualReturnPercent: value(settings.investmentAnnualReturnPercent),
     providentAnnualReturnPercent: value(settings.providentAnnualReturnPercent),
     annualBonus: value(settings.annualBonus ?? null),
-    bonusPayoutMonth: settings.bonusPayoutMonth == null ? '1' : String(settings.bonusPayoutMonth)
+    bonusPayoutMonth: settings.bonusPayoutMonth == null ? '1' : String(settings.bonusPayoutMonth),
+    safeWithdrawalRatePercent: value(settings.safeWithdrawalRatePercent),
+    coastTargetYear: value(settings.coastTargetYear),
+    fireMonthlyExpenseOverride: value(settings.fireMonthlyExpenseOverride),
+    leanMonthlyExpenseOverride: value(settings.leanMonthlyExpenseOverride)
   }
 }
 
@@ -91,7 +99,11 @@ export function toAssumptionsSettings(
     providentAnnualReturnPercent: parseInput(fields.providentAnnualReturnPercent, parseSignedAmount),
     annualBonus: parseInput(fields.annualBonus, parseAmount),
     bonusPayoutMonth: Number(fields.bonusPayoutMonth),
-    useSalaryProfile
+    useSalaryProfile,
+    safeWithdrawalRatePercent: parseInput(fields.safeWithdrawalRatePercent, parseSafeWithdrawalRate),
+    coastTargetYear: parseInput(fields.coastTargetYear, parseCoastYear),
+    fireMonthlyExpenseOverride: parseInput(fields.fireMonthlyExpenseOverride, parseAmount),
+    leanMonthlyExpenseOverride: parseInput(fields.leanMonthlyExpenseOverride, parseAmount)
   }
 }
 
@@ -144,10 +156,30 @@ export function validateAssumptionsFields(
     }
   }
 
+  if (fields.safeWithdrawalRatePercent.trim() && parseSafeWithdrawalRate(fields.safeWithdrawalRatePercent) === null) {
+    errors.safeWithdrawalRatePercent = '安全提取率须为 1% 至 15%，最多两位小数。'
+  }
+
+  if (fields.coastTargetYear.trim() && parseCoastYear(fields.coastTargetYear) === null) {
+    errors.coastTargetYear = 'Coast 目标年份须为 2025 至 2200 的整数。'
+  }
+
   return errors
 }
 
-export function amountHint(value: CapitalEffectiveValue): string {
+export function parseSafeWithdrawalRate(text: string): number | null {
+  if (!/^\d+(?:\.\d{1,2})?$/.test(text.trim())) return null
+  const value = Number(text)
+  return value >= 1 && value <= 15 ? value : null
+}
+
+function parseCoastYear(text: string): number | null {
+  if (!/^\d{4}$/.test(text.trim())) return null
+  const year = Number(text)
+  return year >= 2025 && year <= 2200 ? year : null
+}
+
+export function amountHint(value: CapitalEffectiveValue, masked = false): string {
   if (value.source === 'user') {
     return '已设定'
   }
@@ -157,7 +189,7 @@ export function amountHint(value: CapitalEffectiveValue): string {
   }
 
   if (value.source === 'history') {
-    return `最近均值 ${formatMoney(value.value)}`
+    return `最近均值 ${masked ? '••••' : formatMoney(value.value)}`
   }
 
   return '暂无历史，按 0'

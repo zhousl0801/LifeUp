@@ -77,9 +77,11 @@ public sealed class CapitalGoalService
         CapitalGoal? goal,
         CancellationToken cancellationToken)
     {
+        goal = goal?.Normalize();
         var overview = await _ledgerService.GetOverviewAsync(cancellationToken)
             ?? throw new InvalidOperationException("账本概览不可用。");
-        var effective = await _defaultResolver.ResolveAsync(ledger, goal, cancellationToken);
+        var resolved = await _defaultResolver.ResolveWithExpensesAsync(ledger, goal, cancellationToken);
+        var effective = resolved.Effective;
         var cash = overview.Cash.Amount ?? 0m;
         var investment = (overview.Fund.Amount ?? 0m)
             + (overview.Gold.Amount ?? 0m)
@@ -93,7 +95,11 @@ public sealed class CapitalGoalService
             provident,
             overview.CoverageComplete,
             overview.CoverageComplete ? null : "部分资产未录入或估值不足，按已记录资产推演。");
-        var projection = _calculator.Calculate(new CapitalProjectionInput(
+        var goalMode = goal?.GoalMode ?? "fire";
+        var activeMode = goal?.FireMode ?? "standard";
+        var isLean = activeMode == "lean";
+        var withdrawalRatePercent = goal?.SafeWithdrawalRatePercent ?? CapitalProjectionCalculator.DefaultSafeWithdrawalRatePercent;
+        var standardInput = new CapitalProjectionInput(
             _dates.Today,
             cash,
             investment,
@@ -107,9 +113,43 @@ public sealed class CapitalGoalService
             effective.InvestmentAnnualReturnPercent.Value,
             effective.ProvidentAnnualReturnPercent.Value,
             effective.AnnualBonus.Value,
-            (int)effective.BonusPayoutMonth.Value));
-        var milestones = await BuildMilestonesAsync(goal?.TargetAmount, overview.CoverageComplete, cancellationToken);
-        var actual = await BuildActualMonthAsync(effective, cancellationToken);
+            (int)effective.BonusPayoutMonth.Value,
+            resolved.StandardMonthlyExpense,
+            withdrawalRatePercent);
+        var leanInput = standardInput with { FireMonthlyExpense = resolved.LeanMonthlyExpense };
+        var activeInput = isLean ? leanInput : standardInput;
+        var standardProjection = _calculator.CalculateFire(standardInput);
+        var leanProjection = _calculator.CalculateFire(leanInput);
+        var activeProjection = isLean ? leanProjection : standardProjection;
+        var coast = CapitalProjectionCalculator.CalculateCoast(activeInput, activeProjection, goal?.CoastTargetYear);
+        var annualPassive = current.Total * withdrawalRatePercent / 100m;
+        var monthlyPassive = Round(annualPassive / 12m);
+        var standard = BuildFireMode(resolved.StandardMonthlyExpense, resolved.StandardExpenseSource, monthlyPassive, standardProjection);
+        var lean = BuildFireMode(resolved.LeanMonthlyExpense, resolved.LeanExpenseSource, monthlyPassive, leanProjection);
+        var hasCustomTarget = goalMode == "custom" && goal?.TargetAmount is not null;
+        var trend = activeProjection.TargetAmount > 0m || hasCustomTarget
+            ? await _trendService.GetAsync(TrendRange.All, cancellationToken)
+            : null;
+        var trendPoints = trend?.Points ?? [];
+        var fireMilestones = FireMilestoneBuilder.Build(
+            current, trendPoints, activeMode, isLean ? lean : standard, lean, coast, activeProjection);
+        var annualInflow = 12m * (effective.MonthlyIncome.Value + effective.MonthlyProvidentDeposit.Value)
+            + effective.AnnualBonus.Value;
+        var savingsRatePercent = annualInflow > 0m
+            ? CapitalProjectionCalculator.Round1((annualInflow - 12m * effective.MonthlyExpense.Value) / annualInflow * 100m)
+            : 0m;
+        var insights = FireInsightBuilder.Build(
+            _calculator, activeInput, current, activeMode, standard, lean, coast,
+            savingsRatePercent, monthlyPassive, resolved.Categories, fireMilestones);
+        var fire = new FireOverviewDto(
+            goalMode, activeMode, withdrawalRatePercent, savingsRatePercent, resolved.ExpenseWindowMonths,
+            monthlyPassive, Round(annualPassive), standard, lean, coast, fireMilestones, resolved.Categories, insights);
+
+        var projection = goalMode == "custom" ? _calculator.Calculate(activeInput) : activeProjection;
+        var milestones = hasCustomTarget && goal?.TargetAmount is decimal target
+            ? BuildCustomMilestones(target, trendPoints, current.CoverageComplete)
+            : [];
+        var actual = await BuildActualMonthAsync(effective, resolved.ActualMonthExpense, cancellationToken);
         var projectionDto = new CapitalProjectionDto(
             projection.Status,
             projection.TargetAmount,
@@ -124,7 +164,9 @@ public sealed class CapitalGoalService
                     point.Month,
                     point.Capital,
                     point.NetAccumulation,
-                    point.Return))
+                    point.Return,
+                    point.PassiveAnnualCashflow,
+                    point.ExpectedAnnualExpense))
                 .ToList(),
             projection.Years
                 .Select(year => new CapitalYearRowDto(
@@ -134,7 +176,9 @@ public sealed class CapitalGoalService
                     year.ProvidentDeposit,
                     year.Return,
                     year.Total,
-                    year.IsGoalYear))
+                    year.IsGoalYear,
+                    year.PassiveMonthlyCashflow,
+                    year.FreedomPercent))
                 .ToList(),
             milestones,
             projection.Notes);
@@ -145,27 +189,28 @@ public sealed class CapitalGoalService
             current,
             projectionDto,
             actual,
-            ledger.GetSalaryProfile() is not null);
+            ledger.GetSalaryProfile() is not null,
+            fire);
     }
 
-    private async Task<IReadOnlyList<CapitalMilestoneDto>> BuildMilestonesAsync(
-        decimal? targetAmount,
-        bool coverageComplete,
-        CancellationToken cancellationToken)
+    private static FireModeDto BuildFireMode(
+        decimal monthlyExpense,
+        string expenseSource,
+        decimal monthlyPassive,
+        CapitalProjectionResult projection)
     {
-        if (targetAmount is not decimal target)
-        {
-            return [];
-        }
+        return new FireModeDto(
+            monthlyExpense, expenseSource, monthlyExpense * 12m, projection.TargetAmount ?? 0m,
+            Math.Max(0m, Round(monthlyExpense - monthlyPassive)), projection.ProgressPercent,
+            projection.Status, projection.EtaMonth, projection.MonthsRemaining);
+    }
 
-        var trend = await _trendService.GetAsync(TrendRange.All, cancellationToken);
-
-        if (trend is null)
-        {
-            return [];
-        }
-
-        return CapitalMilestoneBuilder.Build(target, trend.Points, coverageComplete)
+    private static IReadOnlyList<CapitalMilestoneDto> BuildCustomMilestones(
+        decimal target,
+        IReadOnlyList<AssetTrendPointDto> trend,
+        bool coverageComplete)
+    {
+        return CapitalMilestoneBuilder.Build(target, trend, coverageComplete)
             .Select(milestone => new CapitalMilestoneDto(
                 milestone.ThresholdAmount,
                 milestone.ProgressPercent,
@@ -176,6 +221,7 @@ public sealed class CapitalGoalService
 
     private async Task<CapitalActualMonthDto> BuildActualMonthAsync(
         CapitalEffectiveInputs effective,
+        decimal actualExpense,
         CancellationToken cancellationToken)
     {
         var change = await _monthChangeService.GetAsync(ChangeScope.Month, cancellationToken);
@@ -203,7 +249,8 @@ public sealed class CapitalGoalService
             change?.MarketValueChange,
             expectedNetDeposit,
             isComplete,
-            note);
+            note,
+            actualExpense);
     }
 
     private static decimal Round(decimal value)

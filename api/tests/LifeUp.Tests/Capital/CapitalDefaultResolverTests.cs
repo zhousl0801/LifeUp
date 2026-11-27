@@ -193,6 +193,89 @@ public sealed class CapitalDefaultResolverTests
         Assert.Equal("salary", result.MonthlyIncome.Source);
     }
 
+    [Fact]
+    public async Task ResolveWithExpensesAsync_UsesTwelveFullMonthsAndClassifiesExpenseCategories()
+    {
+        var repository = new FakeLedgerRepository();
+        var ledger = Ledger.Create(new DateOnly(2025, 8, 21), Today, Now);
+        await SeedLedgerAsync(repository, ledger);
+        var fixedGroup = await AddCategoryAsync("固定", isGroup: true);
+        var necessaryGroup = await AddCategoryAsync("必要", isGroup: true);
+        var leisureGroup = await AddCategoryAsync("弹性", isGroup: true);
+        await AddCategoryAsync("停车", fixedGroup.Id);
+        await AddCategoryAsync("宠物", necessaryGroup.Id);
+        await AddCategoryAsync("日用", leisureGroup.Id);
+        var oldCategory = await AddCategoryAsync("旧分类", leisureGroup.Id);
+        oldCategory.SetActive(false, Now);
+        await AddCategoryAsync("未使用", fixedGroup.Id);
+        await AddEntryAsync(repository, ledger.Id, LedgerEntryKind.Expense, 7_000m, new DateOnly(2025, 10, 31), "旧分类");
+        await AddEntryAsync(repository, ledger.Id, LedgerEntryKind.Expense, 1_200m, new DateOnly(2025, 11, 1), "停车");
+        await AddEntryAsync(repository, ledger.Id, LedgerEntryKind.Expense, 600m, new DateOnly(2026, 2, 28), "宠物");
+        await AddEntryAsync(repository, ledger.Id, LedgerEntryKind.Expense, 2_400m, new DateOnly(2026, 10, 31), "日用");
+        await AddEntryAsync(repository, ledger.Id, LedgerEntryKind.Expense, 300m, new DateOnly(2026, 10, 30), "餐饮");
+        await AddEntryAsync(repository, ledger.Id, LedgerEntryKind.Expense, 500m, new DateOnly(2026, 11, 1), "日用");
+        await AddEntryAsync(repository, ledger.Id, LedgerEntryKind.Expense, 1_000m, new DateOnly(2026, 11, 1), "日用", reversed: true);
+        var goal = new CapitalGoal(null, null, null, null, null, null, null, null,
+            ExcludedExpenseCategories: [" 停车 "]);
+
+        var resolved = await CreateResolver(repository).ResolveWithExpensesAsync(ledger, goal, CancellationToken.None);
+
+        Assert.Equal(12, resolved.ExpenseWindowMonths);
+        Assert.Equal(375m, resolved.Effective.MonthlyExpense.Value);
+        Assert.Equal(275m, resolved.StandardMonthlyExpense);
+        Assert.Equal("history", resolved.StandardExpenseSource);
+        Assert.Equal(75m, resolved.LeanMonthlyExpense);
+        Assert.Equal("history", resolved.LeanExpenseSource);
+        Assert.Equal(500m, resolved.ActualMonthExpense);
+        Assert.Equal(["日用", "停车", "宠物", "餐饮", "旧分类", "未使用"],
+            resolved.Categories.Select(category => category.Name));
+        Assert.Equal(new FireExpenseCategoryDto("日用", "弹性", 200m, false, false, false), resolved.Categories[0]);
+        Assert.Equal(new FireExpenseCategoryDto("停车", "固定", 100m, true, false, true), resolved.Categories[1]);
+        Assert.Equal(new FireExpenseCategoryDto("宠物", "必要", 50m, true, true, false), resolved.Categories[2]);
+        Assert.Equal(new FireExpenseCategoryDto("餐饮", null, 25m, true, true, false), resolved.Categories[3]);
+
+        var explicitLean = await CreateResolver(repository).ResolveWithExpensesAsync(
+            ledger, goal with { LeanExpenseCategories = ["停车", "日用"] }, CancellationToken.None);
+        Assert.Equal(200m, explicitLean.LeanMonthlyExpense);
+        var overrides = await CreateResolver(repository).ResolveWithExpensesAsync(ledger, goal with
+        {
+            MonthlyExpense = 5_000m,
+            FireMonthlyExpenseOverride = 4_000m,
+            LeanMonthlyExpenseOverride = 0m
+        }, CancellationToken.None);
+        Assert.Equal(5_000m, overrides.Effective.MonthlyExpense.Value);
+        Assert.Equal(4_000m, overrides.StandardMonthlyExpense);
+        Assert.Equal("user", overrides.StandardExpenseSource);
+        Assert.Equal(0m, overrides.LeanMonthlyExpense);
+        Assert.Equal("user", overrides.LeanExpenseSource);
+
+        async Task<EntryCategory> AddCategoryAsync(string name, Guid? parent = null, bool isGroup = false)
+        {
+            var category = EntryCategory.Create(ledger.Id, LedgerEntryKind.Expense, name, 0, null, Now, parent, isGroup);
+            await repository.AddCategoryAsync(category, CancellationToken.None);
+            return category;
+        }
+    }
+
+    [Fact]
+    public async Task ResolveWithExpensesAsync_UsesExpenseFallbacksWithoutACompleteMonth()
+    {
+        var repository = new FakeLedgerRepository();
+        var ledger = Ledger.Create(new DateOnly(2026, 10, 2), Today, Now);
+        await SeedLedgerAsync(repository, ledger);
+        await AddEntryAsync(repository, ledger.Id, LedgerEntryKind.Expense, 500m, new DateOnly(2026, 10, 5));
+        var goal = new CapitalGoal(null, null, 3_303.33m, null, null, null, null, null);
+
+        var resolved = await CreateResolver(repository).ResolveWithExpensesAsync(ledger, goal, CancellationToken.None);
+
+        Assert.Equal(0, resolved.ExpenseWindowMonths);
+        Assert.Equal(3_303.33m, resolved.StandardMonthlyExpense);
+        Assert.Equal("default", resolved.StandardExpenseSource);
+        Assert.Equal(2_312.33m, resolved.LeanMonthlyExpense);
+        Assert.Equal("default", resolved.LeanExpenseSource);
+        Assert.Equal(0m, Assert.Single(resolved.Categories).MonthlyAverage);
+    }
+
     private static CapitalDefaultResolver CreateResolver(FakeLedgerRepository repository)
     {
         return new CapitalDefaultResolver(repository, new BusinessDateProvider(new FixedTimeProvider(Now)));
@@ -211,9 +294,11 @@ public sealed class CapitalDefaultResolverTests
         Guid ledgerId,
         LedgerEntryKind kind,
         decimal amount,
-        DateOnly date)
+        DateOnly date,
+        string? category = null,
+        bool reversed = false)
     {
-        var category = kind == LedgerEntryKind.Income ? "工资" : "餐饮";
+        category ??= kind == LedgerEntryKind.Income ? "工资" : "餐饮";
         var entry = LedgerEntry.Create(
             ledgerId,
             kind,
@@ -225,6 +310,11 @@ public sealed class CapitalDefaultResolverTests
             LedgerEntrySource.Manual,
             Guid.NewGuid(),
             Now);
+
+        if (reversed)
+        {
+            entry.Reverse("测试冲销", Now);
+        }
 
         return repository.AddEntryAsync(entry, CancellationToken.None);
     }

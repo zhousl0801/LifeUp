@@ -100,7 +100,10 @@ public sealed class BackupServiceTests
     public async Task BackupRoundTrip_PreservesCapitalGoal()
     {
         await using var source = await CreateSourceAsync();
-        var goal = new CapitalGoal(1_000_000m, 12_000m, 7_200m, 2_000m, 3m, 2m, 5m, 1.5m);
+        var goal = new CapitalGoal(1_000_000m, 12_000m, 7_200m, 2_000m, 3m, 2m, 5m, 1.5m,
+            GoalMode: "custom", FireMode: "lean", SafeWithdrawalRatePercent: 3.5m,
+            ExcludedExpenseCategories: ["旅游"], LeanExpenseCategories: ["房租", "餐饮"],
+            FireMonthlyExpenseOverride: 6_000m, LeanMonthlyExpenseOverride: 4_000m, CoastTargetYear: 2050);
         var ledger = await source.Db.Ledgers.SingleAsync();
         ledger.SetCapitalGoal(goal, Now);
         await source.Db.SaveChangesAsync();
@@ -120,7 +123,60 @@ public sealed class BackupServiceTests
             CancellationToken.None);
 
         var restored = await targetDb.Ledgers.SingleAsync();
-        Assert.Equal(goal, restored.GetCapitalGoal());
+        var restoredGoal = restored.GetCapitalGoal();
+        Assert.NotNull(restoredGoal);
+        Assert.Equal(goal.ExcludedExpenseCategories, restoredGoal.ExcludedExpenseCategories);
+        Assert.Equal(goal.LeanExpenseCategories, restoredGoal.LeanExpenseCategories);
+        Assert.Equal(goal, restoredGoal with
+        {
+            ExcludedExpenseCategories = goal.ExcludedExpenseCategories,
+            LeanExpenseCategories = goal.LeanExpenseCategories
+        });
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    public async Task Restore_PreFireBackupVersion_UsesFireDefaults(int version)
+    {
+        await using var source = await CreateSourceAsync();
+        var export = (await source.Backup.ExportAsync(CancellationToken.None))!;
+        export.Version = version;
+        export.Ledger.CapitalGoalJson = version >= 4 ? """{"targetAmount":1000000,"monthlyExpense":7200}""" : null;
+        if (version < 3)
+        {
+            export.Categories.RemoveAll(category => category.IsGroup);
+            foreach (var category in export.Categories)
+            {
+                category.ParentId = null;
+            }
+        }
+
+        await using var targetDb = CreateDb();
+        var target = new BackupService(targetDb, source.Dates);
+        var validation = await target.ValidateAsync(export, CancellationToken.None);
+        Assert.True(validation.IsValid, string.Join(" ", validation.Errors));
+
+        await target.RestoreAsync(
+            new RestoreBackupRequest(export, validation.ValidationToken!, false), CancellationToken.None);
+        var restored = await targetDb.Ledgers.SingleAsync();
+        var goal = restored.GetCapitalGoal();
+
+        if (version < 4)
+        {
+            Assert.Null(goal);
+        }
+        else
+        {
+            Assert.NotNull(goal);
+            Assert.Equal("fire", goal.GoalMode);
+            Assert.Equal("standard", goal.FireMode);
+            Assert.Equal(7_200m, goal.MonthlyExpense);
+            Assert.Null(goal.SafeWithdrawalRatePercent);
+        }
     }
 
     [Fact]

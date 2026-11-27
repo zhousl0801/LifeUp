@@ -29,6 +29,8 @@ test('highlights the active segment on both routes', async () => {
   const router = await createTestRouter('/capital')
   const view = mount(GoalTabs, { global: { plugins: [router] } })
 
+  expect(view.find('nav').attributes('aria-label')).toBe('FIRE 页分段')
+  expect(view.findAll('.goal-tab').map((tab) => tab.text())).toEqual(['FIRE', '自动记账'])
   expect(view.findAll('.goal-tab')[0]!.classes()).toContain('active')
   expect(view.findAll('.goal-tab')[1]!.classes()).not.toContain('active')
 

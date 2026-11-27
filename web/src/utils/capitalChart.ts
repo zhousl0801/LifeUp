@@ -1,4 +1,6 @@
-import type { CapitalProjectionPoint } from '../types/capital'
+import type { EChartsOption } from 'echarts'
+import type { CapitalProjectionPoint, FireOverview } from '../types/capital'
+import { formatMonthLabel } from './capital'
 import { chartFontSize, chartTheme } from './chartTheme'
 import { MaskedMoney, formatMoney } from './format'
 
@@ -57,22 +59,7 @@ export function buildCapitalChartOption(input: CapitalChartInput) {
         return `${months[index]}<br/>总资本 ${amount(totals[index] ?? 0)}<br/>净积累 ${amount(net[index] ?? 0)}<br/>投资收益 ${amount(returns[index] ?? 0)}`
       }
     },
-    xAxis: {
-      type: 'category',
-      data: months,
-      boundaryGap: false,
-      axisLine: { lineStyle: { color: theme.axis } },
-      axisTick: { show: false },
-      axisLabel: {
-        color: theme.text,
-        fontSize: chartFontSize(10),
-        hideOverlap: true,
-        interval: (index: number, value: string) => index === 0
-          || index === months.length - 1
-          || (value.endsWith('-01') && Number(value.slice(0, 4)) % 2 === 0),
-        formatter: (value: string) => value
-      }
-    },
+    xAxis: projectionMonthAxis(months),
     yAxis: {
       type: 'value',
       show: !input.amountsMasked,
@@ -124,6 +111,114 @@ export function buildCapitalChartOption(input: CapitalChartInput) {
               data: [{ yAxis: input.targetAmount }]
             }
           : undefined
+      }
+    ]
+  }
+}
+
+function projectionMonthAxis(months: string[]) {
+  const theme = chartTheme()
+  return {
+    type: 'category' as const,
+    data: months,
+    boundaryGap: false,
+    axisLine: { lineStyle: { color: theme.axis } },
+    axisTick: { show: false },
+    axisLabel: {
+      color: theme.text,
+      fontSize: chartFontSize(),
+      hideOverlap: true,
+      interval: (index: number, value: string) => index === 0
+        || index === months.length - 1
+        || (value.endsWith('-01') && Number(value.slice(0, 4)) % 2 === 0),
+      formatter: (value: string) => value
+    }
+  }
+}
+
+export function buildCashflowChartOption(
+  input: Pick<CapitalChartInput, 'points' | 'currentMonth' | 'amountsMasked'>,
+  fire: FireOverview
+): EChartsOption {
+  const theme = chartTheme()
+  const months = [input.currentMonth, ...input.points.map((point) => point.month)]
+  const passive = [fire.currentPassiveAnnualCashflow, ...input.points.map((point) => point.passiveAnnualCashflow ?? null)]
+  const expense = [fire[fire.activeMode].annualExpense, ...input.points.map((point) => point.expectedAnnualExpense ?? null)]
+  const crossover = passive.findIndex((value, index) => {
+    const expected = expense[index]
+    return value != null && expected != null && expected > 0 && value >= expected
+  })
+  const amount = (value: number) => input.amountsMasked ? '••••' : `¥${formatMoney(value)}`
+  const frequency = (value: number | null | undefined) => value == null
+    ? '—'
+    : `${amount(value)}（${amount(value / 12)}/月）`
+
+  return {
+    animation: false,
+    grid: { left: 10, right: 26, top: 30, bottom: 26, containLabel: !input.amountsMasked },
+    xAxis: projectionMonthAxis(months),
+    yAxis: {
+      type: 'value',
+      show: !input.amountsMasked,
+      splitNumber: 4,
+      axisLabel: { color: theme.text, fontSize: chartFontSize(), formatter: formatWan },
+      splitLine: { lineStyle: { color: theme.axis } }
+    },
+    tooltip: {
+      trigger: 'axis',
+      confine: true,
+      backgroundColor: theme.tooltipBg,
+      borderWidth: 0,
+      className: 'cashflow-tooltip',
+      textStyle: { color: theme.tooltipText, fontSize: chartFontSize() },
+      axisPointer: { type: 'line', lineStyle: { color: theme.pointer, type: 'dashed' } },
+      formatter: (params) => {
+        const index = (Array.isArray(params) ? params[0] : params)?.dataIndex
+        const month = index === undefined ? undefined : months[index]
+        if (index === undefined || !month) return ''
+
+        const annualCashflow = passive[index]
+        const annualExpense = expense[index]
+        const freedom = annualCashflow != null && annualExpense != null && annualExpense > 0
+          ? `${(annualCashflow / annualExpense * 100).toFixed(1)}%`
+          : '—'
+
+        return `${formatMonthLabel(month)}<br/>被动年现金流 ${frequency(annualCashflow)}<br/>预期年支出 ${frequency(annualExpense)}<br/>自由度 ${freedom}`
+      }
+    },
+    series: [
+      {
+        name: '被动年现金流',
+        type: 'line',
+        smooth: true,
+        symbol: 'none',
+        data: passive,
+        lineStyle: { color: theme.mint, width: 2.4 },
+        areaStyle: {
+          color: {
+            type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [{ offset: 0, color: theme.mintArea }, { offset: 1, color: 'transparent' }]
+          }
+        },
+        markPoint: crossover < 0 ? undefined : {
+          silent: true,
+          symbol: 'circle',
+          symbolSize: 10,
+          itemStyle: { color: theme.mint, shadowColor: theme.mint, shadowBlur: 12 },
+          label: {
+            show: true, formatter: 'FIRE 自由点', position: 'top',
+            align: crossover === 0 ? 'left' : crossover === months.length - 1 ? 'right' : 'center',
+            color: theme.text, fontSize: chartFontSize()
+          },
+          data: [{ name: 'FIRE 自由点', coord: [months[crossover]!, passive[crossover]!] }]
+        }
+      },
+      {
+        name: '预期年支出',
+        type: 'line',
+        symbol: 'none',
+        data: expense,
+        lineStyle: { color: theme.amber, width: 2, type: 'dashed' }
       }
     ]
   }

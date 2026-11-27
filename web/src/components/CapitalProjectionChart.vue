@@ -1,60 +1,71 @@
 <script setup lang="ts">
-import { computed, ref, useTemplateRef } from 'vue'
+import { computed, ref, shallowRef, useTemplateRef, watch } from 'vue'
 import type { EChartsOption } from 'echarts'
-import type { CapitalProjectionPoint } from '../types/capital'
+import type { CapitalChartView, CapitalProjectionPoint, FireOverview } from '../types/capital'
 import { useEChart } from '../composables/useEChart'
 import { useSlidingIndicator } from '../composables/useSlidingIndicator'
-import { buildCapitalChartOption, buildMonthlyChartOption, monthlySummary } from '../utils/capitalChart'
+import { buildCapitalChartOption, buildCashflowChartOption, buildMonthlyChartOption, monthlySummary } from '../utils/capitalChart'
 import { MaskedMoney, formatMoney, formatSignedMoney } from '../utils/format'
 
 const props = defineProps<{
   points: CapitalProjectionPoint[]
   targetAmount: number | null
-  view: 'capital' | 'monthly'
+  view?: CapitalChartView
+  fire?: FireOverview | null
   amountsMasked: boolean
   currentTotal: number
   currentMonth: string
 }>()
 
 const emit = defineEmits<{
-  'update:view': [view: 'capital' | 'monthly']
+  'update:view': [view: CapitalChartView]
 }>()
+
+const fireMode = computed(() => props.fire?.goalMode === 'fire')
+const defaultView = computed(() => fireMode.value ? 'cashflow' : 'capital')
+const localView = shallowRef<CapitalChartView>()
+watch(defaultView, () => { localView.value = undefined })
+const view = computed(() => {
+  const requested = props.view ?? localView.value
+  return requested === undefined || (requested === 'cashflow' && !fireMode.value) ? defaultView.value : requested
+})
+const tabs = computed<{ value: CapitalChartView; label: string }[]>(() => [
+  ...(fireMode.value ? [{ value: 'cashflow' as const, label: '现金流' }] : []),
+  { value: 'capital', label: fireMode.value ? '资产曲线' : '资本曲线' },
+  { value: 'monthly', label: '每月积累' }
+])
 
 const container = ref<HTMLElement | null>(null)
 const chipsRef = useTemplateRef<HTMLElement>('chips')
 const { ready: chipPillReady, animated: chipPillAnimated, indicatorStyle: chipPillStyle } = useSlidingIndicator(
   chipsRef,
-  () => props.view,
+  view,
   { activeSelector: '.on' }
 )
 const summary = computed(() => monthlySummary(props.points))
-const title = computed(() => (props.view === 'monthly' ? '每月积累' : '积累曲线'))
-const chartLabel = computed(() => props.view === 'monthly'
-  ? '每月积累预测图，展示净积累和投资收益'
-  : '资本积累预测图，展示净积累、投资收益和目标线')
-
-function buildOption(): EChartsOption {
-  const option = props.view === 'monthly'
-    ? buildMonthlyChartOption({
-        points: props.points,
-        targetAmount: props.targetAmount,
-        currentTotal: props.currentTotal,
-        currentMonth: props.currentMonth,
-        amountsMasked: props.amountsMasked
-      })
-    : buildCapitalChartOption({
-        points: props.points,
-        targetAmount: props.targetAmount,
-        currentTotal: props.currentTotal,
-        currentMonth: props.currentMonth,
-        amountsMasked: props.amountsMasked
-      })
-
-  return option as EChartsOption
+const titles: Record<CapitalChartView, string> = { cashflow: '自由现金流', capital: '积累曲线', monthly: '每月积累' }
+const labels: Record<CapitalChartView, string> = {
+  cashflow: 'FIRE 现金流预测图，比较被动年现金流和预期年支出',
+  capital: '资本积累预测图，展示净积累、投资收益和目标线',
+  monthly: '每月积累预测图，展示净积累和投资收益'
 }
 
-function setView(view: 'capital' | 'monthly'): void {
-  emit('update:view', view)
+function buildOption(): EChartsOption {
+  const input = {
+    points: props.points,
+    targetAmount: props.targetAmount,
+    currentTotal: props.currentTotal,
+    currentMonth: props.currentMonth,
+    amountsMasked: props.amountsMasked
+  }
+
+  if (view.value === 'cashflow' && props.fire) return buildCashflowChartOption(input, props.fire)
+  return (view.value === 'monthly' ? buildMonthlyChartOption(input) : buildCapitalChartOption(input)) as EChartsOption
+}
+
+function setView(next: CapitalChartView): void {
+  localView.value = next
+  emit('update:view', next)
 }
 
 function masked(value: number): string {
@@ -66,7 +77,8 @@ useEChart(container, buildOption, {
     props.points,
     props.points.length,
     props.targetAmount,
-    props.view,
+    view.value,
+    props.fire,
     props.amountsMasked,
     props.currentTotal,
     props.currentMonth
@@ -78,12 +90,12 @@ useEChart(container, buildOption, {
 
 <template>
   <section class="capital-card">
-    <div class="card-head">
+    <div class="card-head" :class="{ 'is-fire': fireMode }">
       <div class="title-row">
-        <span class="card-title">{{ title }}</span>
+        <span class="card-title">{{ titles[view] }}</span>
         <span class="forecast-tag">预测</span>
       </div>
-      <div ref="chips" class="chips" :class="{ 'has-pill': chipPillReady }" role="tablist" aria-label="积累图表视图">
+      <div ref="chips" class="chips" :class="{ 'has-pill': chipPillReady, 'is-fire': fireMode }" role="tablist" aria-label="积累图表视图">
         <span
           v-if="chipPillReady"
           class="chips-pill"
@@ -92,25 +104,15 @@ useEChart(container, buildOption, {
           aria-hidden="true"
         />
         <button
+          v-for="tab in tabs"
+          :key="tab.value"
           type="button"
           class="chip"
-          :class="{ on: view === 'capital' }"
+          :class="{ on: view === tab.value }"
           role="tab"
-          :aria-selected="view === 'capital'"
-          @click="setView('capital')"
-        >
-          资本曲线
-        </button>
-        <button
-          type="button"
-          class="chip"
-          :class="{ on: view === 'monthly' }"
-          role="tab"
-          :aria-selected="view === 'monthly'"
-          @click="setView('monthly')"
-        >
-          每月积累
-        </button>
+          :aria-selected="view === tab.value"
+          @click="setView(tab.value)"
+        >{{ tab.label }}</button>
       </div>
     </div>
 
@@ -122,11 +124,17 @@ useEChart(container, buildOption, {
       </div>
     </div>
 
-    <div ref="container" class="capital-chart" :class="{ 'is-monthly': view === 'monthly' }" role="img" :aria-label="chartLabel" />
+    <div ref="container" class="capital-chart" :class="{ 'is-monthly': view === 'monthly' }" role="img" :aria-label="labels[view]" />
 
     <div class="legend">
-      <span><i class="net"></i>净积累</span>
-      <span><i class="return"></i>投资收益</span>
+      <template v-if="view === 'cashflow'">
+        <span><i class="passive"></i>被动年现金流</span>
+        <span><i class="expense"></i>预期年支出</span>
+      </template>
+      <template v-else>
+        <span><i class="net"></i>净积累</span>
+        <span><i class="return"></i>投资收益</span>
+      </template>
     </div>
   </section>
 </template>
@@ -179,6 +187,15 @@ useEChart(container, buildOption, {
   background: var(--color-bg-subtle);
 }
 
+.card-head.is-fire {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.chips.is-fire {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .chips-pill {
   position: absolute;
   top: 2px;
@@ -200,7 +217,7 @@ useEChart(container, buildOption, {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 40px;
+  min-height: var(--touch-target);
   padding: 6px 10px;
   border: 0;
   border-radius: var(--radius-pill);
@@ -282,5 +299,23 @@ useEChart(container, buildOption, {
 
 .legend .return {
   background: var(--color-chart-property);
+}
+.legend i.passive,
+.legend i.expense {
+  width: 16px;
+  height: 0;
+  border: 0;
+  border-top: 2px solid var(--color-tint-emerald-fg);
+  border-radius: 0;
+  background: transparent;
+}
+
+.legend i.expense {
+  border-top: 2px dashed var(--color-tint-amber-fg);
+}
+
+.capital-card,
+:deep(.cashflow-tooltip) {
+  font-variant-numeric: tabular-nums;
 }
 </style>

@@ -9,10 +9,12 @@ export function resetProgressMemory(): void {
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, useTemplateRef, watch } from 'vue'
 import { isReducedMotion, useReducedMotion } from '../composables/useReducedMotion'
-import type { CapitalMilestone, CapitalStatus, CapitalYearLabel } from '../types/capital'
-import { clampPercent, formatMilestoneTitle, formatMonthLabel, progressAlignment } from '../utils/capital'
+import type { CapitalMilestone, CapitalStatus, CapitalYearLabel, FireMilestone, FireMilestoneKey } from '../types/capital'
+import { clampPercent, formatCapitalAmount, formatMilestoneTitle, formatMonthLabel, maskInsightAmounts, progressAlignment } from '../utils/capital'
 
 const props = defineProps<{
+  mode?: 'fire' | 'custom'
+  fireMilestones?: FireMilestone[]
   progressPercent: number
   currentLabel: string
   etaLabel: string | null
@@ -36,11 +38,30 @@ const showBeam = ref(false)
 const cursorBright = ref(false)
 const selectedMilestone = ref<CapitalMilestone | null>(null)
 const popoverLeft = ref(0)
+const selectedFireKey = shallowRef<FireMilestoneKey | null>(null)
 const animating = ref(false)
 let frameId = 0
 let brightTimer: number | undefined
 let resizeObserver: ResizeObserver | null = null
 const newStarTimers: number[] = []
+
+const isFire = computed(() => props.mode === 'fire')
+const fireMilestones = computed(() => props.fireMilestones ?? [])
+const selectedFireMilestone = computed(() => fireMilestones.value.find((item) => item.key === selectedFireKey.value))
+const fireLabelPriority: FireMilestoneKey[] = ['barista', 'lean', 'coast', 'emergency']
+const fireLabels = computed(() => {
+  const labels: CapitalYearLabel[] = [{ label: 'FIRE', leftPercent: 100 }]
+  for (const key of fireLabelPriority) {
+    const milestone = fireMilestones.value.find((item) => item.key === key)
+    if (!milestone) continue
+    const position = clampPercent(milestone.progressPercent)
+    if (labels.every((label) => Math.abs(position - label.leftPercent) >= 14)) {
+      labels.push({ label: milestone.label, leftPercent: position })
+    }
+  }
+  return labels
+})
+const trackLabels = computed(() => isFire.value ? fireLabels.value : props.years)
 
 const alignment = computed(() => progressAlignment(displayedProgress.value))
 const isNoTarget = computed(() => props.status === 'noTarget')
@@ -161,9 +182,42 @@ function selectMilestone(milestone: CapitalMilestone): void {
   popoverLeft.value = Math.min(88, Math.max(12, milestone.progressPercent))
 }
 
+function selectFireMilestone(milestone: FireMilestone): void {
+  selectedFireKey.value = selectedFireKey.value === milestone.key ? null : milestone.key
+}
+
+// Nearby stars keep their horizontal percentage and get separate vertical hit areas.
+const fireStarStyles = computed(() => {
+  const stars = fireMilestones.value.map((milestone) => ({
+    key: milestone.key,
+    position: clampPercent(milestone.progressPercent)
+  })).sort((left, right) => left.position - right.position)
+  const groups: typeof stars[] = []
+  for (const star of stars) {
+    const previous = groups.at(-1)
+    if (previous && star.position - previous.at(-1)!.position < 8) previous.push(star)
+    else groups.push([star])
+  }
+
+  return Object.fromEntries(groups.flatMap((group, groupIndex) => {
+    const previous = groups[groupIndex - 1]?.at(-1)?.position ?? -100
+    const next = groups[groupIndex + 1]?.[0]?.position ?? 200
+    const height = Math.max(12, Math.floor(44 / group.length))
+    return group.map((star, index) => [star.key, {
+      left: `${star.position}%`,
+      width: `min(var(--touch-target), ${Math.min(star.position - previous, next - star.position)}%)`,
+      top: `${25 + (index - (group.length - 1) / 2) * height}px`,
+      height: group.length > 1 ? `${height}px` : undefined
+    }])
+  }))
+})
+
 function closePopover(): void {
   selectedMilestone.value = null
+  selectedFireKey.value = null
 }
+
+watch(() => [props.mode, props.fireMilestones], closePopover)
 
 function syncTrackWidth(): void {
   const width = trackRef.value?.clientWidth ?? 0
@@ -258,38 +312,53 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="track" class="glass" :class="{ 'is-reached': isReached, 'is-gpu-track': hasMeasuredWidth }" role="group" :aria-label="ariaSummary" :style="trackStyle">
+  <div ref="track" class="glass" @keydown.esc.stop="closePopover" :class="{ 'is-fire': isFire, 'is-reached': isReached, 'is-gpu-track': hasMeasuredWidth }" role="group" :aria-label="ariaSummary" :style="trackStyle">
     <span class="glass-slot" aria-hidden="true">
       <span v-if="!isNoTarget" class="glass-fill"></span>
     </span>
 
-    <span v-if="isNoTarget" class="glass-hint">设定目标后显示达成进度</span>
+    <span v-if="isNoTarget" class="glass-hint">{{ isFire ? '设置支出基准后显示自由度' : '设定目标后显示达成进度' }}</span>
 
     <template v-if="!isNoTarget">
       <span v-if="showBeam" class="glass-beam" aria-hidden="true"></span>
 
-      <button
-        v-for="milestone in visibleMilestones"
-        :key="milestoneKey(milestone)"
-        type="button"
-        class="glass-star"
-        :class="{ 'is-new': isNew(milestone) }"
-        :style="{ left: `${milestone.progressPercent}%` }"
-        :aria-label="starAria(milestone)"
-        @click.stop="selectMilestone(milestone)"
-      >
-        ✦
-      </button>
+      <template v-if="isFire">
+        <button
+          v-for="milestone in fireMilestones"
+          :key="milestone.key"
+          type="button"
+          class="glass-star fire-star"
+          :class="milestone.reached ? 'is-reached' : 'is-upcoming'"
+          :style="fireStarStyles[milestone.key]"
+          :aria-label="milestone.label"
+          :aria-expanded="selectedFireKey === milestone.key"
+          @click.stop="selectFireMilestone(milestone)"
+        >{{ milestone.reached ? '✦' : '✧' }}</button>
+      </template>
+      <template v-else>
+        <button
+          v-for="milestone in visibleMilestones"
+          :key="milestoneKey(milestone)"
+          type="button"
+          class="glass-star"
+          :class="{ 'is-new': isNew(milestone) }"
+          :style="{ left: `${milestone.progressPercent}%` }"
+          :aria-label="starAria(milestone)"
+          @click.stop="selectMilestone(milestone)"
+        >
+          ✦
+        </button>
+      </template>
 
       <span class="glass-cursor" :class="{ 'is-bright': cursorBright }" aria-hidden="true"></span>
       <span class="glass-label" :class="alignment" aria-hidden="true">{{ labelText }}</span>
       <span class="glass-goal" :class="{ 'is-reached': isReached }" aria-hidden="true"></span>
 
       <span
-        v-for="year in years"
+        v-for="year in trackLabels"
         :key="year.label"
         class="glass-year"
-        :class="{ 'is-right': year.leftPercent > 85 }"
+        :class="{ 'is-right': year.leftPercent > 85, 'is-left': isFire && year.leftPercent < 9 }"
         :style="{ left: `${year.leftPercent}%` }"
         aria-hidden="true"
       >
@@ -298,7 +367,26 @@ onBeforeUnmount(() => {
     </template>
 
     <Transition name="popover-fade">
-      <div v-if="selectedMilestone" class="glass-pop" :style="{ left: `${popoverLeft}%` }" @click.stop>
+      <div
+        v-if="selectedFireMilestone"
+        class="glass-pop fire-pop"
+        :style="{ '--star-position': `${clampPercent(selectedFireMilestone.progressPercent)}%` }"
+        role="status"
+        @click.stop
+      >
+        <div class="fire-pop-head">
+          <b>{{ selectedFireMilestone.label }}</b>
+          <span class="fire-pop-badge" :class="{ reached: selectedFireMilestone.reached }">
+            {{ selectedFireMilestone.reached ? '已达成' : '预计' }}
+          </span>
+        </div>
+        <strong>{{ formatCapitalAmount(selectedFireMilestone.thresholdAmount, amountsMasked, true) }}</strong>
+        <span v-if="selectedFireMilestone.date">
+          {{ selectedFireMilestone.reached ? '' : '预计 ' }}{{ formatMonthLabel(selectedFireMilestone.date.slice(0, 7)) }}
+        </span>
+        <span>{{ maskInsightAmounts(selectedFireMilestone.description, amountsMasked) }}</span>
+      </div>
+      <div v-else-if="selectedMilestone" class="glass-pop" :style="{ left: `${popoverLeft}%` }" @click.stop>
         <b>{{ milestoneDate(selectedMilestone) }}</b>
         <span>{{ maskedTitle(selectedMilestone) }}</span>
       </div>
@@ -539,6 +627,65 @@ onBeforeUnmount(() => {
 .glass-pop span {
   color: var(--color-text-secondary);
   font-size: 11px;
+}
+
+.glass.is-fire {
+  height: 68px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fire-star {
+  z-index: 5;
+  height: var(--touch-target);
+  font-size: 16px;
+}
+
+.fire-star.is-upcoming {
+  opacity: 0.72;
+  text-shadow: 0 1px 2px rgba(12, 10, 40, 0.8);
+}
+
+.fire-star.is-reached {
+  text-shadow: 0 0 9px var(--color-accent-mint), 0 0 4px #fff;
+}
+
+.is-fire .glass-year {
+  top: 47px;
+  font-size: var(--text-caption);
+}
+
+.glass-year.is-left {
+  transform: none;
+}
+
+.fire-pop {
+  --popover-half: min(110px, 50%);
+  top: auto;
+  bottom: 66px;
+  left: clamp(var(--popover-half), var(--star-position), calc(100% - var(--popover-half)));
+  z-index: 10;
+  display: grid;
+  gap: 5px;
+  width: calc(var(--popover-half) * 2);
+  white-space: normal;
+}
+
+.fire-pop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fire-pop .fire-pop-badge {
+  padding: 2px 6px;
+  border-radius: var(--radius-tag);
+  background: var(--color-bg-subtle);
+}
+
+.fire-pop-badge.reached {
+  background: var(--color-tint-emerald-bg);
+  color: var(--color-tint-emerald-fg);
 }
 
 @media (prefers-reduced-motion: reduce) {

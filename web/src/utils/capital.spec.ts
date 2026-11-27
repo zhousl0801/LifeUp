@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { CapitalYearRow } from '../types/capital'
 import {
   clampPercent,
+  maskInsightAmounts,
   formatMilestoneTitle,
   formatMonthLabel,
   progressAlignment,
@@ -108,5 +109,13 @@ describe('selectYearLabels', () => {
     const labels = selectYearLabels(nearRows, 2026, 100_000, 2028, 50)
 
     expect(labels.map((item) => item.label)).toEqual(['2028'])
+  })
+})
+
+describe('maskInsightAmounts', () => {
+  it('masks currency and leaves years, durations and percentages readable', () => {
+    const text = '餐饮 ¥1,234.56，目标 ¥15 万，年化 4%，2034 年 3 月达成。'
+    expect(maskInsightAmounts(text, true)).toBe('餐饮 ••••，目标 ••••，年化 4%，2034 年 3 月达成。')
+    expect(maskInsightAmounts(text, false)).toBe(text)
   })
 })

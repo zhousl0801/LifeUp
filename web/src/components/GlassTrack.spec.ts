@@ -1,3 +1,4 @@
+import { fireFixture } from '../test/fireFixture'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
@@ -5,6 +6,8 @@ import type { CapitalMilestone, CapitalStatus, CapitalYearLabel } from '../types
 import GlassTrack, { resetProgressMemory } from './GlassTrack.vue'
 
 interface TrackProps {
+  mode?: 'fire' | 'custom'
+  fireMilestones?: typeof fireFixture.milestones
   progressPercent: number
   currentLabel: string
   etaLabel: string | null
@@ -218,4 +221,23 @@ describe('GlassTrack', () => {
     expect(second.find('.glass-beam').exists()).toBe(false)
     expect(second.findAll('.glass-star')).toHaveLength(4)
   })
+})
+
+it('keeps nearby FIRE stars interactive and prioritizes labels', async () => {
+  const milestones = [
+    ...fireFixture.milestones,
+    { ...fireFixture.milestones[2]!, key: 'lean' as const, label: 'Lean', progressPercent: 55 }
+  ]
+  const wrapper = mountTrack({ mode: 'fire', fireMilestones: milestones, amountsMasked: true })
+  expect(wrapper.findAll('button.glass-star')).toHaveLength(4)
+  expect(wrapper.findAll('.glass-year').map((label) => label.text())).toEqual(['FIRE', '半退休', 'Coast', '应急垫'])
+  const leanStar = wrapper.get('button[aria-label="Lean"]')
+  const baristaStar = wrapper.get('button[aria-label="半退休"]')
+  expect(leanStar.attributes('style')).not.toContain('width: min(var(--touch-target), 5%)')
+  expect((leanStar.element as HTMLElement).style.top).not.toBe((baristaStar.element as HTMLElement).style.top)
+  await leanStar.trigger('click')
+  expect(wrapper.get('.glass-pop').text()).toContain('预计 2028 年 9 月')
+  expect(wrapper.get('.glass-pop').text()).toContain('••••')
+  expect(wrapper.get('.glass-pop').text()).not.toContain('90 万')
+  wrapper.unmount()
 })

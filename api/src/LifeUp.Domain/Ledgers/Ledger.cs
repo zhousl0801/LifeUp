@@ -120,7 +120,7 @@ public sealed class Ledger
             throw new JsonException(string.Join(" ", errors));
         }
 
-        return goal;
+        return goal.Normalize();
     }
 
     public bool SetCapitalGoal(CapitalGoal? goal, DateTimeOffset now)
@@ -130,7 +130,7 @@ public sealed class Ledger
             throw new ArgumentException(string.Join(" ", errors), nameof(goal));
         }
 
-        var json = goal is null ? null : JsonSerializer.Serialize(goal, CapitalGoalJsonOptions);
+        var json = goal is null ? null : JsonSerializer.Serialize(goal.Normalize(), CapitalGoalJsonOptions);
         if (string.Equals(CapitalGoalJson, json, StringComparison.Ordinal))
         {
             return false;

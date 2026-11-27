@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, shallowRef } from 'vue'
 import { storeToRefs } from 'pinia'
 import AppIcon from '../components/AppIcon.vue'
 import AppNav from '../components/AppNav.vue'
@@ -8,6 +8,8 @@ import CapitalActualCard from '../components/CapitalActualCard.vue'
 import CapitalAssumptionsSheet from '../components/CapitalAssumptionsSheet.vue'
 import CapitalProjectionChart from '../components/CapitalProjectionChart.vue'
 import CapitalYearlyTable from '../components/CapitalYearlyTable.vue'
+import FireHero from '../components/FireHero.vue'
+import FireInsightsCard from '../components/FireInsightsCard.vue'
 import GlassTrack from '../components/GlassTrack.vue'
 import GoalTabs from '../components/GoalTabs.vue'
 import LoadingButton from '../components/LoadingButton.vue'
@@ -19,7 +21,7 @@ import { fetchMonthChange, fetchMonthlyBudget } from '../api/ledger'
 import { fetchPlanOverview } from '../api/plans'
 import { toast } from '../composables/useMessage'
 import { useHomePreferencesStore } from '../stores/homePreferences'
-import type { CapitalGoalSettings, CapitalOverview, CapitalSuggestions } from '../types/capital'
+import type { CapitalGoalSettings, CapitalOverview, CapitalSuggestions, FireTrackMode } from '../types/capital'
 import type { MonthChange } from '../types/ledger'
 import { formatMonthLabel, selectYearLabels } from '../utils/capital'
 import {
@@ -38,7 +40,7 @@ const notInitialized = ref(false)
 const sheetOpen = ref(false)
 const saving = ref(false)
 const saveError = ref('')
-const chartView = ref<'capital' | 'monthly'>('capital')
+const switchingMode = shallowRef<FireTrackMode | 'fire' | null>(null)
 const suppressAnimation = ref(false)
 const monthChangeOpen = ref(false)
 const monthChange = ref<MonthChange | null>(null)
@@ -49,10 +51,19 @@ const { amountsMasked } = storeToRefs(useHomePreferencesStore())
 let previewSequence = 0
 
 const display = computed(() => previewOverview.value ?? overview.value)
+const isFireMode = computed(() =>
+  (display.value?.fire?.goalMode ?? display.value?.settings.goalMode ?? 'fire') === 'fire'
+    && Boolean(display.value?.fire)
+)
+const fire = computed(() => isFireMode.value ? display.value?.fire : undefined)
+const activeFire = computed(() => fire.value?.[fire.value.activeMode])
 const currentMonth = todayInBusinessTimeZone().slice(0, 7)
 const currentYear = Number(currentMonth.slice(0, 4))
 const currentLabel = formatMonthLabel(currentMonth)
-const targetAmount = computed(() => display.value?.projection.targetAmount ?? null)
+const targetAmount = computed(() => {
+  if (activeFire.value) return activeFire.value.status === 'noTarget' ? null : activeFire.value.targetCapital
+  return display.value?.projection.targetAmount ?? null
+})
 const etaLabel = computed(() => display.value?.projection.etaMonth
   ? `预计 ${formatMonthLabel(display.value.projection.etaMonth)}达成`
   : null)
@@ -135,6 +146,7 @@ async function load(): Promise<void> {
 }
 
 function openAssumptions(): void {
+  if (saving.value) return
   previewSequence++
   saveError.value = ''
   previewOverview.value = null
@@ -209,7 +221,24 @@ async function handlePreview(settings: CapitalGoalSettings): Promise<void> {
   }
 }
 
+async function switchFireMode(mode?: FireTrackMode): Promise<void> {
+  const item = overview.value
+  if (!item || saving.value || sheetOpen.value || (mode && mode === fire.value?.activeMode)) return
+
+  switchingMode.value = mode ?? 'fire'
+  try {
+    await handleSave({
+      ...item.settings,
+      goalMode: 'fire',
+      ...(mode ? { fireMode: mode } : {})
+    })
+  } finally {
+    switchingMode.value = null
+  }
+}
+
 async function handleSave(settings: CapitalGoalSettings): Promise<void> {
+  if (saving.value) return
   previewSequence++
   saving.value = true
   saveError.value = ''
@@ -220,11 +249,12 @@ async function handleSave(settings: CapitalGoalSettings): Promise<void> {
     overview.value = result
     previewOverview.value = null
     sheetOpen.value = false
-    toast.success('资本目标已保存')
+    toast.success(settings.goalMode === 'fire' ? 'FIRE 设置已保存' : '资本目标已保存')
   } catch (error) {
     saveError.value = error instanceof ApiError && error.status === 409
       ? '账本刚有新变化，请重试。'
       : getApiErrorMessage(error, '保存失败，请重试。')
+    if (!sheetOpen.value) toast.error(saveError.value)
   } finally {
     saving.value = false
     await nextTick()
@@ -274,9 +304,9 @@ function netTone(value: number): string {
 <template>
   <main class="page capital-page with-nav">
     <header class="capital-header">
-      <h1>目标</h1>
+      <h1>FIRE</h1>
       <div class="capital-header-actions">
-        <button type="button" class="header-action" aria-label="调整假设" @click="openAssumptions">
+        <button type="button" class="header-action" aria-label="调整假设" :disabled="saving" @click="openAssumptions">
           <AppIcon name="settings" />
         </button>
       </div>
@@ -293,10 +323,27 @@ function netTone(value: number): string {
     </section>
 
     <template v-else-if="display">
-      <section class="hero">
+      <FireHero
+        v-if="fire"
+        :fire="fire"
+        :current="display.current"
+        :projection="display.projection"
+        :current-label="currentLabel"
+        :amounts-masked="amountsMasked"
+        :animate-updates="animateUpdates"
+        :saving-mode="switchingMode === 'fire' ? null : switchingMode"
+        @switch-mode="switchFireMode"
+        @open-assumptions="openAssumptions"
+      />
+      <section v-else class="hero">
         <div class="hero-top">
           <span class="hero-label">{{ display.current.coverageComplete ? '当前资本' : '已记录资产' }}</span>
-          <AmountVisibilityButton />
+          <div class="hero-actions">
+            <LoadingButton class="fire-return" :loading="switchingMode === 'fire'" :disabled="saving" loading-label="切换中" @click="switchFireMode()">
+              切回 FIRE
+            </LoadingButton>
+            <AmountVisibilityButton />
+          </div>
         </div>
 
         <h2 class="hero-amount">
@@ -346,50 +393,71 @@ function netTone(value: number): string {
         <RouterLink to="/assets">去补录</RouterLink>
       </p>
 
+      <FireInsightsCard
+        v-if="fire?.insights"
+        :insights="fire.insights"
+        :expense-window-months="fire.expenseWindowMonths"
+        :amounts-masked="amountsMasked"
+      />
+
       <button v-if="targetAmount === null" type="button" class="set-goal" @click="openAssumptions">
         <span class="set-goal-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="4" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
         </span>
         <span class="set-goal-copy">
-          <b>设定目标</b>
-          <small>先定一个数字，看看多久能到</small>
+          <b>{{ isFireMode ? '设置 FIRE 支出基准' : '设定目标' }}</b>
+          <small>{{ isFireMode ? '记账满 1 个完整月自动估算，或手动填写预期月支出' : '先定一个数字，看看多久能到' }}</small>
         </span>
         <span class="set-goal-pulse" aria-hidden="true"></span>
       </button>
 
-      <template v-if="display.projection.status !== 'reached'">
+      <template v-if="(activeFire?.status ?? display.projection.status) !== 'reached'">
         <CapitalProjectionChart
           :points="display.projection.points"
           :target-amount="targetAmount"
-          :view="chartView"
+          :fire="fire"
           :amounts-masked="amountsMasked"
           :current-total="display.current.total"
           :current-month="currentMonth"
-          @update:view="chartView = $event"
         />
 
         <CapitalYearlyTable
           :years="display.projection.years"
-          :eta-month="display.projection.etaMonth"
+          :is-fire-mode="isFireMode"
+          :eta-month="activeFire ? activeFire.etaMonth : display.projection.etaMonth"
           :target-amount="targetAmount"
           :amounts-masked="amountsMasked"
         />
       </template>
 
       <section v-else class="capital-card reached-card">
-        <h2>目标已达成</h2>
-        <p>{{ amountsMasked ? '••••' : `¥${shortMoney(targetAmount ?? 0)}` }} 的目标已经完成。</p>
+        <template v-if="fire && activeFire">
+          <h2>已达成 {{ fire.activeMode === 'lean' ? 'Lean FIRE' : '标准 FIRE' }}</h2>
+          <p>
+            当前被动月薪 {{ moneyLabel(fire.currentPassiveMonthlyCashflow) }}，已完全覆盖
+            {{ moneyLabel(activeFire.monthlyExpense) }}/月 的目标开销。
+          </p>
+        </template>
+        <template v-else>
+          <h2>目标已达成</h2>
+          <p>{{ amountsMasked ? '••••' : `¥${shortMoney(targetAmount ?? 0)}` }} 的目标已经完成。</p>
+        </template>
       </section>
 
       <CapitalActualCard
         :actual="display.actualMonth"
+        :is-fire-mode="isFireMode"
+        :fire-baseline-monthly-expense="activeFire?.monthlyExpense"
         :amounts-masked="amountsMasked"
         @open-change="openMonthChange"
       />
 
       <CapitalAssumptionsSheet
         :open="sheetOpen"
-        :settings="display.settings"
+        :settings="overview?.settings ?? display.settings"
+        :fire="overview?.fire"
+        :amounts-masked="amountsMasked"
+        :current-year="currentYear"
         :effective="display.effective"
         :suggestions="suggestions"
         :preview="previewOverview"
@@ -445,6 +513,7 @@ function netTone(value: number): string {
 
 <style scoped>
 .capital-page {
+  font-variant-numeric: tabular-nums;
   padding-bottom: calc(97px + env(safe-area-inset-bottom));
 }
 
@@ -524,6 +593,23 @@ function netTone(value: number): string {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fire-return {
+  min-height: var(--touch-target);
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-pill);
+  background: rgba(12, 10, 40, 0.22);
+  color: inherit;
+  font-size: var(--text-caption);
+  font-weight: 600;
 }
 
 .hero-label {

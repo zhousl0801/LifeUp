@@ -126,7 +126,78 @@ public sealed class CapitalGoalTests
         Assert.Null(goal.AnnualBonus);
         Assert.Null(goal.BonusPayoutMonth);
         Assert.False(goal.UseSalaryProfile);
+        Assert.Equal("fire", goal.GoalMode);
+        Assert.Equal("standard", goal.FireMode);
+        Assert.Null(goal.SafeWithdrawalRatePercent);
+        Assert.Null(goal.ExcludedExpenseCategories);
+        Assert.Null(goal.LeanExpenseCategories);
+        Assert.Null(goal.FireMonthlyExpenseOverride);
+        Assert.Null(goal.LeanMonthlyExpenseOverride);
+        Assert.Null(goal.CoastTargetYear);
+        Assert.True(CapitalGoal.TryValidate(goal, out _));
     }
+
+    [Fact]
+    public void SetCapitalGoal_NormalizesListsAndDefaultModes()
+    {
+        var now = new DateTimeOffset(2026, 11, 12, 2, 0, 0, TimeSpan.Zero);
+        var ledger = Ledger.Create(new DateOnly(2026, 10, 1), new DateOnly(2026, 11, 12), now);
+        var goal = new CapitalGoal(null, null, null, null, null, null, null, null,
+            GoalMode: " ", FireMode: "", ExcludedExpenseCategories: [" 租金 ", "租金", " ", "A", "a"],
+            LeanExpenseCategories: []);
+
+        Assert.True(ledger.SetCapitalGoal(goal, now));
+        Assert.False(ledger.SetCapitalGoal(goal, now));
+
+        var persisted = ledger.GetCapitalGoal();
+        Assert.NotNull(persisted);
+        Assert.Equal("fire", persisted.GoalMode);
+        Assert.Equal("standard", persisted.FireMode);
+        Assert.Equal(["租金", "A", "a"], persisted.ExcludedExpenseCategories);
+        Assert.Empty(Assert.IsAssignableFrom<IReadOnlyList<string>>(persisted.LeanExpenseCategories));
+    }
+
+    [Theory]
+    [InlineData(0.99)]
+    [InlineData(15.01)]
+    [InlineData(4.001)]
+    public void TryValidate_RejectsInvalidWithdrawalRate(decimal rate)
+    {
+        var goal = EmptyGoal() with { SafeWithdrawalRatePercent = rate };
+
+        Assert.False(CapitalGoal.TryValidate(goal, out _));
+    }
+
+    [Fact]
+    public void TryValidate_EnforcesFireModesExpensesYearAndCategories()
+    {
+        var goal = EmptyGoal();
+
+        Assert.True(CapitalGoal.TryValidate(goal with
+        {
+            GoalMode = "custom",
+            FireMode = "lean",
+            SafeWithdrawalRatePercent = 1m,
+            FireMonthlyExpenseOverride = 0m,
+            LeanMonthlyExpenseOverride = LedgerEntry.MaximumAmount,
+            CoastTargetYear = 2200,
+            LeanExpenseCategories = Enumerable.Repeat("餐饮", 101).ToArray()
+        }, out _));
+        Assert.False(CapitalGoal.TryValidate(goal with { GoalMode = "FIRE" }, out _));
+        Assert.False(CapitalGoal.TryValidate(goal with { FireMode = "custom" }, out _));
+        Assert.False(CapitalGoal.TryValidate(goal with { FireMonthlyExpenseOverride = -1m }, out _));
+        Assert.False(CapitalGoal.TryValidate(goal with { FireMonthlyExpenseOverride = 1.001m }, out _));
+        Assert.False(CapitalGoal.TryValidate(goal with { LeanMonthlyExpenseOverride = LedgerEntry.MaximumAmount + 1m }, out _));
+        Assert.False(CapitalGoal.TryValidate(goal with { CoastTargetYear = 2024 }, out _));
+        Assert.False(CapitalGoal.TryValidate(goal with { CoastTargetYear = 2201 }, out _));
+        Assert.False(CapitalGoal.TryValidate(goal with { ExcludedExpenseCategories = [new string('类', 21)] }, out _));
+        Assert.False(CapitalGoal.TryValidate(goal with
+        {
+            LeanExpenseCategories = Enumerable.Range(0, 101).Select(index => $"分类{index}").ToArray()
+        }, out _));
+    }
+
+    private static CapitalGoal EmptyGoal() => new(null, null, null, null, null, null, null, null);
 
     [Fact]
     public void TryValidate_AllowsNullAssumptions()

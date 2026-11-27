@@ -115,3 +115,16 @@ function formatWan(value: number): string {
 
   return value.toFixed(1).replace(/\.0$/, '')
 }
+
+export function maskInsightAmounts(text: string, masked: boolean): string {
+  return masked
+    ? text.replace(/[¥￥][ \t]*[+−-]?\d+(?:,\d{3})*(?:\.\d+)?(?:[ \t]*(?:万|亿)?元|[ \t]*[万亿](?![\p{L}\d]))?/gu, '••••')
+    : text
+}
+
+export function formatCapitalAmount(value: number, masked: boolean, compact = false): string {
+  if (masked) return '••••'
+  return compact && Math.abs(value) >= 10_000
+    ? `¥${formatWan(value / 10_000)} 万`
+    : `¥${new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(value)}`
+}

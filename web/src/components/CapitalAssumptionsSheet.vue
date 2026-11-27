@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
 import type {
   CapitalEffectiveInputs,
   CapitalGoalSettings,
   CapitalOverview,
-  CapitalSuggestions
+  CapitalSuggestions,
+  FireExpenseCategory,
+  FireGoalMode,
+  FireOverview
 } from '../types/capital'
+import { formatCapitalAmount } from '../utils/capital'
 import { useUnsavedSheet } from '../composables/useUnsavedSheet'
 import {
   amountHint,
@@ -14,15 +18,17 @@ import {
   formatRate,
   investmentPresets,
   parseInput,
+  parseSafeWithdrawalRate,
   percentHint,
   toAssumptionsForm,
   toAssumptionsSettings,
   validateAssumptionsFields,
   type FieldKey
 } from '../utils/capitalAssumptionsForm'
-import { formatMoney, parseAmount } from '../utils/format'
+import { formatMoney, parseAmount, todayInBusinessTimeZone } from '../utils/format'
 import BottomSheet from './BottomSheet.vue'
 import ConfirmSheet from './ConfirmSheet.vue'
+import FireExpenseCalibration from './FireExpenseCalibration.vue'
 import LoadingButton from './LoadingButton.vue'
 
 const props = defineProps<{
@@ -34,6 +40,9 @@ const props = defineProps<{
   saving: boolean
   serverError: string | null
   hasSalaryProfile: boolean
+  fire?: FireOverview | null
+  currentYear?: number
+  amountsMasked?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -42,22 +51,29 @@ const emit = defineEmits<{
   save: [settings: CapitalGoalSettings]
 }>()
 
-const fields = reactive<Record<FieldKey, string>>({
-  targetAmount: '',
-  monthlyIncome: '',
-  monthlyExpense: '',
-  monthlyProvidentDeposit: '',
-  incomeGrowthPercent: '',
-  expenseGrowthPercent: '',
-  investmentAnnualReturnPercent: '',
-  providentAnnualReturnPercent: '',
-  annualBonus: '',
-  bonusPayoutMonth: '1'
-})
+const fields = reactive(toAssumptionsForm(props.settings))
 const errors = reactive<Partial<Record<FieldKey, string>>>({})
 const sessionKey = ref(0)
 const followProfile = ref(false)
 const confirmClearGoal = ref(false)
+const goalMode = shallowRef<FireGoalMode>('custom')
+const leanCategories = shallowRef<string[] | null>(null)
+const excludedCategories = shallowRef<string[]>([])
+const swrPresets = [3, 3.5, 4, 5]
+const coastOffsets = [20, 25, 30]
+const currentYear = computed(() => props.currentYear ?? Number(todayInBusinessTimeZone().slice(0, 4)))
+const firePreview = computed(() => props.preview?.fire ?? props.fire)
+const categories = computed(() => firePreview.value?.categories ?? [])
+const activeFire = computed(() => firePreview.value?.[firePreview.value.activeMode])
+const swrHint = computed(() => {
+  const rate = parseSafeWithdrawalRate(fields.safeWithdrawalRatePercent)
+  if (rate === null) return '默认 4.0%，相当于 25 倍年支出'
+  return `相当于 ${Number((100 / rate).toFixed(2))} 倍年支出`
+})
+const hasHiddenErrors = computed(() => goalMode.value === 'fire'
+  ? Boolean(errors.targetAmount)
+  : Boolean(errors.safeWithdrawalRatePercent || errors.coastTargetYear
+    || errors.fireMonthlyExpenseOverride || errors.leanMonthlyExpenseOverride))
 let previewTimer: ReturnType<typeof setTimeout> | null = null
 let skipNextPreviewSchedule = false
 
@@ -69,11 +85,6 @@ function clearPreviewTimer(): void {
 }
 
 function assignFieldsSilently(next: Partial<Record<FieldKey, string>>): void {
-  const changed = Object.entries(next).some(([key, value]) => fields[key as FieldKey] !== value)
-  if (!changed) {
-    return
-  }
-
   skipNextPreviewSchedule = true
   Object.assign(fields, next)
   void Promise.resolve().then(() => {
@@ -85,7 +96,14 @@ const { discardOpen, requestClose, resolveDiscard } = useUnsavedSheet(
   () => String(sessionKey.value),
   () => props.open,
   () => props.saving,
-  () => ({ ...fields, followProfile: String(followProfile.value) }),
+  () => ({
+    ...fields,
+    followProfile: followProfile.value,
+    goalMode: goalMode.value,
+    fireMode: props.settings.fireMode ?? props.fire?.activeMode ?? 'standard',
+    leanCategories: JSON.stringify(leanCategories.value?.slice().sort() ?? null),
+    excludedCategories: JSON.stringify(excludedCategories.value.slice().sort())
+  }),
   () => emit('close')
 )
 
@@ -125,6 +143,9 @@ watch(
           || (props.settings.monthlyIncome === null
             && props.settings.monthlyProvidentDeposit === null
             && (props.settings.annualBonus ?? null) === null))
+      goalMode.value = props.settings.goalMode ?? props.fire?.goalMode ?? 'custom'
+      leanCategories.value = props.settings.leanExpenseCategories?.slice() ?? null
+      excludedCategories.value = props.settings.excludedExpenseCategories?.slice() ?? []
       assignFieldsSilently(toAssumptionsForm(props.settings))
       clearErrors()
       sessionKey.value++
@@ -134,7 +155,7 @@ watch(
 )
 
 watch(
-  fields,
+  [fields, goalMode, leanCategories, excludedCategories],
   () => {
     if (!props.open || skipNextPreviewSchedule) {
       return
@@ -177,7 +198,35 @@ function schedulePreview(): void {
 }
 
 function toSettings(): CapitalGoalSettings {
-  return toAssumptionsSettings(fields, followProfile.value)
+  return {
+    ...toAssumptionsSettings(fields, followProfile.value),
+    goalMode: goalMode.value,
+    fireMode: props.settings.fireMode ?? props.fire?.activeMode ?? 'standard',
+    leanExpenseCategories: leanCategories.value,
+    excludedExpenseCategories: excludedCategories.value.length ? excludedCategories.value : null
+  }
+}
+
+function cycleCategory(category: FireExpenseCategory): void {
+  const name = category.name
+  const lean = leanCategories.value ?? categories.value.filter((item) => item.isDefaultLean).map((item) => item.name)
+  if (excludedCategories.value.includes(name)) {
+    excludedCategories.value = excludedCategories.value.filter((item) => item !== name)
+    if (!lean.includes(name)) leanCategories.value = [...lean, name]
+  } else if (lean.includes(name)) {
+    leanCategories.value = lean.filter((item) => item !== name)
+  } else {
+    excludedCategories.value = [...excludedCategories.value, name]
+  }
+}
+
+function resetCategories(): void {
+  leanCategories.value = null
+  excludedCategories.value = []
+}
+
+function money(value: number): string {
+  return props.amountsMasked ? '••••' : `¥${formatMoney(value)}`
 }
 
 function switchToManual(): void {
@@ -224,7 +273,9 @@ function resetAssumptions(): void {
     incomeGrowthPercent: '',
     expenseGrowthPercent: '',
     investmentAnnualReturnPercent: '',
-    providentAnnualReturnPercent: ''
+    providentAnnualReturnPercent: '',
+    safeWithdrawalRatePercent: '',
+    coastTargetYear: ''
   })
   validateFields()
 
@@ -255,6 +306,7 @@ function clearTargetGoal(): void {
   fields.targetAmount = ''
   emit('save', {
     ...props.settings,
+    goalMode: 'custom',
     targetAmount: null
   })
 }
@@ -264,17 +316,85 @@ function clearTargetGoal(): void {
   <BottomSheet
     :open="open"
     title="调整预测"
-    subtitle="目标按万元填写；留空项自动按工资档案或历史完整月估算"
+    subtitle="留空项按工资档案、账单或默认假设计算"
     :close-disabled="saving"
     @close="requestClose"
   >
     <form class="form" @submit.prevent="save">
-      <div class="field full">
+      <div class="goal-mode" role="group" aria-label="目标模式">
+        <button type="button" :aria-pressed="goalMode === 'fire'" @click="goalMode = 'fire'">FIRE 模式</button>
+        <button type="button" :aria-pressed="goalMode === 'custom'" @click="goalMode = 'custom'">自定义目标</button>
+      </div>
+
+      <template v-if="goalMode === 'fire'">
+        <div class="field">
+          <label class="field-control">
+            <span>安全提取率 (SWR)</span>
+            <span class="input-unit">
+              <input
+                v-model="fields.safeWithdrawalRatePercent"
+                aria-label="安全提取率"
+                :aria-invalid="Boolean(errors.safeWithdrawalRatePercent)"
+                inputmode="decimal" placeholder="4.0" autocomplete="off"
+              />
+              <i class="unit">%</i>
+            </span>
+          </label>
+          <div class="presets fire-presets">
+            <button
+              v-for="rate in swrPresets" :key="rate" type="button" class="preset"
+              :aria-pressed="(parseSafeWithdrawalRate(fields.safeWithdrawalRatePercent) ?? 4) === rate"
+              @click="fields.safeWithdrawalRatePercent = String(rate)"
+            >{{ rate }}%</button>
+          </div>
+          <small v-if="errors.safeWithdrawalRatePercent" class="field-error">{{ errors.safeWithdrawalRatePercent }}</small>
+          <small v-else class="hint">{{ swrHint }}</small>
+        </div>
+        <div class="field">
+          <label class="field-control">
+            <span>Coast 目标年份</span>
+            <span class="input-unit">
+              <input
+                v-model="fields.coastTargetYear"
+                aria-label="Coast 目标年份"
+                :aria-invalid="Boolean(errors.coastTargetYear)"
+                inputmode="numeric" :placeholder="String(currentYear + 25)" autocomplete="off"
+              />
+              <i class="unit">年</i>
+            </span>
+          </label>
+          <div class="presets fire-presets">
+            <button
+              v-for="offset in coastOffsets" :key="offset" type="button" class="preset"
+              :aria-pressed="(Number(fields.coastTargetYear) || currentYear + 25) === currentYear + offset"
+              @click="fields.coastTargetYear = String(currentYear + offset)"
+            >{{ offset }} 年后</button>
+          </div>
+          <small v-if="errors.coastTargetYear" class="field-error">{{ errors.coastTargetYear }}</small>
+        </div>
+
+        <FireExpenseCalibration
+          :key="sessionKey"
+          v-model:standard-override="fields.fireMonthlyExpenseOverride"
+          v-model:lean-override="fields.leanMonthlyExpenseOverride"
+          :fire="firePreview"
+          :categories="categories"
+          :excluded-categories="excludedCategories"
+          :lean-categories="leanCategories"
+          :amounts-masked="Boolean(amountsMasked)"
+          :standard-error="errors.fireMonthlyExpenseOverride"
+          :lean-error="errors.leanMonthlyExpenseOverride"
+          @cycle="cycleCategory"
+          @reset="resetCategories"
+        />
+      </template>
+
+      <div v-else class="field full">
         <label class="field-control">
           <span>目标金额（万元）</span>
           <span class="input-unit">
             <input
-              v-model="fields.targetAmount"
+              v-model="fields.targetAmount" :class="{ 'private-amount': amountsMasked }"
               aria-label="目标金额"
               inputmode="decimal"
               placeholder="例如 100"
@@ -315,48 +435,48 @@ function clearTargetGoal(): void {
       <div v-if="followProfile" class="field">
         <div class="field-control readonly-control">
           <span>月收入</span>
-          <b>¥{{ formatMoney(effective.monthlyIncome.value) }}</b>
+          <b>{{ money(effective.monthlyIncome.value) }}</b>
           <small class="source-badge">工资档案</small>
         </div>
       </div>
       <div v-else class="field">
         <label class="field-control">
           <span>月收入</span>
-          <input v-model="fields.monthlyIncome" aria-label="月收入" inputmode="decimal" placeholder="现金到账" autocomplete="off" />
+          <input v-model="fields.monthlyIncome" :class="{ 'private-amount': amountsMasked }" aria-label="月收入" inputmode="decimal" placeholder="现金到账" autocomplete="off" />
         </label>
         <small v-if="errors.monthlyIncome" class="field-error">{{ errors.monthlyIncome }}</small>
-        <small v-else-if="!fields.monthlyIncome" class="hint">{{ amountHint(effective.monthlyIncome) }}</small>
+        <small v-else-if="!fields.monthlyIncome" class="hint">{{ amountHint(effective.monthlyIncome, amountsMasked) }}</small>
         <button
           v-if="suggestions.income !== null"
           type="button"
           class="quick-fill"
           @click.prevent="applySuggestion('monthlyIncome', suggestions.income)"
         >
-          用计划收入 {{ formatMoney(suggestions.income) }}
+          用计划收入 {{ amountsMasked ? '••••' : formatMoney(suggestions.income) }}
         </button>
       </div>
 
       <div class="field">
         <label class="field-control">
           <span>月支出</span>
-          <input v-model="fields.monthlyExpense" aria-label="月支出" inputmode="decimal" placeholder="日常支出" autocomplete="off" />
+          <input v-model="fields.monthlyExpense" :class="{ 'private-amount': amountsMasked }" aria-label="月支出" inputmode="decimal" placeholder="日常支出" autocomplete="off" />
         </label>
         <small v-if="errors.monthlyExpense" class="field-error">{{ errors.monthlyExpense }}</small>
-        <small v-else-if="!fields.monthlyExpense" class="hint">{{ amountHint(effective.monthlyExpense) }}</small>
+        <small v-else-if="!fields.monthlyExpense" class="hint">{{ amountHint(effective.monthlyExpense, amountsMasked) }}</small>
         <button
           v-if="suggestions.expense !== null"
           type="button"
           class="quick-fill"
           @click.prevent="applySuggestion('monthlyExpense', suggestions.expense)"
         >
-          用账单预设 {{ formatMoney(suggestions.expense) }}
+          用账单预设 {{ amountsMasked ? '••••' : formatMoney(suggestions.expense) }}
         </button>
       </div>
 
       <div v-if="followProfile" class="field">
         <div class="field-control readonly-control">
           <span>公积金月缴存</span>
-          <b>¥{{ formatMoney(effective.monthlyProvidentDeposit.value) }}</b>
+          <b>{{ money(effective.monthlyProvidentDeposit.value) }}</b>
           <small class="source-badge">工资档案</small>
         </div>
       </div>
@@ -364,7 +484,7 @@ function clearTargetGoal(): void {
         <label class="field-control">
           <span>公积金月缴存</span>
           <input
-            v-model="fields.monthlyProvidentDeposit"
+            v-model="fields.monthlyProvidentDeposit" :class="{ 'private-amount': amountsMasked }"
             aria-label="公积金月缴存"
             inputmode="decimal"
             placeholder="0"
@@ -372,21 +492,21 @@ function clearTargetGoal(): void {
           />
         </label>
         <small v-if="errors.monthlyProvidentDeposit" class="field-error">{{ errors.monthlyProvidentDeposit }}</small>
-        <small v-else-if="!fields.monthlyProvidentDeposit" class="hint">{{ amountHint(effective.monthlyProvidentDeposit) }}</small>
+        <small v-else-if="!fields.monthlyProvidentDeposit" class="hint">{{ amountHint(effective.monthlyProvidentDeposit, amountsMasked) }}</small>
         <button
           v-if="suggestions.providentDeposit !== null"
           type="button"
           class="quick-fill"
           @click.prevent="applySuggestion('monthlyProvidentDeposit', suggestions.providentDeposit)"
         >
-          用缴存设置 {{ formatMoney(suggestions.providentDeposit) }}
+          用缴存设置 {{ amountsMasked ? '••••' : formatMoney(suggestions.providentDeposit) }}
         </button>
       </div>
 
       <div v-if="followProfile" class="field">
         <div class="field-control readonly-control">
           <span>年终奖（到手）</span>
-          <b>{{ (effective.annualBonus?.value ?? 0) > 0 ? `¥${formatMoney(effective.annualBonus?.value ?? 0)}` : '未设置' }}</b>
+          <b>{{ (effective.annualBonus?.value ?? 0) > 0 ? money(effective.annualBonus?.value ?? 0) : '未设置' }}</b>
           <small class="source-badge">{{ effective.bonusPayoutMonth?.value ?? 1 }} 月到账</small>
         </div>
       </div>
@@ -394,7 +514,7 @@ function clearTargetGoal(): void {
         <div class="field">
           <label class="field-control">
             <span>年终奖（到手）</span>
-            <input v-model="fields.annualBonus" aria-label="年终奖到手" inputmode="decimal" placeholder="0" autocomplete="off" />
+            <input v-model="fields.annualBonus" :class="{ 'private-amount': amountsMasked }" aria-label="年终奖到手" inputmode="decimal" placeholder="0" autocomplete="off" />
           </label>
           <small v-if="errors.annualBonus" class="field-error">{{ errors.annualBonus }}</small>
           <small v-else class="hint">预测和年度表按发放月计入，不计入月净积累。</small>
@@ -482,15 +602,31 @@ function clearTargetGoal(): void {
         <small class="hint">历史年化参考，不代表未来收益；可手动修改</small>
       </div>
 
-      <div class="derived">
-        <span>月净积累</span>
-        <b>{{ formatNet(previewNet) }}</b>
-        <span>组合年化</span>
-        <b>{{ formatRate(previewBlended) }}</b>
+      <div class="derived" :class="{ 'is-fire': goalMode === 'fire' }">
+        <div v-if="goalMode === 'fire'">
+          <span>储蓄率</span>
+          <b>{{ formatRate(firePreview?.savingsRatePercent ?? null) }}</b>
+        </div>
+        <div>
+          <span>月净积累</span>
+          <b>{{ amountsMasked && previewNet !== null ? '••••' : formatNet(previewNet) }}</b>
+        </div>
+        <div v-if="goalMode === 'fire'">
+          <span>FIRE 目标本金</span>
+          <b>{{ activeFire && activeFire.status !== 'noTarget' ? formatCapitalAmount(activeFire.targetCapital, Boolean(amountsMasked), true) : '—' }}</b>
+        </div>
+        <div v-else>
+          <span>组合年化</span>
+          <b>{{ formatRate(previewBlended) }}</b>
+        </div>
       </div>
 
       <p v-if="bonusAmount > 0" class="bonus-hint field full">
-        年终奖 ¥{{ formatMoney(bonusAmount) }} 于每年 {{ bonusMonth }} 月计入达成时间，不计入月净积累。
+        年终奖 {{ money(bonusAmount) }} 于每年 {{ bonusMonth }} 月计入达成时间，不计入月净积累。
+      </p>
+
+      <p v-if="hasHiddenErrors" class="form-error">
+        请切换到{{ goalMode === 'fire' ? '自定义目标' : ' FIRE 模式' }}修正输入。
       </p>
 
       <p v-if="serverError" class="form-error">{{ serverError }}</p>
@@ -532,6 +668,33 @@ function clearTargetGoal(): void {
   display: flex;
   flex-direction: column;
   gap: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.goal-mode {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 10px;
+  padding: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-subtle);
+}
+
+.goal-mode button {
+  min-height: var(--touch-target);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--text-footnote);
+  font-weight: 600;
+}
+
+.goal-mode button[aria-pressed='true'] {
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-card);
+  color: var(--color-brand);
 }
 
 .field {
@@ -613,6 +776,10 @@ function clearTargetGoal(): void {
 .field input:focus,
 .field select:focus {
   box-shadow: none;
+}
+
+.field input.private-amount:not(:focus) {
+  -webkit-text-security: disc;
 }
 
 .input-unit {
@@ -708,6 +875,37 @@ function clearTargetGoal(): void {
   background: color-mix(in srgb, var(--color-brand) 7%, var(--color-bg-surface));
   color: var(--color-text-secondary);
   font-size: 12px;
+}
+
+.derived > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.derived.is-fire {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.derived.is-fire > div {
+  flex-direction: column;
+  text-align: center;
+}
+
+.derived.is-fire b {
+  margin-right: 0;
+  overflow-wrap: anywhere;
+}
+
+.fire-presets .preset {
+  min-width: var(--touch-target);
+  min-height: var(--touch-target);
+}
+
+.fire-presets .preset[aria-pressed='true'] {
+  background: var(--color-brand-soft);
 }
 
 .derived b {

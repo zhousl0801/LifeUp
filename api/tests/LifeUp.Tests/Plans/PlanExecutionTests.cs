@@ -110,6 +110,7 @@ public sealed class PlanExecutionTests
         var overview = await context.Funds.GetOverviewAsync(CancellationToken.None);
         Assert.NotNull(overview);
         Assert.Equal(9700m, (await context.Ledger.GetOverviewAsync(CancellationToken.None))!.Cash.Amount);
+        Assert.NotNull(overview.PendingBuys);
         Assert.Single(overview.PendingBuys);
         Assert.Equal(2m, overview.PendingBuys[0]!.Fee);
     }

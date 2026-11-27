@@ -24,13 +24,17 @@ public sealed record CapitalProjectionInput(
     decimal InvestmentAnnualReturnPercent,
     decimal ProvidentAnnualReturnPercent,
     decimal AnnualBonus = 0m,
-    int BonusPayoutMonth = 1);
+    int BonusPayoutMonth = 1,
+    decimal? FireMonthlyExpense = null,
+    decimal? SafeWithdrawalRatePercent = null);
 
 public sealed record CapitalProjectionPoint(
     string Month,
     decimal Capital,
     decimal NetAccumulation,
-    decimal Return);
+    decimal Return,
+    decimal PassiveAnnualCashflow = 0m,
+    decimal ExpectedAnnualExpense = 0m);
 
 public sealed record CapitalYearRow(
     int Year,
@@ -39,7 +43,9 @@ public sealed record CapitalYearRow(
     decimal ProvidentDeposit,
     decimal Return,
     decimal Total,
-    bool IsGoalYear);
+    bool IsGoalYear,
+    decimal PassiveMonthlyCashflow = 0m,
+    decimal FreedomPercent = 0m);
 
 public sealed record CapitalProjectionResult(
     CapitalProjectionStatus Status,
@@ -52,4 +58,7 @@ public sealed record CapitalProjectionResult(
     decimal BlendedAnnualReturnPercent,
     IReadOnlyList<CapitalProjectionPoint> Points,
     IReadOnlyList<CapitalYearRow> Years,
-    IReadOnlyList<string> Notes);
+    IReadOnlyList<string> Notes)
+{
+    internal IReadOnlyList<CapitalProjectionPoint> MonthlyPoints { get; init; } = [];
+}

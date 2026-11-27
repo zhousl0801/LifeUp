@@ -448,6 +448,7 @@ public sealed class FundServiceTests
         var overview = await context.Funds.GetOverviewAsync(CancellationToken.None);
         Assert.NotNull(overview);
         Assert.Equal(2762.09m, overview.TotalRealizedProfit);
+        Assert.NotNull(overview.Funds);
         Assert.Equal(2762.09m, overview.Funds.Single().RealizedProfit);
         Assert.Equal(1000m, overview.Positions[0].Cost);
         Assert.Equal(100m, overview.Positions[0].Shares);
@@ -509,6 +510,7 @@ public sealed class FundServiceTests
         var overview = await funds.GetOverviewAsync(CancellationToken.None);
 
         Assert.NotNull(overview);
+        Assert.NotNull(overview.PendingBuys);
         Assert.Equal(new DateOnly(2026, 10, 19),
             overview.PendingBuys.Single(item => item.PositionId == domestic.Result.Position.Id).TradeDate);
         Assert.Equal(new DateOnly(2026, 10, 20),
