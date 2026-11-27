@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { toast } from '../composables/useMessage'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, useTemplateRef } from 'vue'
 import { useRouter } from 'vue-router'
 import { createCategory, fetchCategories, reorderCategories, updateCategory } from '../api/categories'
@@ -150,7 +151,7 @@ async function save(): Promise<void> {
     status.value = item ? '已保存「' + saved.name + '」' : '已新增「' + saved.name + '」'
     closeSheet()
   } catch (cause) {
-    formError.value = getApiErrorMessage(cause, '保存分类失败，请重试。')
+    toast.error(getApiErrorMessage(cause, '保存分类失败，请重试。'))
   } finally {
     saving.value = false
   }
@@ -166,7 +167,7 @@ async function saveIcon(iconKey: string): Promise<void> {
     status.value = '已更换「' + item.name + '」的图标'
     closeSheet()
   } catch (cause) {
-    formError.value = getApiErrorMessage(cause, '保存图标失败，请重试。')
+    toast.error(getApiErrorMessage(cause, '保存图标失败，请重试。'))
   } finally {
     saving.value = false
   }
@@ -216,9 +217,7 @@ async function move(item: EntryCategory, parentId: string | undefined, index: nu
     status.value = crossGroup ? '已将「' + item.name + '」移至「' + targetGroup?.name + '」' : '已调整「' + item.name + '」的顺序'
     closeSheet()
   } catch (cause) {
-    const message = getApiErrorMessage(cause, '移动失败，请刷新后重试。')
-    if (sheet.value === 'move') formError.value = message
-    else error.value = message
+    toast.error(getApiErrorMessage(cause, '移动失败，请刷新后重试。'))
   } finally {
     saving.value = false
   }

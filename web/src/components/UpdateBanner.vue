@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRegisterSW } from 'virtual:pwa-register/vue'
-import { activeWriteCount, pendingMutationCount } from '../api/client'
+import { activeWriteCount } from '../api/client'
 import { toast } from '../composables/useMessage'
 import { useRouteMotion } from '../utils/routeMotion'
 
@@ -8,7 +8,7 @@ const { needRefresh, updateServiceWorker } = useRegisterSW({ immediate: true })
 const { hasOpenSheet } = useRouteMotion()
 
 function applyUpdate(): void {
-  if (activeWriteCount.value > 0 || pendingMutationCount.value > 0 || hasOpenSheet.value) {
+  if (activeWriteCount.value > 0 || hasOpenSheet.value) {
     toast.info('当前有正在保存或编辑的内容，完成后再更新更稳妥')
     return
   }

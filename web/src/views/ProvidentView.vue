@@ -36,6 +36,8 @@ const sheet = ref<SheetKind | null>(null)
 const requestId = ref(createRequestId())
 const depositRequestId = ref(createRequestId())
 const withdrawalRequestId = ref(createRequestId())
+let planRequestId = createRequestId()
+let planStatusRequestId = createRequestId()
 const isSaving = ref(false)
 const formError = ref('')
 const form = reactive({
@@ -180,6 +182,8 @@ function openSheet(kind: SheetKind): void {
   requestId.value = createRequestId()
   depositRequestId.value = createRequestId()
   withdrawalRequestId.value = createRequestId()
+  planRequestId = createRequestId()
+  planStatusRequestId = createRequestId()
   form.amount = ''
   form.depositAmount = ''
   form.withdrawalAmount = ''
@@ -228,7 +232,7 @@ async function submit(): Promise<void> {
       sheet.value = null
       await loadOverview()
     } catch (error) {
-      formError.value = getApiErrorMessage(error, '保存失败，请重试。')
+      toast.error(getApiErrorMessage(error, '保存失败，请重试。'))
     } finally {
       isSaving.value = false
     }
@@ -292,18 +296,18 @@ async function submit(): Promise<void> {
           time,
           startDate: plan?.startDate ?? today,
           fundPositionId: null,
-          requestId: createRequestId(),
+          requestId: planRequestId,
           expectedVersion: plan?.version ?? null
         })
         messages.push(plan ? '每月缴存已更新' : '每月缴存已设置')
       }
 
       if (plan && !plan.isActive) {
-        await resumePlan(plan.id, createRequestId())
+        await resumePlan(plan.id, planStatusRequestId)
         messages.push('已恢复每月缴存')
       }
     } else if (plan?.isActive) {
-      await pausePlan(plan.id, createRequestId())
+      await pausePlan(plan.id, planStatusRequestId)
       messages.push('每月缴存已暂停')
     }
 
@@ -335,9 +339,9 @@ async function submit(): Promise<void> {
     toast.success(messages.length === 1 ? messages[0]! : '公积金设置已保存')
   } catch (error) {
     const prefix = messages.length ? `${messages.join('，')}；` : ''
-    formError.value = deposited
+    toast.error(deposited
       ? `${prefix}缴存已登记，但提取保存失败：${getApiErrorMessage(error, '请稍后单独补记提取。')}`
-      : `${prefix}${getApiErrorMessage(error, '保存失败，请重试。')}`
+      : `${prefix}${getApiErrorMessage(error, '保存失败，请重试。')}`)
   } finally {
     isSaving.value = false
   }

@@ -20,7 +20,8 @@ const loading = ref(true)
 const error = ref('')
 const sheetOpen = ref(false)
 const saving = ref(false)
-const serverError = ref('')
+let saveRequestId = createRequestId()
+let disableRequestId = createRequestId()
 const prefill = ref<{
   netMonthlySalary: number | null
   providentMonthly: number | null
@@ -47,7 +48,8 @@ function goBack(): void {
 }
 
 async function openSheet(): Promise<void> {
-  serverError.value = ''
+  saveRequestId = createRequestId()
+  disableRequestId = createRequestId()
 
   if (!profile.value) {
     try {
@@ -79,16 +81,15 @@ async function saveSalary(next: SalaryProfile): Promise<void> {
   }
 
   saving.value = true
-  serverError.value = ''
 
   try {
-    const result = await saveSalaryProfile({ ...next, requestId: createRequestId() })
+    const result = await saveSalaryProfile({ ...next, requestId: saveRequestId })
     profile.value = result.profile
     sheetOpen.value = false
     toast.success('工资档案已保存')
     await load()
   } catch (saveError) {
-    serverError.value = getApiErrorMessage(saveError, '保存工资档案失败，请重试。')
+    toast.error(getApiErrorMessage(saveError, '保存工资档案失败，请重试。'))
   } finally {
     saving.value = false
   }
@@ -100,16 +101,15 @@ async function disableSalary(): Promise<void> {
   }
 
   saving.value = true
-  serverError.value = ''
 
   try {
-    const result = await disableSalaryProfile(createRequestId())
+    const result = await disableSalaryProfile(disableRequestId)
     profile.value = result.profile
     sheetOpen.value = false
     toast.success('工资档案已停用')
     await load()
   } catch (disableError) {
-    serverError.value = getApiErrorMessage(disableError, '停用工资档案失败，请重试。')
+    toast.error(getApiErrorMessage(disableError, '停用工资档案失败，请重试。'))
   } finally {
     saving.value = false
   }
@@ -151,7 +151,7 @@ async function disableSalary(): Promise<void> {
       :profile="profile"
       :prefill="prefill"
       :saving="saving"
-      :server-error="serverError"
+      :server-error="null"
       @save="saveSalary"
       @disable="disableSalary"
       @close="closeSheet"

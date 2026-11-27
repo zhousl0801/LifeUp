@@ -1,3 +1,5 @@
+import { ApiError } from '../api/client'
+import { toast } from '../composables/useMessage'
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import EntryView from './EntryView.vue'
@@ -218,5 +220,33 @@ test('save and add another keeps the batch date, clears the draft and uses a fre
   expect(mocks.create).toHaveBeenCalledTimes(2)
   expect(mocks.create.mock.calls[0]![0].requestId).not.toBe(mocks.create.mock.calls[1]![0].requestId)
   expect(mocks.create.mock.calls[1]![0]).toMatchObject({ businessDate: '2026-11-07', note: '' })
+  view.unmount()
+})
+
+test('shows one network toast and retains the entry and request ID for retry', async () => {
+  const message = '网络异常，请检查网络后重试。'
+  const errorToast = vi.spyOn(toast, 'error').mockReturnValue(0)
+  mocks.create.mockRejectedValueOnce(new ApiError(0, message)).mockResolvedValueOnce({})
+  const view = mount(EntryView, { attachTo: document.body })
+  await flushPromises()
+
+  await view.get('.category-tile').trigger('click')
+  await view.get('.keypad button').trigger('click')
+  const note = view.get<HTMLInputElement>('input[aria-label="备注"]')
+  await note.setValue('午餐')
+  const save = view.get('.entry-save-again')
+  await save.trigger('click')
+  await flushPromises()
+
+  expect(errorToast).toHaveBeenCalledExactlyOnceWith(message)
+  expect(note.element.value).toBe('午餐')
+  expect(view.get('output[aria-label="输入金额"]').text()).toBe('7')
+  const firstInput = mocks.create.mock.calls[0]?.[0]
+  expect(firstInput).toMatchObject({ requestId: expect.any(String), note: '午餐', amount: 7 })
+
+  await save.trigger('click')
+  await flushPromises()
+  expect(mocks.create).toHaveBeenCalledTimes(2)
+  expect(mocks.create.mock.calls[1]?.[0]).toEqual(firstInput)
   view.unmount()
 })

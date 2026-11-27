@@ -285,7 +285,7 @@ async function refreshQuote(): Promise<void> {
       return
     }
 
-    errorMessage.value = '报价刷新失败，请稍后重试。'
+    toast.error(getApiErrorMessage(error, '报价刷新失败，请稍后重试。'))
   } finally {
     isRefreshing.value = false
   }
@@ -352,7 +352,7 @@ async function submit(): Promise<void> {
       expectedVersion.value = overview.value?.version ?? expectedVersion.value
       requestId.value = createRequestId()
     }
-    formError.value = getApiErrorMessage(error, '保存失败，请重试。')
+    toast.error(getApiErrorMessage(error, '保存失败，请重试。'))
   } finally {
     isSaving.value = false
   }
@@ -494,7 +494,7 @@ async function markNotHeld(): Promise<void> {
     })
     await router.push({ name: 'assets' })
   } catch (error) {
-    errorMessage.value = getApiErrorMessage(error, '标记失败，请稍后重试。')
+    toast.error(getApiErrorMessage(error, '标记失败，请稍后重试。'))
   } finally {
     isSaving.value = false
   }

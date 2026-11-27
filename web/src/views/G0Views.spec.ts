@@ -189,7 +189,10 @@ test('cash conflict keeps the draft and requires a new version before confirming
   save().click()
   await flushPromises()
   expect(amount.value).toBe('900')
-  expect(document.body.textContent).toContain('现金余额刚有新变动')
+  expect(useMessages().messages.value).toContainEqual(expect.objectContaining({
+    tone: 'error',
+    text: expect.stringContaining('现金余额刚有新变动')
+  }))
   expect(mocks.reconcile.mock.calls[0]![0].expectedVersion).toBe(0)
   save().click()
   await flushPromises()

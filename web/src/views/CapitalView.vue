@@ -251,10 +251,9 @@ async function handleSave(settings: CapitalGoalSettings): Promise<void> {
     sheetOpen.value = false
     toast.success(settings.goalMode === 'fire' ? 'FIRE 设置已保存' : '资本目标已保存')
   } catch (error) {
-    saveError.value = error instanceof ApiError && error.status === 409
+    toast.error(error instanceof ApiError && error.status === 409
       ? '账本刚有新变化，请重试。'
-      : getApiErrorMessage(error, '保存失败，请重试。')
-    if (!sheetOpen.value) toast.error(saveError.value)
+      : getApiErrorMessage(error, '保存失败，请重试。'))
   } finally {
     saving.value = false
     await nextTick()

@@ -1,3 +1,4 @@
+import { toast } from '../composables/useMessage'
 import { mount, flushPromises } from '@vue/test-utils'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { ApiError } from '../api/client'
@@ -149,6 +150,7 @@ test('invalid backup shows errors and offers no restore button', async () => {
 })
 
 test('restore failure keeps the validation and shows the error', async () => {
+  const errorToast = vi.spyOn(toast, 'error')
   mocks.restore.mockRejectedValue(new Error('备份或当前账本已变化，请重新校验后再恢复。'))
   const view = mount(BackupView, { attachTo: document.body })
   await flushPromises()
@@ -157,13 +159,14 @@ test('restore failure keeps the validation and shows the error', async () => {
   await view.findAll('button').find((button) => button.text() === '确认恢复并替换当前账本')!.trigger('click')
   await flushPromises()
 
-  expect(view.text()).toContain('备份或当前账本已变化，请重新校验后再恢复。')
+  expect(errorToast).toHaveBeenCalledWith('备份或当前账本已变化，请重新校验后再恢复。')
   expect(view.text()).toContain('校验通过')
   expect(view.text()).not.toContain('替换前的账本快照')
   view.unmount()
 })
 
 test('previous snapshot persists across remount and when restore result is unknown (status 0)', async () => {
+  const errorToast = vi.spyOn(toast, 'error')
   mocks.restore.mockRejectedValueOnce(new ApiError(0, '网络超时'))
   const view = mount(BackupView, { attachTo: document.body })
   await flushPromises()
@@ -172,7 +175,7 @@ test('previous snapshot persists across remount and when restore result is unkno
   await view.findAll('button').find((button) => button.text() === '确认恢复并替换当前账本')!.trigger('click')
   await flushPromises()
 
-  expect(view.text()).toContain('暂时无法确认恢复结果')
+  expect(errorToast).toHaveBeenCalledWith(expect.stringContaining('暂时无法确认恢复结果'))
   expect(view.text()).toContain('替换前的账本快照')
   view.unmount()
 

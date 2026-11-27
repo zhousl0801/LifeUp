@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, shallowRef, useTemplateRef, watch } from 'vue'
 import AppMessage from './components/AppMessage.vue'
-import PendingMutationNotice from './components/PendingMutationNotice.vue'
 import ServiceStartup from './components/ServiceStartup.vue'
 import UpdateBanner from './components/UpdateBanner.vue'
 import { isReducedMotion } from './composables/useReducedMotion'
@@ -86,7 +85,6 @@ watch([serviceReady, currentSurface, hasOpenSheet], syncStatusBarColor, { flush:
   <UpdateBanner />
   <AppMessage />
   <template v-if="serviceReady">
-    <PendingMutationNotice />
     <div ref="routeStage" class="route-stage" :data-route-motion="routeMotion">
       <RouterView />
     </div>

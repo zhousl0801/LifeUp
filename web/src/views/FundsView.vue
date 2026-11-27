@@ -783,7 +783,7 @@ async function submitGroup(): Promise<void> {
     await loadOverview()
     groupDetailId.value = created.id
   } catch (error) {
-    groupError.value = getApiErrorMessage(error, '新增分组失败，请重试。')
+    toast.error(getApiErrorMessage(error, '新增分组失败，请重试。'))
   } finally {
     groupBusy.value = false
   }
@@ -812,7 +812,7 @@ async function saveGroupName(groupId: string): Promise<void> {
     toast.success('分组已更名')
     await loadOverview()
   } catch (error) {
-    groupError.value = getApiErrorMessage(error, '分组改名失败，请重试。')
+    toast.error(getApiErrorMessage(error, '分组改名失败，请重试。'))
   } finally {
     groupBusy.value = false
   }
@@ -847,7 +847,7 @@ async function confirmRemoveGroup(): Promise<void> {
     pendingGroupRemoval.value = null
     await loadOverview()
   } catch (error) {
-    groupError.value = getApiErrorMessage(error, '删除分组失败，请重试。')
+    toast.error(getApiErrorMessage(error, '删除分组失败，请重试。'))
     pendingGroupRemoval.value = null
   } finally {
     groupBusy.value = false
@@ -877,7 +877,7 @@ async function toggleGroupFund(fund: FundSummary): Promise<void> {
     toast.success(isMember ? '已移出分组' : '已加入分组')
     await loadOverview()
   } catch (error) {
-    groupError.value = getApiErrorMessage(error, '调整分组资产失败，请重试。')
+    toast.error(getApiErrorMessage(error, '调整分组资产失败，请重试。'))
     await loadOverview()
   } finally {
     groupBusy.value = false
@@ -1024,7 +1024,7 @@ async function submit(): Promise<void> {
       await submitSellArrival()
     }
   } catch (error) {
-    formError.value = getApiErrorMessage(error, '保存失败，请重试。')
+    toast.error(getApiErrorMessage(error, '保存失败，请重试。'))
   } finally {
     isSaving.value = false
   }
@@ -1146,7 +1146,7 @@ async function updateDuplicatePosition(): Promise<void> {
     sheet.value = null
     await loadOverview()
   } catch (error) {
-    formError.value = getApiErrorMessage(error, '更新已有持仓失败，请重试。')
+    toast.error(getApiErrorMessage(error, '更新已有持仓失败，请重试。'))
   } finally {
     isSaving.value = false
   }
@@ -1163,7 +1163,7 @@ async function addDuplicatePosition(): Promise<void> {
   try {
     await submitOpening(true)
   } catch (error) {
-    formError.value = getApiErrorMessage(error, '保存失败，请重试。')
+    toast.error(getApiErrorMessage(error, '保存失败，请重试。'))
   } finally {
     isSaving.value = false
   }
@@ -1397,7 +1397,7 @@ async function cancelPending(transactionId: string): Promise<void> {
     sheet.value = null
     await loadOverview()
   } catch (error) {
-    formError.value = getApiErrorMessage(error, '撤销失败，请刷新后重试。')
+    toast.error(getApiErrorMessage(error, '撤销失败，请刷新后重试。'))
   } finally {
     cancellingPendingId.value = null
   }

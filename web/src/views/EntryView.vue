@@ -64,7 +64,6 @@ const isSaving = computed(() => saveMode.value !== null)
 const savedForNext = ref(false)
 const isReversing = ref(false)
 const loadError = ref('')
-const formError = ref('')
 const showReverse = ref(false)
 const reverseReason = ref('')
 const categoryEditMode = ref(false)
@@ -74,7 +73,6 @@ const newCategoryName = ref('')
 const categorySheetError = ref('')
 const isCategorySaving = ref(false)
 const categoriesLoaded = ref(false)
-const categoryError = ref('')
 const draggingCategoryId = ref('')
 
 const categoryItems = ref<EntryCategory[]>([])
@@ -260,7 +258,6 @@ function setKind(kind: EntryKind): void {
   categoryEditMode.value = false
   categorySheet.value = null
   pendingDeleteCategory.value = null
-  categoryError.value = ''
   draggingCategoryId.value = ''
   dragActive = false
   dragArmed = false
@@ -467,12 +464,11 @@ async function persistCategoryOrder(): Promise<void> {
     return
   }
 
-  categoryError.value = ''
 
   try {
     await reorderCategories(form.kind, ids)
   } catch (error) {
-    categoryError.value = getApiErrorMessage(error, '调整分类顺序失败，请重试。')
+    toast.error(getApiErrorMessage(error, '调整分类顺序失败，请重试。'))
     await loadCategories()
   }
 }
@@ -528,7 +524,6 @@ function exitCategoryEdit(): void {
   clearDragArmTimer()
   categoryEditMode.value = false
   draggingCategoryId.value = ''
-  categoryError.value = ''
   dragActive = false
   dragArmed = false
   dragMoved = false
@@ -562,9 +557,9 @@ async function saveCategory(): Promise<void> {
     categoryEditMode.value = false
     toast.success(`已新增分类「${created.name}」`)
   } catch (error) {
-    categorySheetError.value = error instanceof ApiError && error.status === 409
+    toast.error(error instanceof ApiError && error.status === 409
       ? '同类型下已存在同名分类。'
-      : getApiErrorMessage(error, '新增分类失败，请重试。')
+      : getApiErrorMessage(error, '新增分类失败，请重试。'))
   } finally {
     isCategorySaving.value = false
   }
@@ -597,7 +592,7 @@ async function confirmDeleteCategory(): Promise<void> {
     categorySheet.value = null
     pendingDeleteCategory.value = null
   } catch (error) {
-    categorySheetError.value = getApiErrorMessage(error, '删除分类失败，请重试。')
+    toast.error(getApiErrorMessage(error, '删除分类失败，请重试。'))
   } finally {
     isCategorySaving.value = false
   }
@@ -625,20 +620,18 @@ async function submit(mode: 'exit' | 'again' = 'exit'): Promise<void> {
     return
   }
 
-  formError.value = ''
-
   if (!form.businessDate) {
-    formError.value = '请选择业务日期。'
+    toast.error('请选择业务日期。')
     return
   }
 
   if (form.businessDate > today) {
-    formError.value = '业务日期不能晚于今天。'
+    toast.error('业务日期不能晚于今天。')
     return
   }
 
   if (!form.category) {
-    formError.value = '请选择分类。'
+    toast.error('请选择分类。')
     return
   }
 
@@ -675,7 +668,7 @@ async function submit(mode: 'exit' | 'again' = 'exit'): Promise<void> {
       await finishSave(result, entryId.value ? 'update' : 'create')
     }
   } catch (error) {
-    formError.value = getApiErrorMessage(error, '保存失败，请重试。')
+    toast.error(getApiErrorMessage(error, '保存失败，请重试。'))
   } finally {
     saveMode.value = null
   }
@@ -687,13 +680,12 @@ async function confirmReverse(): Promise<void> {
   }
 
   isReversing.value = true
-  formError.value = ''
 
   try {
     const result = await reverseEntry(entryId.value, reverseReason.value.trim(), requestId.value)
     await finishSave(result, 'reverse')
   } catch (error) {
-    formError.value = getApiErrorMessage(error, '撤销失败，请重试。')
+    toast.error(getApiErrorMessage(error, '撤销失败，请重试。'))
   } finally {
     isReversing.value = false
   }
@@ -905,7 +897,6 @@ const { ready: kindPillReady, animated: kindPillAnimated, indicatorStyle: kindPi
         <p v-if="categoryEditMode && canManageCategories" class="category-hint">
           长按拖动分类可调整顺序，点分类可删除
         </p>
-        <p v-if="categoryError" class="form-error category-error" role="alert">{{ categoryError }}</p>
 
         <div v-if="showEntryActions || showReverse || entrySource === 'automatic'" class="category-extras">
           <button
@@ -972,7 +963,6 @@ const { ready: kindPillReady, animated: kindPillAnimated, indicatorStyle: kindPi
       </div>
 
       <footer v-if="canEdit" class="entry-footer">
-        <p v-if="formError" class="form-error entry-error" role="alert">{{ formError }}</p>
         <AmountKeypad v-if="!editingNote" v-model="form.expression" :disabled="isSaving" />
         <div class="entry-save-actions" :class="{ 'entry-save-actions--new': !isEditing }">
           <LoadingButton v-if="!isEditing" class="entry-save-again" :loading="saveMode === 'again'"
@@ -1291,10 +1281,6 @@ const { ready: kindPillReady, animated: kindPillAnimated, indicatorStyle: kindPi
   text-align: center;
 }
 
-.category-error {
-  margin: 12px 0 0;
-}
-
 .category-extras {
   margin-top: 20px;
   padding-top: 14px;
@@ -1466,10 +1452,6 @@ const { ready: kindPillReady, animated: kindPillAnimated, indicatorStyle: kindPi
   color: var(--color-error);
   font-size: var(--text-footnote);
   line-height: 1.7;
-}
-
-.entry-error {
-  margin: 0 16px 8px;
 }
 
 .source-note {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { toast } from '../composables/useMessage'
 import { storeToRefs } from 'pinia'
 import { onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -93,7 +94,7 @@ async function submit(): Promise<void> {
     })
     await router.replace({ name: 'home' })
   } catch (error) {
-    errors.form = getApiErrorMessage(error, '保存失败，请检查网络后重试。')
+    toast.error(getApiErrorMessage(error, '保存失败，请检查网络后重试。'))
   }
 }
 

@@ -130,6 +130,13 @@ async function performRequest<T>(path: string, init?: ApiRequestInit, skipCacheR
       credentials: 'include',
       headers,
       signal: controller.signal
+    }).catch((error: unknown) => {
+      if (error instanceof ApiError || externalSignal?.aborted
+        || (error instanceof Error && error.name === 'AbortError')) {
+        throw error
+      }
+
+      throw new ApiError(0, '网络异常，请检查网络后重试。')
     })
 
     if (!response.ok) {
@@ -161,12 +168,8 @@ async function performRequest<T>(path: string, init?: ApiRequestInit, skipCacheR
 
     return data
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      if (timedOut && !externalSignal?.aborted) {
-        throw new ApiError(0, '请求超时，请检查网络后重试。')
-      }
-
-      throw error
+    if (timedOut && !externalSignal?.aborted) {
+      throw new ApiError(0, '请求超时，请检查网络后重试。')
     }
 
     throw error
@@ -176,171 +179,17 @@ async function performRequest<T>(path: string, init?: ApiRequestInit, skipCacheR
   }
 }
 
-const PendingPrefix = 'lifeup.pending.'
-
-export interface PendingMutation {
-  requestId: string
-  path: string
-  method: string
-  body: string
-}
-
-export const pendingMutationCount = ref(0)
-const inFlightMutations = new Map<string, number>()
-
-export function readPendingMutations(): PendingMutation[] {
-  const result: PendingMutation[] = []
-
-  try {
-    const keys: string[] = []
-    for (let index = 0; index < localStorage.length; index++) {
-      const key = localStorage.key(index)
-      if (key?.startsWith(PendingPrefix)) {
-        keys.push(key)
-      }
-    }
-
-    for (const key of keys) {
-      const raw = localStorage.getItem(key)
-      if (!raw) continue
-
-      try {
-        const parsed = JSON.parse(raw) as PendingMutation
-        if (parsed && typeof parsed.requestId === 'string' && typeof parsed.path === 'string') {
-          result.push(parsed)
-        } else {
-          localStorage.removeItem(key)
-        }
-      } catch {
-        localStorage.removeItem(key)
-      }
-    }
-  } catch {
-    // Ignore storage read errors in restricted browsing contexts.
-  }
-
-  pendingMutationCount.value = result.filter((request) => !inFlightMutations.has(request.requestId)).length
-  return result
-}
-
-function remember(request: PendingMutation): void {
-  try {
-    localStorage.setItem(`${PendingPrefix}${request.requestId}`, JSON.stringify(request))
-    readPendingMutations()
-  } catch {
-    throw new ApiError(0, '无法保存待核实记录，请检查浏览器存储后重试。')
-  }
-}
-
-function forget(requestId: string): void {
-  try {
-    localStorage.removeItem(`${PendingPrefix}${requestId}`)
-  } catch {
-    // Ignore storage removal errors.
-  }
-  readPendingMutations()
-}
-
-export async function lookupMutation<T>(requestId: string): Promise<T> {
-  const receipt = await readOnlyRequest<{ result: T }>(`/api/ledger/requests/${requestId}`)
-  return receipt.result
-}
-
 export const activeWriteCount = ref(0)
 
-export interface RecoveredMutationDetail {
-  requestId: string
-  path: string
-  method: string
-  result: unknown
-}
-
-function notifyMutationRecovered(detail: RecoveredMutationDetail): void {
-  if (typeof window !== 'undefined' && typeof CustomEvent === 'function') {
-    window.dispatchEvent(new CustomEvent<RecoveredMutationDetail>('lifeup:mutation-recovered', { detail }))
-  }
-}
-
-export async function recoverMutation(request: PendingMutation, retry: boolean): Promise<unknown> {
-  try {
-    const result = await lookupMutation(request.requestId)
-    forget(request.requestId)
-    clearReadCache()
-    notifyMutationRecovered({ requestId: request.requestId, path: request.path, method: request.method, result })
-    return result
-  } catch (error) {
-    if (retry && error instanceof ApiError && error.status === 404) {
-      const result = await apiRequest(request.path, { method: request.method, body: request.body })
-      clearReadCache()
-      notifyMutationRecovered({ requestId: request.requestId, path: request.path, method: request.method, result })
-      return result
-    }
-
-    throw error
-  }
-}
-
 export async function apiRequest<T>(path: string, init?: ApiRequestInit): Promise<T> {
-  const body = typeof init?.body === 'string' ? init.body : undefined
   const method = init?.method?.toUpperCase() ?? 'GET'
-  const isWrite = method !== 'GET' && method !== 'HEAD'
-  let parsed: { requestId?: string; change?: { requestId?: string } } | undefined
-  if (body) {
-    try {
-      parsed = JSON.parse(body) as { requestId?: string; change?: { requestId?: string } }
-    } catch {
-      parsed = undefined
-    }
-  }
-  const requestId = method !== 'GET' ? (parsed?.requestId ?? parsed?.change?.requestId) : undefined
-
-  if (!requestId) {
-    if (!isWrite) return readOnlyRequest<T>(path, init)
-    activeWriteCount.value++
-    try {
-      return await readOnlyRequest<T>(path, init)
-    } finally {
-      activeWriteCount.value = Math.max(0, activeWriteCount.value - 1)
-    }
-  }
-
-  const pending = readPendingMutations()
-  const original = pending.find((request) => request.requestId === requestId)
-
-  if (pending.some((request) => request.requestId !== requestId)
-    || (original && (original.path !== path || original.body !== body || original.method !== method))) {
-    throw new ApiError(0, '上一笔保存仍在确认中，请先在顶部确认或重试，避免重复记账。')
-  }
+  if (method === 'GET' || method === 'HEAD') return readOnlyRequest<T>(path, init)
 
   activeWriteCount.value++
-  inFlightMutations.set(requestId, (inFlightMutations.get(requestId) ?? 0) + 1)
   try {
-    remember({ requestId, path, method, body: body! })
-    try {
-      const result = await readOnlyRequest<T>(path, init)
-      forget(requestId)
-      return result
-    } catch (error) {
-      if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
-        forget(requestId)
-        throw error
-      }
-
-      try {
-        const result = await lookupMutation<T>(requestId)
-        forget(requestId)
-        clearReadCache()
-        return result
-      } catch {
-        throw new ApiError(0, '暂时没收到保存结果，内容已保留；系统会在联网后自动确认，也可在顶部重试，无需重新填写。')
-      }
-    }
+    return await readOnlyRequest<T>(path, init)
   } finally {
-    activeWriteCount.value = Math.max(0, activeWriteCount.value - 1)
-    const remaining = (inFlightMutations.get(requestId) ?? 1) - 1
-    if (remaining) inFlightMutations.set(requestId, remaining)
-    else inFlightMutations.delete(requestId)
-    readPendingMutations()
+    activeWriteCount.value--
   }
 }
 

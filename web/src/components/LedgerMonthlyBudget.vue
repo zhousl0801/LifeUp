@@ -73,7 +73,7 @@ async function save(amount: number | null): Promise<void> {
     open.value = false
     toast.success(amount === null ? '月度预算已取消' : '月度预算已保存')
   } catch (error) {
-    formError.value = getApiErrorMessage(error, '预算保存失败，请重试。')
+    toast.error(getApiErrorMessage(error, '预算保存失败，请重试。'))
   } finally {
     saving.value = false
   }

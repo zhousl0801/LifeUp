@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { navigateBack } from '../utils/navigation'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchCashOverview, reconcileCash } from '../api/cash'
-import { ApiError, getApiErrorMessage, type RecoveredMutationDetail } from '../api/client'
+import { ApiError, getApiErrorMessage } from '../api/client'
 import { useAmountPrivacy } from '../composables/useAmountPrivacy'
 import { toast } from '../composables/useMessage'
 import { useUnsavedSheet } from '../composables/useUnsavedSheet'
@@ -94,27 +94,13 @@ const isBalanced = computed(() => previewDifference.value === 0)
 const canSave = computed(() =>
   previewDifference.value !== null && !isSaving.value)
 
-function handleMutationRecovered(event: Event): void {
-  const detail = (event as CustomEvent<RecoveredMutationDetail>).detail
-  if (detail && detail.requestId === requestId.value && isReconcileOpen.value) {
-    isReconcileOpen.value = false
-    formError.value = ''
-  }
-  void loadCash()
-}
-
 onMounted(async () => {
-  window.addEventListener('lifeup:mutation-recovered', handleMutationRecovered)
   await loadCash()
 
   if (route.query.action === 'reconcile' && overview.value) {
     openReconcile()
     void router.replace({ name: 'cash' })
   }
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('lifeup:mutation-recovered', handleMutationRecovered)
 })
 
 async function loadCash(): Promise<void> {
@@ -281,10 +267,10 @@ async function submitReconcile(): Promise<void> {
       await loadCash()
       expectedVersion.value = overview.value?.version ?? expectedVersion.value
       requestId.value = createRequestId()
-      formError.value = '现金余额刚有新变动，已刷新账面余额并保留你填的金额，请核对差额后再保存。'
+      toast.error('现金余额刚有新变动，已刷新账面余额并保留你填的金额，请核对差额后再保存。')
       return
     }
-    formError.value = getApiErrorMessage(error, '核对失败，请重试。')
+    toast.error(getApiErrorMessage(error, '核对失败，请重试。'))
   } finally {
     isSaving.value = false
   }

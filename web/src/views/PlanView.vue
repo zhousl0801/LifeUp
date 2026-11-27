@@ -503,6 +503,9 @@ function goOccurrencePage(page: number): void {
   }
 }
 
+let planRequestId = createRequestId()
+let positionRequestId = createRequestId()
+
 function openNew(type: PlanType = 'salaryIncome'): void {
   editingPlan.value = null
   formError.value = ''
@@ -520,6 +523,8 @@ function openNew(type: PlanType = 'salaryIncome'): void {
   form.startDate = today
   form.fundPositionId = ''
   resetFundSearch()
+  planRequestId = createRequestId()
+  positionRequestId = createRequestId()
   formSession.value++
   sheetOpen.value = true
 
@@ -545,6 +550,8 @@ function openEdit(plan: AutoPlan): void {
   form.startDate = plan.startDate
   form.fundPositionId = plan.fundPositionId ?? ''
   resetFundSearch()
+  planRequestId = createRequestId()
+  positionRequestId = createRequestId()
   formSession.value++
   sheetOpen.value = true
 
@@ -605,7 +612,7 @@ async function submit(): Promise<void> {
     startDate: form.startDate,
     fundPositionId: null,
     fundTarget,
-    requestId: createRequestId(),
+    requestId: planRequestId,
     expectedVersion: editingPlan.value?.version ?? null
   }
 
@@ -627,7 +634,7 @@ async function submit(): Promise<void> {
     sheetOpen.value = false
     await load()
   } catch (error) {
-    formError.value = getApiErrorMessage(error, '保存计划失败，请重试。')
+    toast.error(getApiErrorMessage(error, '保存计划失败，请重试。'))
   } finally {
     isSaving.value = false
   }
@@ -639,6 +646,9 @@ function resetFundSearch(): void {
 }
 
 function chooseFundTarget(result: FundSearchResult): void {
+  if (selectedFundTarget.value?.code !== result.code || selectedFundTarget.value?.shareClass !== result.shareClass) {
+    positionRequestId = createRequestId()
+  }
   selectedFundTarget.value = result
   form.fundPositionId = ''
   clearSearchState()
@@ -683,7 +693,7 @@ async function ensurePositionForTarget(target: FundSearchResult): Promise<void> 
     shares: 0,
     cost: 0,
     note: '定投计划自动建立',
-    requestId: createRequestId(),
+    requestId: positionRequestId,
     holdingDate: today,
     confirmationDelayDays: target.confirmationDelayDays
   })
@@ -707,7 +717,7 @@ async function togglePlan(plan: AutoPlan): Promise<void> {
 
     await load()
   } catch (error) {
-    actionError.value = getApiErrorMessage(error, '操作失败，请重试。')
+    toast.error(getApiErrorMessage(error, '操作失败，请重试。'))
   } finally {
     busyAction.value = ''
     busyKind.value = ''
@@ -734,7 +744,7 @@ async function confirmPlanRemoval(): Promise<void> {
     toast.success('计划已删除')
     await load()
   } catch (error) {
-    actionError.value = getApiErrorMessage(error, '删除计划失败，请重试。')
+    toast.error(getApiErrorMessage(error, '删除计划失败，请重试。'))
   } finally {
     isDeletingPlan.value = false
   }
@@ -767,7 +777,7 @@ async function handleOccurrence(occurrenceId: string, action: 'retry' | 'skip'):
 
     await load()
   } catch (error) {
-    actionError.value = getApiErrorMessage(error, '操作失败，请重试。')
+    toast.error(getApiErrorMessage(error, '操作失败，请重试。'))
   } finally {
     busyAction.value = ''
     busyKind.value = ''
@@ -788,7 +798,7 @@ async function recordCurrentOccurrence(occurrenceId: string): Promise<void> {
     }
     await load()
   } catch (error) {
-    actionError.value = getApiErrorMessage(error, '补记本期失败，请重试。')
+    toast.error(getApiErrorMessage(error, '补记本期失败，请重试。'))
   } finally {
     busyAction.value = ''
     busyKind.value = ''
@@ -806,7 +816,7 @@ async function runNow(): Promise<void> {
     else toast.success(result.completed > 0 ? `已执行 ${result.completed} 项计划` : '执行完成')
     await load()
   } catch (error) {
-    actionError.value = getApiErrorMessage(error, '立即执行失败，请重试。')
+    toast.error(getApiErrorMessage(error, '立即执行失败，请重试。'))
   } finally {
     busyAction.value = ''
     busyKind.value = ''

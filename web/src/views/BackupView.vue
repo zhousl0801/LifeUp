@@ -209,13 +209,13 @@ async function restore(): Promise<void> {
     confirmReplace.value = false
   } catch (error) {
     if (error instanceof ApiError && error.status === 0) {
-      errorMessage.value = '暂时无法确认恢复结果，请先返回总览核对当前账本，避免重复覆盖。替换前的旧账本快照已保留在下方。'
+      toast.error('暂时无法确认恢复结果，请先返回总览核对当前账本，避免重复覆盖。替换前的旧账本快照已保留在下方。')
     } else {
       // 服务端明确返回失败时当前账本未被覆盖，清理本次预存快照避免误导。
       if (current.willReplace) {
         saveStoredSnapshot(null)
       }
-      errorMessage.value = error instanceof Error ? error.message : '恢复失败，当前账本未修改。'
+      toast.error(error instanceof Error ? error.message : '恢复失败，当前账本未修改。')
     }
   } finally {
     isRestoring.value = false

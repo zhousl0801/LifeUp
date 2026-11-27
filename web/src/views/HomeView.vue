@@ -316,7 +316,7 @@ async function syncQuotes(): Promise<void> {
     else if (run.updated === 0) toast.info('行情已是最新')
     else toast.success(`已更新 ${run.updated} 项行情`)
   } catch (error) {
-    quoteError.value = getApiErrorMessage(error, '行情同步失败，请稍后重试。')
+    toast.error(getApiErrorMessage(error, '行情同步失败，请稍后重试。'))
   } finally {
     quoteRefreshing.value = false
   }

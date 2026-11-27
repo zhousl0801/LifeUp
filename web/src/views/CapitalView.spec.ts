@@ -1,3 +1,4 @@
+import { toast } from '../composables/useMessage'
 import { fireFixture } from '../test/fireFixture'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
@@ -399,6 +400,7 @@ test('offers setup when the ledger is not initialized', async () => {
 })
 
 test('keeps the sheet open and shows a 409 error', async () => {
+  const errorToast = vi.spyOn(toast, 'error')
   const view = await mountView(overview())
   mocks.save.mockRejectedValue(new ApiError(409, '账本有新变化'))
 
@@ -407,7 +409,7 @@ test('keeps the sheet open and shows a 409 error', async () => {
   await flushPromises()
 
   expect(sheet.props('open')).toBe(true)
-  expect(view.find('.server-error').text()).toContain('账本刚有新变化')
+  expect(errorToast).toHaveBeenCalledWith('账本刚有新变化，请重试。')
 })
 
 test('renders FIRE freedom and persists the selected Lean track', async () => {
